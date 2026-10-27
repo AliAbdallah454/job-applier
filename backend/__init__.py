@@ -1,0 +1,1 @@
+"""Job application assistant backend."""
