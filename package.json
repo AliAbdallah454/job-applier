@@ -1,0 +1,12 @@
+{
+  "name": "job-applier-infrastructure",
+  "private": true,
+  "scripts": {
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "deploy": "cdk deploy --outputs-file cdk.out/outputs.json"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1146.1"
+  }
+}

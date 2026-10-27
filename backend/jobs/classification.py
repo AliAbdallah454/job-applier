@@ -3,10 +3,8 @@
 import hashlib
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Literal
 
-from botocore.exceptions import ClientError
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 SCHEMA_VERSION = 1
@@ -86,22 +84,22 @@ def classify_table(
     table,
     classify: Callable[[dict], JobClassification],
     *,
-    provider: str,
-    model: str,
+    results_table,
+    provider: str = "typesafe",
+    model: str = "jev-latest",
     limit: int = 100,
     force: bool = False,
     page_size: int = 100,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, int]:
-    """Scan all pages, reusing current results and conditionally saving new ones.
+    """Backfill separate results from all scan pages, with a bounded call count."""
+    from backend.jobs.results import ClassificationBusy, ClassificationStore, JobChanged
 
-    limit bounds classification attempts, not DynamoDB's scanned item count.
-    Provider errors propagate to the caller; previously saved results remain.
-    Invalid records/results are counted and processing continues. Concurrent
-    source edits/deletions are never overwritten with stale classifications.
-    """
     if limit < 1 or page_size < 1:
         raise ValueError("limit and page_size must be positive")
+    if provider != "typesafe":
+        raise ValueError("Only the typesafe provider is supported")
+    store = ClassificationStore(table, results_table)
     counts = {"scanned": 0, "classified": 0, "skipped": 0, "failed": 0, "conflicts": 0}
     attempts = 0
     scan_args = {"Limit": page_size}
@@ -110,49 +108,20 @@ def classify_table(
         for item in page.get("Items", []):
             counts["scanned"] += 1
             try:
-                job = item["job"]
-                job_input = classification_input(job)
-                fingerprint = input_hash(job_input)
-                previous = item.get("classification", {})
-                if not force and (
-                    previous.get("input_hash") == fingerprint
-                    and previous.get("schema_version") == SCHEMA_VERSION
-                    and previous.get("provider") == provider
-                    and previous.get("model") == model
-                ):
-                    counts["skipped"] += 1
-                    continue
+                outcome = store.classify(item, classify, model=model, force=force)
+                counts[outcome] += 1
+                if outcome == "classified":
+                    attempts += 1
+            except (ClassificationBusy, JobChanged):
                 attempts += 1
-                result = JobClassification.model_validate(classify(job_input))
-                classification = {
-                    **result.model_dump(),
-                    "input_hash": fingerprint,
-                    "schema_version": SCHEMA_VERSION,
-                    "provider": provider,
-                    "model": model,
-                    "classified_at": datetime.now(UTC).isoformat(),
-                }
-                table.update_item(
-                    Key={"job_id": item["job_id"]},
-                    UpdateExpression="SET #classification = :classification",
-                    ConditionExpression="attribute_exists(job_id) AND #job = :original",
-                    ExpressionAttributeNames={"#classification": "classification", "#job": "job"},
-                    ExpressionAttributeValues={
-                        ":classification": classification,
-                        ":original": job,
-                    },
-                )
-                counts["classified"] += 1
+                counts["conflicts"] += 1
+                if progress:
+                    progress("Job changed or another worker is classifying it; retry later")
             except (KeyError, TypeError, AttributeError, ValidationError, ValueError):
+                attempts += 1
                 counts["failed"] += 1
                 if progress:
                     progress("Skipped an invalid job record or classification result")
-            except ClientError as exc:
-                if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
-                    raise
-                counts["conflicts"] += 1
-                if progress:
-                    progress("Job changed or was deleted during classification; result discarded")
             if attempts >= limit:
                 return counts
         cursor = page.get("LastEvaluatedKey")

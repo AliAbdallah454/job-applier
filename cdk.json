@@ -1,0 +1,3 @@
+{
+  "app": "uv run --locked --group infra python -m infra.app"
+}

@@ -1,0 +1,10 @@
+**
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!backend/
+!backend/**
+!config/
+!config/**
+backend/tests/
+**/__pycache__/

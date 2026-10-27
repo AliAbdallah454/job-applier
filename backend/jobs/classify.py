@@ -15,6 +15,9 @@ from backend.jobs.typesafe import JevClassifier
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--table", default=os.environ.get("DYNAMODB_TABLE", "job-postings"))
+    parser.add_argument(
+        "--results-table", default=os.environ.get("CLASSIFICATIONS_TABLE", "job-classifications")
+    )
     parser.add_argument("--aws-region", help="Otherwise use the standard AWS SDK configuration")
     parser.add_argument("--model", default="jev-latest")
     parser.add_argument(
@@ -30,6 +33,7 @@ def main() -> int:
         return 1
     try:
         table = DynamoJobStore(args.table, region=args.aws_region).table
+        results = DynamoJobStore(args.results_table, region=args.aws_region).table
         with TypeSafeClient(
             model=args.model,
             timeout=60,
@@ -38,6 +42,7 @@ def main() -> int:
             counts = classify_table(
                 table,
                 JevClassifier(client, model=args.model),
+                results_table=results,
                 provider="typesafe",
                 model=args.model,
                 limit=args.limit,

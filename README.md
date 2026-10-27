@@ -6,8 +6,11 @@ roles, including permanent jobs, internships, and alternances.
 The goal is to collect opportunities once, match them to each applicant, prepare
 truthful tailored documents, and track the application from submission to response.
 The project is being built incrementally. **Today, it is a Python job-collection
-backend with a CLI and DynamoDB storage (plus optional JSON exports).** The dashboard and application workflows
-are planned.
+backend with CLI tools, two-table DynamoDB storage, and a CDK deployment for parallel
+Docker/Fargate workers.** The dashboard and application workflows are planned.
+
+For deployment, API-key setup and a small first run, see the
+[AWS pipeline guide](infra/README.md).
 
 ## Product direction
 
@@ -32,8 +35,9 @@ documents, approvals, and application history will belong to each user.
 Document generation will start from an existing CV, including an Overleaf/LaTeX
 project, and preserve verified facts. The intended deployment is on AWS, with
 Amazon Bedrock for model inference and cost-aware routing: inexpensive assessments
-before more capable document generation. Provider choices and infrastructure are
-still proposals, not deployed features.
+before more capable document generation. Document generation remains a proposal.
+The collection/classification infrastructure is implemented in CDK; its presence
+does not mean it has been deployed in your AWS account.
 
 ## What works today
 
@@ -47,12 +51,13 @@ still proposals, not deployed features.
 - DynamoDB upserts after each company; completed writes survive interrupted runs.
 - Optional JSON snapshots, including per-company failure diagnostics.
 - TypeSafe AI Jev classification of stored jobs by seniority, technical relevance
-  and primary role, saved back to DynamoDB.
+  and primary role, saved to a separate DynamoDB results table.
+- CDK stack with Docker/Fargate workers, SQS retries, filtering indexes and secure key setup.
 - Deduplication within a collection using provider, board, region, and posting identity.
 - Offline tests for provider formats, pagination, failures, limits, and exports.
 
 There is currently no recommendation model, application submission,
-mailbox connection, CV generator, running frontend, or AWS deployment. LinkedIn
+mailbox connection, CV generator or running frontend. LinkedIn
 and Welcome to the Jungle fetching have been removed.
 
 ## Setup
@@ -71,6 +76,9 @@ separate classification command requires `TYPESAFE_API_KEY`.
 Some employer feeds may require their own authorized access.
 
 ## DynamoDB setup
+
+For the managed two-table pipeline, deploy the [CDK stack](infra/README.md).
+The standalone collection CLI below can also write to an existing table.
 
 DynamoDB is the default destination. Configure AWS credentials through the standard
 Boto3 credential chain (for example an IAM role or an AWS profile), and select the
@@ -121,17 +129,20 @@ and [API documentation](https://docs.typesafe.ai/go/system-one).
 
 Provide a valid `TYPESAFE_API_KEY` securely in your process environment or secret
 manager. No key belongs in source, CLI arguments or Git. Use the standard AWS
-credential chain as for collection. The identity needs `dynamodb:DescribeTable`,
-`dynamodb:Scan` and `dynamodb:UpdateItem` on the existing table.
+credential chain as for collection. Both tables must exist. The identity needs
+`dynamodb:DescribeTable`, `dynamodb:Scan`, and `dynamodb:ConditionCheckItem` on the
+jobs table, and `dynamodb:DescribeTable`, `dynamodb:GetItem`, `dynamodb:UpdateItem`
+and `dynamodb:PutItem` on the results table. The CDK stack supplies worker roles.
 Allow network access to `api.typesafe.ai` and your regional DynamoDB endpoint.
 
 ```sh
 uv sync --locked
 uv run python -m backend.jobs.classify \
-  --table job-postings --aws-region eu-west-3 --limit 100
+  --table job-postings --results-table job-classifications --aws-region eu-west-3 --limit 100
 ```
 
-The default table is `DYNAMODB_TABLE` or `job-postings`. `--model` selects a
+The default jobs table is `DYNAMODB_TABLE` or `job-postings`; the default results
+table is `CLASSIFICATIONS_TABLE` or `job-classifications`. `--model` selects a
 different supported Jev model. One System One request asks three typed Choice
 questions per posting, using only its title and description:
 
@@ -147,11 +158,12 @@ Non-technical roles get `is_tech=false` and `category=non_technical`.
 Unknown technical relevance gets `is_tech=null` and `category=unknown`.
 Invalid or contradictory provider results are rejected, counted and not saved.
 
-Results are stored in a top-level `classification` map beside the original
-`job`, `first_seen` and `last_seen` fields:
+Results are stored as separate items in the classifications table, joined to
+source jobs by `job_id`. Source job fields are not modified:
 
 ```json
 {
+  "job_id": "<same ID as the source job>",
   "seniority": "senior",
   "is_tech": true,
   "category": "cloud_engineer",
@@ -171,11 +183,13 @@ including after a model alias such as `jev-latest` changes upstream.
 If a collector refreshes a posting, an older classification can remain until
 the next classifier run; consumers should compare its input hash before use.
 
-A conditional write checks that the posting still exists and its source data has
-not changed during the API call. Conflicting results are discarded, without
+A DynamoDB transaction checks that the posting still exists, its source data has
+not changed during the API call, and the worker still owns the result lease. Conflicting results are discarded, without
 resurrecting deleted jobs. Previously written results survive later failures or
-interruption. There is no transaction across postings or guaranteed prevention
-of duplicate API calls from concurrent classifier workers; run one worker at a time.
+interruption. A five-minute per-job lease limits overlapping workers, and current
+results are checked again after acquiring the lease. Duplicate calls remain possible
+after an external call succeeds but the process dies before saving its result.
+The deployed workers use SQS job IDs; this scanning CLI is for bounded backfills.
 
 Network/API errors stop the run; authentication errors are not retried. The SDK
 retries rate limits, transient server failures and connection failures up to twice.

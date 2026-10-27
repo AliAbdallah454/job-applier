@@ -12,8 +12,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "moto[dynamodb]>=5,<6",
+    "moto[dynamodb,secretsmanager,sqs]>=5,<6",
     "ruff>=0.11,<1",
+]
+infra = [
+    "aws-cdk-lib>=2.200,<3",
+    "constructs>=10,<11",
 ]
 
 [tool.ruff]

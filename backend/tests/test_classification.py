@@ -146,6 +146,12 @@ class ClassificationPipelineTests(unittest.TestCase):
             AttributeDefinitions=[{"AttributeName": "job_id", "AttributeType": "S"}],
             BillingMode="PAY_PER_REQUEST",
         )
+        self.results = boto3.resource("dynamodb", region_name="eu-west-3").create_table(
+            TableName="job-classifications",
+            KeySchema=[{"AttributeName": "job_id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "job_id", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )
         self.job = {"title": "Software Engineer", "description": "Build Python services"}
         self.table.put_item(Item={"job_id": "a", "job": self.job, "first_seen": "keep-me"})
         self.classifier = Mock(
@@ -156,11 +162,19 @@ class ClassificationPipelineTests(unittest.TestCase):
 
     def run_classifier(self, **kwargs):
         return classify_table(
-            self.table, self.classifier, provider="typesafe", model="jev-latest", **kwargs
+            self.table,
+            self.classifier,
+            results_table=self.results,
+            provider="typesafe",
+            model="jev-latest",
+            **kwargs,
         )
 
     def item(self, key="a"):
         return self.table.get_item(Key={"job_id": key})["Item"]
+
+    def result(self, key="a"):
+        return self.results.get_item(Key={"job_id": key}).get("Item", {})
 
     def test_persists_results_without_changing_original_fields(self):
         counts = self.run_classifier()
@@ -168,7 +182,8 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.assertEqual(counts["classified"], 1)
         self.assertEqual(item["job"], self.job)
         self.assertEqual(item["first_seen"], "keep-me")
-        result = item["classification"]
+        self.assertNotIn("classification", item)
+        result = self.result()
         self.assertEqual(result["category"], "software_engineer")
         self.assertEqual(result["schema_version"], 1)
         self.assertEqual(result["provider"], "typesafe")
@@ -193,7 +208,11 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.run_classifier()
         self.assertEqual(self.run_classifier(force=True)["classified"], 1)
         counts = classify_table(
-            self.table, self.classifier, provider="typesafe", model="different-model"
+            self.table,
+            self.classifier,
+            results_table=self.results,
+            provider="typesafe",
+            model="different-model",
         )
         self.assertEqual(counts["classified"], 1)
 
@@ -206,7 +225,7 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.assertEqual(counts["classified"], 1)
         self.assertEqual(self.classifier.call_count, 1)
         self.assertEqual(self.run_classifier(page_size=1)["classified"], 1)
-        self.assertTrue(all("classification" in self.item(k) for k in ["a", "b", "c"]))
+        self.assertTrue(all("category" in self.result(k) for k in ["a", "b", "c"]))
 
     def test_changed_or_deleted_posting_is_not_overwritten_or_resurrected(self):
         def mutate(job):
@@ -224,7 +243,7 @@ class ClassificationPipelineTests(unittest.TestCase):
 
         self.classifier.side_effect = mutate
         self.assertEqual(self.run_classifier()["conflicts"], 1)
-        self.assertNotIn("classification", self.item())
+        self.assertNotIn("category", self.result())
 
     def test_invalid_provider_result_is_not_persisted(self):
         self.classifier.return_value = {
@@ -233,7 +252,7 @@ class ClassificationPipelineTests(unittest.TestCase):
             "is_tech": True,
         }
         self.assertEqual(self.run_classifier()["failed"], 1)
-        self.assertNotIn("classification", self.item())
+        self.assertNotIn("category", self.result())
 
     def test_invalid_records_do_not_call_provider(self):
         self.table.put_item(Item={"job_id": "a", "job": {"description": "no title"}})
@@ -255,7 +274,7 @@ class ClassificationPipelineTests(unittest.TestCase):
             patch.object(sys, "argv", ["classify", "--aws-region", "eu-west-3", "--limit", "1"]),
         ):
             self.assertEqual(main(), 0)
-        self.assertEqual(self.item()["classification"]["category"], "software_engineer")
+        self.assertEqual(self.result()["category"], "software_engineer")
 
     def test_missing_key_fails_before_accessing_aws(self):
         with (
