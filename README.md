@@ -46,6 +46,8 @@ still proposals, not deployed features.
 - Optional local keyword and location matching.
 - DynamoDB upserts after each company; completed writes survive interrupted runs.
 - Optional JSON snapshots, including per-company failure diagnostics.
+- TypeSafe AI Jev classification of stored jobs by seniority, technical relevance
+  and primary role, saved back to DynamoDB.
 - Deduplication within a collection using provider, board, region, and posting identity.
 - Offline tests for provider formats, pagination, failures, limits, and exports.
 
@@ -64,7 +66,8 @@ uv sync --locked
 `uv` creates the local virtual environment and installs the dependencies pinned in
 `uv.lock`. Runtime dependencies are HTTPX and Pydantic; Ruff handles linting and
 formatting. DynamoDB storage requires AWS authentication and an existing table; see below.
-JSON export mode needs no AWS credentials. No LLM key is needed.
+JSON export mode needs no AWS credentials. Collection needs no LLM key; the
+separate classification command requires `TYPESAFE_API_KEY`.
 Some employer feeds may require their own authorized access.
 
 ## DynamoDB setup
@@ -107,6 +110,85 @@ printed to the console, not stored as job items. Automatic resume is not impleme
 
 Use `--output PATH` to explicitly select the legacy JSON export instead of DynamoDB.
 It cannot be combined with `--table`. The examples below illustrate JSON exports.
+
+## Classify jobs already in DynamoDB
+
+The separate classifier assumes the DynamoDB table and postings already exist.
+It does not fetch employer boards or write JSON files. It uses TypeSafe AI's
+official `typesafe-sdk`, the `jev-latest` model and `POST /v1/systemone`.
+See the [official SDK](https://github.com/typesafe-ai/typesafe-sdk-python)
+and [API documentation](https://docs.typesafe.ai/go/system-one).
+
+Provide a valid `TYPESAFE_API_KEY` securely in your process environment or secret
+manager. No key belongs in source, CLI arguments or Git. Use the standard AWS
+credential chain as for collection. The identity needs `dynamodb:DescribeTable`,
+`dynamodb:Scan` and `dynamodb:UpdateItem` on the existing table.
+Allow network access to `api.typesafe.ai` and your regional DynamoDB endpoint.
+
+```sh
+uv sync --locked
+uv run python -m backend.jobs.classify \
+  --table job-postings --aws-region eu-west-3 --limit 100
+```
+
+The default table is `DYNAMODB_TABLE` or `job-postings`. `--model` selects a
+different supported Jev model. One System One request asks three typed Choice
+questions per posting, using only its title and description:
+
+| Field | Values |
+| --- | --- |
+| `seniority` | `intern`, `apprentice`, `entry`, `junior`, `mid`, `senior`, `lead`, `staff`, `principal`, `manager`, `director`, `executive`, `unknown` |
+| `is_tech` | `true`, `false`, or `null` when evidence is insufficient |
+| `category` | `software_engineer`, `devops_engineer`, `cloud_engineer`, `ai_engineer`, `ml_engineer`, `data_engineer`, `data_scientist`, `security_engineer`, `qa_engineer`, `systems_engineer`, `technical_support`, `technical_management`, `other_tech`, `non_technical`, `unknown` |
+
+The classifier chooses one primary role and one advertised seniority, using
+`unknown` rather than inventing a level from a title without enough evidence.
+Non-technical roles get `is_tech=false` and `category=non_technical`.
+Unknown technical relevance gets `is_tech=null` and `category=unknown`.
+Invalid or contradictory provider results are rejected, counted and not saved.
+
+Results are stored in a top-level `classification` map beside the original
+`job`, `first_seen` and `last_seen` fields:
+
+```json
+{
+  "seniority": "senior",
+  "is_tech": true,
+  "category": "cloud_engineer",
+  "provider": "typesafe",
+  "model": "jev-latest",
+  "schema_version": 1,
+  "input_hash": "<SHA-256 of title and description>",
+  "classified_at": "<UTC timestamp>"
+}
+```
+
+The command follows DynamoDB scan pagination. `--limit` bounds classification
+attempts (default 100), not scanned rows; `--page-size` controls scan pages.
+Unchanged inputs with matching provider, model and schema version are skipped.
+Changed titles/descriptions are reclassified. Use `--force` to refresh all results,
+including after a model alias such as `jev-latest` changes upstream.
+If a collector refreshes a posting, an older classification can remain until
+the next classifier run; consumers should compare its input hash before use.
+
+A conditional write checks that the posting still exists and its source data has
+not changed during the API call. Conflicting results are discarded, without
+resurrecting deleted jobs. Previously written results survive later failures or
+interruption. There is no transaction across postings or guaranteed prevention
+of duplicate API calls from concurrent classifier workers; run one worker at a time.
+
+Network/API errors stop the run; authentication errors are not retried. The SDK
+retries rate limits, transient server failures and connection failures up to twice.
+Thus each classification attempt can involve up to three HTTP requests.
+Missing descriptions are allowed if a title exists, and uncertainty remains unknown.
+A scan can read the entire table even if few jobs need classification.
+
+Exit status is `0` on completion without record failures/conflicts, `2` if records
+were invalid or changed concurrently, `1` for provider/storage/setup errors, and
+`130` on interruption. Counts are printed without job content or API keys.
+Classification is tested offline with the real SDK's HTTP transport mocked and
+Moto DynamoDB, including a complete CLI request-to-table-write test; live API
+accuracy and deployment access are not established by those tests.
 
 ## Collect jobs
 
@@ -256,7 +338,7 @@ persistent history remain future work.
 ## Next milestones
 
 1. Add catalogue queries and closed-posting reconciliation to DynamoDB storage.
-2. Add tech-role classification and per-user profile/preferences filtering.
+2. Add per-user profile/preferences filtering using the stored classifications.
 3. Evaluate inexpensive matching models before implementing personalized ranking.
 4. Generate tailored CVs and motivation letters with review and version history.
 5. Track applications and match email responses; add supported submission channels.

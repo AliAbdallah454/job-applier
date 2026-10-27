@@ -1,6 +1,7 @@
 """Exercise DynamoDB persistence and the CLI without accessing AWS."""
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,12 @@ from backend.jobs.storage import DynamoJobStore
 @mock_aws
 class DynamoStorageTests(unittest.TestCase):
     def setUp(self):
+        # Tests use Moto's fake credentials, independent of any host AWS profile.
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("AWS_PROFILE", None)
+        os.environ.pop("AWS_DEFAULT_PROFILE", None)
         self.table = boto3.resource("dynamodb", region_name="eu-west-3").create_table(
             TableName="job-postings",
             KeySchema=[{"AttributeName": "job_id", "KeyType": "HASH"}],
