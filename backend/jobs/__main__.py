@@ -1,12 +1,16 @@
-"""Fetch employer job boards and save postings as JSON."""
+"""Fetch employer job boards and save postings to DynamoDB (or an explicit JSON export)."""
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
+from botocore.exceptions import BotoCoreError, ClientError
+
 from backend.jobs.collector import collect_jobs, load_boards, save_report
 from backend.jobs.job_fetchers import FETCHERS, FetchError, create_fetcher
+from backend.jobs.storage import DynamoJobStore
 
 
 def main() -> int:
@@ -29,7 +33,12 @@ def main() -> int:
     parser.add_argument(
         "--total-limit", type=int, help="Batch mode: maximum jobs across all companies combined"
     )
-    parser.add_argument("--output", type=Path)
+    destination = parser.add_mutually_exclusive_group()
+    destination.add_argument("--output", type=Path, help="Export JSON instead of using DynamoDB")
+    destination.add_argument(
+        "--table", help="DynamoDB table; default DYNAMODB_TABLE or job-postings"
+    )
+    parser.add_argument("--aws-region", help="AWS region; otherwise use the AWS SDK configuration")
     parser.add_argument(
         "--platforms",
         nargs="+",
@@ -54,8 +63,20 @@ def main() -> int:
         parser.error("For batch collection, set company and region in the boards file")
     if args.source and args.source != "lever" and args.region != "global":
         parser.error("--region eu is supported only by Lever")
+    store = None
+    if args.output is None:
+        try:
+            store = DynamoJobStore(
+                args.table or os.environ.get("DYNAMODB_TABLE", "job-postings"),
+                region=args.aws_region,
+            )
+        except (BotoCoreError, ClientError, ValueError) as exc:
+            print(f"Error initializing DynamoDB: {exc}", file=sys.stderr)
+            return 1
+    destination_name = str(args.output) if args.output else f"DynamoDB table {store.table.name}"
+
     if not args.source:
-        output = args.output or Path("data/jobs.json")
+        output = args.output
         try:
             boards = load_boards(
                 args.boards_file or Path("config/boards.json"),
@@ -80,30 +101,37 @@ def main() -> int:
                 limit=args.limit,
                 total_limit=args.total_limit,
                 progress=lambda message: print(message, flush=True),
-                on_update=lambda snapshot: save_report({**snapshot, "input": input_info}, output),
+                on_update=(
+                    store.save_report
+                    if store
+                    else lambda snapshot: save_report({**snapshot, "input": input_info}, output)
+                ),
             )
             report["input"] = input_info
-            save_report(report, output)
+            if store:
+                store.save_report(report)
+            else:
+                save_report(report, output)
         except KeyboardInterrupt:
-            print(f"Interrupted. Completed company results are saved in {output}", file=sys.stderr)
+            print(f"Interrupted. Saved postings remain in {destination_name}", file=sys.stderr)
             return 130
-        except (ValueError, OSError) as exc:
+        except (ValueError, OSError, BotoCoreError, ClientError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
         summary = report["summary"]
         print(
-            f"Saved {summary['total_jobs']} jobs to {output}; "
+            f"Saved {summary['total_jobs']} jobs to {destination_name}; "
             f"{summary['successful_boards']} boards succeeded, {summary['failed_boards']} failed."
         )
         if not summary["successful_boards"]:
             print(
-                "No board succeeded. The output contains an error report, not fetched jobs.",
+                "No board succeeded. No jobs were saved from this run.",
                 file=sys.stderr,
             )
             return 1
         return 2 if summary["failed_boards"] else 0
 
-    output = args.output or Path("data") / f"{args.source}_{args.board.replace('/', '_')}_jobs.json"
+    output = args.output
 
     print(
         f"Fetching {'all' if args.limit is None else 'up to ' + str(args.limit)} jobs "
@@ -116,15 +144,20 @@ def main() -> int:
         with fetcher:
             jobs = fetcher.fetch(args.query, location=args.location, limit=args.limit)
         payload = [job.model_dump(mode="json") for job in jobs]
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-        )
-    except (FetchError, ValueError, OSError) as exc:
+        if store:
+            store.save_jobs(
+                [{**job, "board": args.board, "region": args.region} for job in payload]
+            )
+        else:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+    except (FetchError, ValueError, OSError, BotoCoreError, ClientError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Saved {len(jobs)} job postings to {output}")
+    print(f"Saved {len(jobs)} job postings to {destination_name}")
     return 0
 
 
