@@ -14,11 +14,7 @@ RUN --mount=type=secret,id=build_ca \
     if [ -f /run/secrets/build_ca ]; then export SSL_CERT_FILE=/run/secrets/build_ca; fi; \
     uv sync --locked --no-dev --no-install-project --system-certs
 
-COPY --chown=10001:10001 backend/__init__.py ./backend/
-COPY --chown=10001:10001 backend/jobs/__init__.py backend/jobs/models.py backend/jobs/collector.py ./backend/jobs/
-COPY --chown=10001:10001 backend/jobs/job_fetchers/ ./backend/jobs/job_fetchers/
-COPY --chown=10001:10001 backend/jobs/storage/__init__.py backend/jobs/storage/jobs.py ./backend/jobs/storage/
-COPY --chown=10001:10001 backend/jobs/workers/__init__.py backend/jobs/workers/runtime.py backend/jobs/workers/scraper.py ./backend/jobs/workers/
+COPY backend/ ./backend/
 
 USER 10001:10001
 

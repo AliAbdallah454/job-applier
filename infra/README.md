@@ -5,20 +5,44 @@ collection and Jev classification pipeline. It does not deploy anything merely
 by installing dependencies, running tests or synthesizing the template.
 
 ```mermaid
-flowchart LR
-    Seed["One-off or daily feeder"] --> Boards["SQS company boards"]
-    Boards --> Scrapers["Parallel Docker / Fargate scrapers"]
-    Scrapers --> Jobs["DynamoDB: Jobs"]
-    Jobs --> Stream["DynamoDB Stream → routing Lambda"]
-    Stream --> Work["SQS job IDs"]
-    Work --> Classifiers["Parallel Docker / Fargate Jev workers"]
-    Jobs --> Classifiers
-    Key["Secrets Manager: TypeSafe key"] --> Classifiers
-    Config["SSM: model and collection limits"] --> Seed
-    Config --> Classifiers
-    Classifiers --> Results["DynamoDB: Classifications"]
-    Results -. "same job_id" .-> Jobs
+flowchart TB
+    Manual["Manual: infra.manage collect"] -->|"ECS RunTask"| Seed
+    Schedule["EventBridge: daily rule, opt-in"] -->|"ECS RunTask"| Seed
+
+    subgraph Collection["Collection"]
+        CSV["Company CSV packaged in feeder image"] --> Seed["ECS feeder: seed.py"]
+        Limits["SSM: board and job limits, default all"] -. "injected at startup" .-> Seed
+        Seed -->|"one message per company board"| Boards["SQS: ScrapeQueue"]
+        Boards -->|"workers poll; queue metrics scale service"| Scrapers["ECS: scraper.py, up to 4 tasks by default"]
+        Scrapers -->|"fetch postings"| Providers["Employer job-board APIs / pages"]
+        Providers -->|"posting data"| Scrapers
+        Scrapers -->|"upsert by stable job_id"| Jobs["DynamoDB: Jobs"]
+    end
+
+    subgraph Routing["Change detection"]
+        Jobs -->|"old and new item images"| Stream["DynamoDB Stream"]
+        Stream --> Router["Lambda: stream_router/handler.py"]
+        Router -->|"new job or changed title/description"| Work["SQS: ClassifyQueue, job_id messages"]
+    end
+
+    subgraph Classification["Classification"]
+        Work -->|"workers poll; queue metrics scale service"| Classifiers["ECS: classifier.py, up to 2 tasks by default"]
+        Jobs -->|"read latest posting"| Classifiers
+        Results["DynamoDB: Classifications"] -->|"check existing result and acquire lease"| Classifiers
+        Key["Secrets Manager: TypeSafe API key"] -. "injected at startup" .-> Classifiers
+        Model["SSM: Jev model"] -. "injected at startup" .-> Classifiers
+        Classifiers -->|"only when no current matching result"| Jev["TypeSafe / Jev API"]
+        Jev -->|"classification"| Classifiers
+        Classifiers -->|"save result after checking source version"| Results
+    end
 ```
+
+The stages overlap: classification can begin while other boards are still being
+scraped. Re-scraping a posting updates its existing Jobs item. The Lambda ignores
+unchanged titles/descriptions, and classifiers independently skip matching saved
+results. Both tables use the same `job_id` to connect postings with classifications.
+The S3 job-source bucket exists but is not yet read by the feeder; the diagram
+shows the currently implemented CSV source.
 
 Each worker processes one message at a time. The default maximum is four scraper
 tasks and two classifier tasks; both services start at zero and scale down to zero
@@ -40,6 +64,25 @@ no inbound ports and no load balancer. Tasks use public subnets with public IPs
 for outbound employer/API access. Their security group has no inbound rules.
 There is no NAT gateway; running tasks still incur public IPv4 charges.
 
+## Infrastructure files and entrypoints
+
+| File | Responsibility |
+| --- | --- |
+| `infra/app.py` | Creates the CDK app and `JobPipeline` stack, then synthesizes the template. |
+| `infra/stack.py` | Defines resources, IAM permissions, task images, scaling and scheduling. |
+| `infra/manage.py` | Reads deployed stack outputs to set the API key or launch collection/backfill tasks. |
+| `infra/stream_router/handler.py` | Routes new or changed postings from the Jobs stream to classification. |
+| `backend/jobs/workers/seed.py` | Reads the company directory and queues boards; also supports classification backfill. |
+| `backend/jobs/workers/scraper.py` | Consumes board messages, fetches postings and upserts Jobs items. |
+| `backend/jobs/workers/classifier.py` | Consumes job IDs, calls Jev when needed and stores results. |
+| `backend/jobs/workers/runtime.py` | Shared SQS polling, visibility renewal and graceful shutdown. |
+
+`cdk.json` tells CDK to run `uv run --locked --group infra python -m infra.app`.
+`cdk synth` generates CloudFormation; `cdk deploy` publishes assets and asks
+CloudFormation to create/update the resources. `CfnOutput` entries expose resource
+names and ARNs that `infra.manage` reads after deployment. Running `infra.manage`
+does not deploy infrastructure.
+
 ## Deploy
 
 Requirements: Python 3.12+, uv, Node.js 22+ (24 recommended), npm, Docker with
@@ -51,14 +94,18 @@ From the repository root, select your own account/profile and region, for exampl
 
 ```sh
 export AWS_PROFILE=my-profile
-export AWS_DEFAULT_REGION=eu-west-3
+export AWS_DEFAULT_REGION=us-east-1
 uv sync --locked --group infra
 npm ci
-npx cdk bootstrap
-npm run synth
-npm run diff
-npm run deploy
+cdk bootstrap
+cdk synth
+cdk diff JobPipeline
+cdk deploy JobPipeline --outputs-file cdk.out/outputs.json
 ```
+
+These examples use your installed `cdk` CLI. `npm ci` also installs the pinned
+repository version; use `npx cdk` to select that version if your global CLI differs.
+Use the same account/profile and region for deployment and all helper commands.
 
 Bootstrapping is required once per account/region and creates CDK's asset bucket
 and ECR repository. Deployment builds and uploads all three Docker images automatically.
@@ -66,18 +113,18 @@ The stack creates two new tables with generated names; it does not adopt or
 migrate earlier manually created tables. Resource names, queue URLs and helper
 settings are CloudFormation outputs.
 
-No API key is passed to CDK or CloudFormation. By default the stack creates an
+No API key is passed to CDK or CloudFormation. The stack creates an
 **empty** Secrets Manager secret. The services start at zero and the daily
 schedule is disabled, so populate the key before queuing any jobs:
 
 ```sh
-uv run python -m infra.manage set-key --region eu-west-3
+uv run python -m infra.manage set-key --region us-east-1
 ```
 
 The helper prompts without echoing the key and sends it directly to Secrets
 Manager. It does not place it in a file, shell history or command-line argument.
 The secret must contain the raw API key as a plain string, not a JSON object.
-Only the classifier's ECS execution role can retrieve/inject it; scrapers and the
+Among ECS tasks, only the classifier's execution role can retrieve/inject it; scrapers and the
 feeder cannot read it. Runtime AWS access uses separate IAM task roles, not static
 AWS credentials. The deployment/operator identity needs CloudFormation
 `DescribeStacks`, Secrets Manager `DescribeSecret` and `PutSecretValue` for the
@@ -100,23 +147,35 @@ be wired separately.
 ## Start a small run
 
 ```sh
-uv run python -m infra.manage collect --region eu-west-3 \
+uv run python -m infra.manage collect --region us-east-1 \
   --max-boards 3 --max-jobs-per-board 5 --platforms greenhouse lever
 ```
 
-This starts a feeder task, which queues three boards with up to five postings per
+This starts a feeder task, which queues up to three boards with up to five postings per
 board. Workers wake as the queue metrics arrive. A returned task ARN confirms
 launch only: check the feeder's stopped-task exit code, CloudWatch logs, queues
 and tables for completion. With no limits configured, a run queues all unique supported boards from the
 shipped directory and fetches all available postings per board. Use `--max-boards`
 and `--max-jobs-per-board` to bound a manual run. Scheduled runs use the SSM
-settings; the default value `all` means no limit. Explicit CDK context settings
+settings. Manual runs also inherit SSM values for omitted flags; explicit CLI
+limits override those values for that run. The default value `all` means no limit.
+Explicit CDK context settings
 `maxBoards` and `jobsPerBoard` can still set deployment-wide limits.
+
+To run all boards and postings with the default unlimited configuration:
+
+```sh
+uv run python -m infra.manage collect --region us-east-1
+```
+
+Both limit flags accept any positive integer; there is no fixed 100-job cap.
+Providers can still fail, rate-limit requests or impose their own pagination limits.
+Submitting collection work does not wait for the scraper/classifier queues to drain.
 
 View generated resource names and configuration:
 
 ```sh
-uv run python -m infra.manage outputs --region eu-west-3
+uv run python -m infra.manage outputs --region us-east-1
 ```
 
 Use `--stack` if you deployed with a different CloudFormation stack name, and
@@ -142,25 +201,35 @@ Neither service makes a key safe if it is committed or passed as a CLI argument.
 Configure deployment defaults, for example:
 
 ```sh
-npm run deploy -- -c maxScrapers=6 -c maxClassifiers=2 \
+cdk deploy JobPipeline -c maxScrapers=6 -c maxClassifiers=2 \
   -c maxBoards=250 -c jobsPerBoard=20 -c jevModel=jev-latest
 ```
 
 Runtime SSM parameter names are emitted as `JevModelParameter`,
 `MaxBoardsParameter`, and `JobsPerBoardParameter`. You can change them through
 SSM; redeploying with different CDK context updates the desired values too.
+Use the literal `all` in either limit parameter to remove its cap. CDK context
+limit values accept positive integers; omit those context settings for unlimited
+defaults. Pass your intended context settings on subsequent deployments as well,
+or persist them in `cdk.json`.
 ECS injects values only when a task starts. After a key/model change, force a new
 deployment of the classifier service using the emitted cluster/service names, or
 allow idle tasks to scale to zero before launching new work. Merely changing a
-secret does not update already running containers. Changing the model triggers
-reclassification on the next delivery; use local `--force` below when refreshing
-an unchanged model alias.
+secret does not update already running containers. A changed model causes
+reclassification when the next message for that job is processed; changing SSM
+alone does not queue existing jobs. Use `infra.manage backfill` to queue them.
+Use local `--force` below when refreshing an unchanged model alias.
 
 After supplying the key, enable a daily run with:
 
 ```sh
-npm run deploy -- -c schedule=true
+cdk deploy JobPipeline -c schedule=true
 ```
+
+The `DailyCollection` EventBridge rule launches one feeder task every 24 hours.
+The feeder queues boards; scraper and classifier services scale independently
+from their respective queues. Disable the schedule with `-c schedule=false`.
+Keep any other intended context settings when enabling/disabling the schedule.
 
 A scheduled EventBridge target confirms only that ECS accepted a feeder task.
 Check the feeder logs/exit code for failures after task launch. The schedule DLQ
@@ -193,7 +262,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from backend.jobs.classification.models import classification_input, input_hash
 
-db = boto3.resource("dynamodb", region_name="eu-west-3")
+db = boto3.resource("dynamodb", region_name="us-east-1")
 results = db.Table("YOUR_CLASSIFICATIONS_TABLE")
 page = results.query(
     IndexName="ByCategorySeniority",
@@ -220,7 +289,8 @@ or dashboard is deployed by this stack.
 - The jobs stream decouples persistence from classification delivery. The router
   retries failed sequences; its failure queue and alarm expose exhausted delivery.
 - Classifiers read the latest job directly by ID. Unchanged successful results are
-  skipped. A five-minute DynamoDB lease limits overlapping paid calls.
+  skipped when their title/description hash, model, provider and schema version
+  match. A five-minute DynamoDB lease limits overlapping paid calls.
 - A DynamoDB transaction verifies the source still matches the job sent to Jev
   and saves the result only while the worker owns the lease. A source change or
   deletion causes retry; it never writes into the Jobs table or recreates a job.
@@ -236,23 +306,48 @@ or dashboard is deployed by this stack.
   created, but no email/SNS subscription is configured; wire alarm actions to your
   monitoring system if notifications are needed.
 
+| Queue | Contents / failure scope |
+| --- | --- |
+| `ScrapeQueue` | One company-board collection request per message. |
+| `ClassifyQueue` | One `job_id` per message; workers read the current posting from Jobs. |
+| `ScrapeDLQ` | Board requests that exhaust worker delivery attempts. |
+| `ClassifyDLQ` | Job IDs that exhaust worker delivery attempts. |
+| `RoutingDLQ` | Failure notifications for exhausted stream processing. |
+| `ScheduleDLQ` | Scheduled feeder launch events that exhaust target delivery retries. |
+
+```mermaid
+flowchart LR
+    Schedule["EventBridge scheduled launch"] -->|"ECS launch rejected; delivery retries exhausted"| ScheduleDLQ["ScheduleDLQ"]
+    Scraper["Scraper processing failure"] -->|"message returns after visibility timeout"| ScrapeQueue["ScrapeQueue"]
+    ScrapeQueue -->|"receive limit exhausted"| ScrapeDLQ["ScrapeDLQ"]
+    Router["Lambda stream-processing failure"] -->|"retry or record-age limit reached"| RoutingDLQ["RoutingDLQ"]
+    Classifier["Classifier processing failure"] -->|"message returns after visibility timeout"| ClassifyQueue["ClassifyQueue"]
+    ClassifyQueue -->|"receive limit exhausted"| ClassifyDLQ["ClassifyDLQ"]
+```
+
+On successful worker processing, the message is deleted from its work queue. The
+feeder has no application-failure queue: if ECS accepts its launch and it later
+crashes, inspect its stopped-task exit code and CloudWatch logs. `ScheduleDLQ`
+only handles scheduled launch delivery failures, and manual launches do not use it.
+
 The jobs stream retains only 24 hours. Routing failure notifications can outlive
 the original stream records. Recover missed delivery or reprocess earlier table
 contents by queuing a backfill:
 
 ```sh
-uv run python -m infra.manage backfill --region eu-west-3
+uv run python -m infra.manage backfill --region us-east-1
 ```
 
 Backfill scans source IDs and sends messages, but skips paid calls for unchanged
 completed results. It can read the whole table and has no per-run classification
-budget. To force an unchanged alias refresh or perform a bounded local backfill:
+budget. Collection flags (`--max-boards`, `--max-jobs-per-board`, `--platforms`)
+do not limit backfill. To force an unchanged alias refresh or perform a bounded local backfill:
 
 ```sh
 # Set TYPESAFE_API_KEY securely in this local process first.
 uv run python -m backend.jobs.cli.classify \
   --table YOUR_JOBS_TABLE --results-table YOUR_CLASSIFICATIONS_TABLE \
-  --aws-region eu-west-3 --limit 100 --force
+  --aws-region us-east-1 --limit 100 --force
 ```
 
 Pause the daily rule before maintenance. Inspect worker DLQs and use SQS redrive
@@ -270,9 +365,26 @@ TypeSafe usage is billed separately. Scaling to zero avoids idle Fargate compute
 not all infrastructure cost. Worker caps bound concurrency, not total daily calls
 or spend, and do not enforce a provider-wide requests-per-minute quota.
 
-`npx cdk destroy` deletes the workers and queues (including queued work) but retains
-both data tables and the created API-key secret. These retained resources keep
-their costs until you explicitly remove them. Bootstrap assets can also remain.
+`cdk destroy JobPipeline` deletes the workers, queues (including queued work),
+Lambda, logs and other resources with normal deletion policies. It **retains both
+DynamoDB tables, the API-key secret and the job-source bucket with its file versions**.
+These retained resources keep their costs until you explicitly remove them.
+Bootstrap assets can also remain. A fresh stack deployment creates new resources
+with generated names; it does not automatically reuse the retained resources.
+Populate the new secret after recreating the stack.
+
+To inspect infrastructure without changing it:
+
+```sh
+cdk diff JobPipeline
+cdk drift JobPipeline
+```
+
+`diff` compares the local and deployed templates. `drift` checks actual AWS resources
+against the deployed template; it detects manual changes such as deleted tables.
+Neither command repairs resources. Avoid manually deleting stack-owned tables:
+recreating Jobs changes its stream ARN and can require repairing the Lambda mapping
+and permissions as well.
 
 ## Verification
 
@@ -283,7 +395,7 @@ uv run --locked python -m unittest discover -s backend/tests -v
 uv run --locked --group infra python -m unittest discover -s infra/tests -v
 uv run --locked ruff check .
 uv run --locked ruff format --check .
-npm run synth -- --no-lookups
+cdk synth --no-lookups
 docker build --platform linux/amd64 -f containers/Dockerfile.seed -t job-applier-seed:test .
 docker build --platform linux/amd64 -f containers/Dockerfile.scrape -t job-applier-scrape:test .
 docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-applier-classify:test .
@@ -306,7 +418,7 @@ docker build --platform linux/amd64 -f containers/Dockerfile.seed \
   --secret id=build_ca,src=/path/to/trusted-ca-bundle.pem -t job-applier-seed:test .
 # For CDK's Docker asset build:
 export PIPELINE_BUILD_CA=/path/to/trusted-ca-bundle.pem
-npm run deploy
+cdk deploy JobPipeline
 ```
 
 The CA bundle is mounted only for dependency installation, not embedded in the
