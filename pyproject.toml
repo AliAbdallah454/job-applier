@@ -8,6 +8,7 @@ dependencies = [
     "botocore[crt]>=1.43.119",
     "httpx>=0.28,<1",
     "pydantic>=2.10,<3",
+    "pyyaml>=6.0.3,<7",
     "typesafe-sdk>=0.7.5,<0.8",
 ]
 

@@ -2,10 +2,13 @@
 
 import io
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+from backend.jobs.collection_config import CollectionConfig
 from infra.manage import launch, main
 
 
@@ -17,6 +20,7 @@ class ManageTests(unittest.TestCase):
             "PublicSubnets": "subnet-a,subnet-b",
             "SecurityGroupId": "sg",
             "TypesafeSecretArn": "secret",
+            "JobSourceBucketName": "sources",
         }
         self.session = Mock()
 
@@ -63,6 +67,37 @@ class ManageTests(unittest.TestCase):
         }
         with self.assertRaises(RuntimeError):
             launch(self.session, self.outputs, mode="classify")
+
+    def test_launch_passes_collection_values_without_a_yaml_uri(self):
+        self.session.client.return_value.run_task.return_value = {"tasks": [{"taskArn": "run"}]}
+        config = CollectionConfig(boards_s3_uri="s3://sources/boards.csv")
+        launch(self.session, self.outputs, mode="scrape", config=config)
+        override = self.session.client.return_value.run_task.call_args.kwargs["overrides"][
+            "containerOverrides"
+        ][0]
+        environment = {item["name"]: item["value"] for item in override["environment"]}
+        self.assertEqual(environment["BOARDS_S3_URI"], "s3://sources/boards.csv")
+        self.assertNotIn("COLLECTION_CONFIG_URI", environment)
+        self.assertNotIn("--config", override["command"])
+        self.session.client.return_value.put_object.assert_not_called()
+
+    def test_local_config_is_validated_and_launched_with_its_region(self):
+        self.session.client.return_value.describe_secret.return_value = {
+            "VersionIdsToStages": {"version": ["AWSCURRENT"]}
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "collection.yaml"
+            path.write_text("region: us-east-1\nboards_s3_uri: s3://sources/boards.csv\n")
+            with (
+                patch.object(sys, "argv", ["manage", "collect", "--config", str(path)]),
+                patch("infra.manage.boto3.Session", return_value=self.session) as session,
+                patch("infra.manage.stack_outputs", return_value=self.outputs),
+                patch("infra.manage.launch", return_value=["run"]) as run,
+                redirect_stdout(io.StringIO()),
+            ):
+                main()
+        session.assert_called_once_with(profile_name=None, region_name="us-east-1")
+        self.assertEqual(run.call_args.kwargs["config"].boards_s3_uri, "s3://sources/boards.csv")
 
     def test_secure_key_prompt_sends_value_only_to_secrets_manager(self):
         output = io.StringIO()

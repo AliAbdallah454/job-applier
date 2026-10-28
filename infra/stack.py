@@ -21,14 +21,17 @@ from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
+from backend.jobs.collection_config import (
+    collection_environment,
+    load_collection_config,
+    s3_location,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def positive_context(scope, name, default):
     raw = scope.node.try_get_context(name)
-    if raw is None and default is None:
-        return "all"
-
     value = int(default if raw is None else raw)
     if value < 1:
         raise ValueError(f"{name} must be positive")
@@ -42,8 +45,10 @@ class JobPipelineStack(Stack):
         max_scrapers = positive_context(self, "maxScrapers", 4)
 
         max_classifiers = positive_context(self, "maxClassifiers", 2)
-        max_boards = positive_context(self, "maxBoards", None)
-        jobs_per_board = positive_context(self, "jobsPerBoard", None)
+        config_path = Path(
+            self.node.try_get_context("collectionConfig") or "config/collections/default.yaml"
+        )
+        collection = load_collection_config(str(ROOT / config_path))
         model = self.node.try_get_context("jevModel") or "jev-latest"
         schedule = str(self.node.try_get_context("schedule") or "false").lower()
 
@@ -187,8 +192,6 @@ class JobPipelineStack(Stack):
         parameters = {}
         for name, value in {
             "JevModel": model,
-            "MaxBoards": str(max_boards),
-            "JobsPerBoard": str(jobs_per_board),
         }.items():
             parameters[name] = ssm.StringParameter(self, name, string_value=value)
 
@@ -348,12 +351,19 @@ class JobPipelineStack(Stack):
             "SeedTask",
             task_image("seed"),
             ["-m", "backend.jobs.workers.seed"],
-            {"QUEUE_URL": scrape_queue.queue_url, "CLASSIFY_QUEUE_URL": classify_queue.queue_url},
             {
-                "MAX_BOARDS": ecs.Secret.from_ssm_parameter(parameters["MaxBoards"]),
-                "JOBS_PER_BOARD": ecs.Secret.from_ssm_parameter(parameters["JobsPerBoard"]),
+                "QUEUE_URL": scrape_queue.queue_url,
+                "CLASSIFY_QUEUE_URL": classify_queue.queue_url,
+                **collection_environment(collection, self.job_source_bucket.bucket_name),
             },
         )
+        source_bucket, source_key = s3_location(collection.boards_s3_uri)
+        if source_bucket == "YOUR_JOB_SOURCE_BUCKET":
+            self.job_source_bucket.grant_read(seed_task.task_role, source_key)
+        else:
+            s3.Bucket.from_bucket_name(self, "BoardSourceBucket", source_bucket).grant_read(
+                seed_task.task_role, source_key
+            )
         scrape_queue.grant_send_messages(seed_task.task_role)
         classify_queue.grant_send_messages(seed_task.task_role)
         self.jobs.grant(seed_task.task_role, "dynamodb:Scan")
@@ -393,6 +403,9 @@ class JobPipelineStack(Stack):
         )
         outputs = {
             "JobSourceBucketName": self.job_source_bucket.bucket_name,
+            "BoardSourceUri": collection_environment(
+                collection, self.job_source_bucket.bucket_name
+            )["BOARDS_S3_URI"],
             "JobsTable": self.jobs.table_name,
             "ClassificationsTable": self.results.table_name,
             "TypesafeSecretArn": key.secret_arn,
@@ -410,8 +423,6 @@ class JobPipelineStack(Stack):
             "ScheduleDLQUrl": schedule_dlq.queue_url,
             "WorkerLogGroup": log_group.log_group_name,
             "JevModelParameter": parameters["JevModel"].parameter_name,
-            "MaxBoardsParameter": parameters["MaxBoards"].parameter_name,
-            "JobsPerBoardParameter": parameters["JobsPerBoard"].parameter_name,
             "ScheduleRule": rule.rule_name,
         }
         for name, value in outputs.items():

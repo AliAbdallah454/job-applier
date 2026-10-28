@@ -22,7 +22,9 @@ def main() -> int:
     sources = parser.add_mutually_exclusive_group()
     sources.add_argument("--source", choices=list(FETCHERS), help="Single-board mode")
     sources.add_argument(
-        "--boards-file", type=Path, help="JSON or CSV registry; defaults to config/boards.json"
+        "--boards-file",
+        type=Path,
+        help="CSV/JSON registry; default: infra/board_sources/job-board-directory.csv",
     )
     parser.add_argument("--board", help="Employer token; requires --source")
     parser.add_argument("--company", help="Employer display name; defaults to board token")
@@ -85,7 +87,7 @@ def main() -> int:
 
         try:
             boards = load_boards(
-                args.boards_file or Path("config/boards.json"),
+                args.boards_file or Path("infra/board_sources/job-board-directory.csv"),
                 progress=lambda message: print(message, flush=True),
             )
             loaded_board_count = len(boards)
@@ -96,7 +98,9 @@ def main() -> int:
                 boards = boards[: args.max_boards]
 
             input_info = {
-                "boards_file": str(args.boards_file or Path("config/boards.json")),
+                "boards_file": str(
+                    args.boards_file or Path("infra/board_sources/job-board-directory.csv")
+                ),
                 "loaded_supported_rows": loaded_board_count,
                 "selected_rows": len(boards),
                 "max_boards": args.max_boards,

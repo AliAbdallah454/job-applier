@@ -1,0 +1,13 @@
+# YOUR_JOB_SOURCE_BUCKET is resolved to the stack bucket by CDK/manage.py.
+# This YAML stays local; only the CSV is uploaded to S3.
+region: us-east-1
+boards_s3_uri: s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
+
+# Omit platforms to collect from all supported sources.
+# platforms:
+#   - greenhouse
+#   - lever
+
+# Omit limits (or use null) to collect all boards and available postings.
+# max_boards: 100
+# max_jobs_per_board: 50

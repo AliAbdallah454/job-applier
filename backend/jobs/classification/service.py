@@ -39,28 +39,21 @@ def classify_table(
 
         for item in page.get("Items", []):
             counts["scanned"] += 1
-
             try:
                 outcome = store.classify(item, classify, model=model, force=force)
                 counts[outcome] += 1
-
                 if outcome == "classified":
                     attempts += 1
-
             except (ClassificationBusy, JobChanged):
                 attempts += 1
                 counts["conflicts"] += 1
-
                 if progress:
                     progress("Job changed or another worker is classifying it; retry later")
-
             except (KeyError, TypeError, AttributeError, ValidationError, ValueError):
                 attempts += 1
                 counts["failed"] += 1
-
                 if progress:
                     progress("Skipped an invalid job record or classification result")
-
             if attempts >= limit:
                 return counts
 

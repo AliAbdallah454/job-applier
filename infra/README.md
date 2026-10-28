@@ -10,8 +10,8 @@ flowchart TB
     Schedule["EventBridge: daily rule, opt-in"] -->|"ECS RunTask"| Seed
 
     subgraph Collection["Collection"]
-        CSV["Company CSV packaged in feeder image"] --> Seed["ECS feeder: seed.py"]
-        Limits["SSM: board and job limits, default all"] -. "injected at startup" .-> Seed
+        YAML["Local YAML read by manage.py or CDK"] -->|"fixed task settings"| Seed["ECS feeder: seed.py"]
+        CSV["S3: company-board CSV specified by YAML"] --> Seed
         Seed -->|"one message per company board"| Boards["SQS: ScrapeQueue"]
         Boards -->|"workers poll; queue metrics scale service"| Scrapers["ECS: scraper.py, up to 4 tasks by default"]
         Scrapers -->|"fetch postings"| Providers["Employer job-board APIs / pages"]
@@ -41,8 +41,9 @@ The stages overlap: classification can begin while other boards are still being
 scraped. Re-scraping a posting updates its existing Jobs item. The Lambda ignores
 unchanged titles/descriptions, and classifiers independently skip matching saved
 results. Both tables use the same `job_id` to connect postings with classifications.
-The S3 job-source bucket exists but is not yet read by the feeder; the diagram
-shows the currently implemented CSV source.
+The YAML stays local. CDK reads it at deployment and stores its values in the
+feeder task definition. Every daily run uses those same settings and downloads
+only the company-board CSV from S3. Manual launches can read another local YAML.
 
 Each worker processes one message at a time. The default maximum is four scraper
 tasks and two classifier tasks; both services start at zero and scale down to zero
@@ -55,9 +56,10 @@ new jobs and title/description changes to classifiers. Refreshing only
 Three Dockerfiles build separate images: `containers/Dockerfile.seed` for the feeder,
 `containers/Dockerfile.scrape` for scrapers and `containers/Dockerfile.classify` for classifiers. CDK
 builds and publishes each image and assigns it to its corresponding task definition.
-Each image packages its own entrypoint and required backend modules, using the same
-locked Python dependencies. The scraper excludes classification code; the classifier
-excludes fetchers. Only the feeder image includes the company directory. Workers
+Each image copies the backend with `COPY backend/ ./backend/` and uses the same
+locked Python dependencies. Each has its own entrypoint: `seed.py`, `scraper.py`
+or `classifier.py`. Tests are excluded by `.dockerignore`. Company-board data and
+launch YAML are not baked into the images. Workers
 share SQS polling, visibility renewal and shutdown handling in `workers/runtime.py`.
 Fargate manages the machines; there are no EC2 hosts to maintain,
 no inbound ports and no load balancer. Tasks use public subnets with public IPs
@@ -72,7 +74,8 @@ There is no NAT gateway; running tasks still incur public IPv4 charges.
 | `infra/stack.py` | Defines resources, IAM permissions, task images, scaling and scheduling. |
 | `infra/manage.py` | Reads deployed stack outputs to set the API key or launch collection/backfill tasks. |
 | `infra/stream_router/handler.py` | Routes new or changed postings from the Jobs stream to classification. |
-| `backend/jobs/workers/seed.py` | Reads the company directory and queues boards; also supports classification backfill. |
+| `backend/jobs/collection_config.py` | Validates local launch YAML, builds task settings and reads the S3 directory. |
+| `backend/jobs/workers/seed.py` | Reads its configured company directory, then queues boards; also supports classification backfill. |
 | `backend/jobs/workers/scraper.py` | Consumes board messages, fetches postings and upserts Jobs items. |
 | `backend/jobs/workers/classifier.py` | Consumes job IDs, calls Jev when needed and stores results. |
 | `backend/jobs/workers/runtime.py` | Shared SQS polling, visibility renewal and graceful shutdown. |
@@ -129,20 +132,49 @@ feeder cannot read it. Runtime AWS access uses separate IAM task roles, not stat
 AWS credentials. The deployment/operator identity needs CloudFormation
 `DescribeStacks`, Secrets Manager `DescribeSecret` and `PutSecretValue` for the
 key, and ECS `RunTask` plus `iam:PassRole` for the two seed roles shown in outputs.
+The feeder's task role can read the configured CSV object. Operators need S3
+`PutObject` to upload the CSV. Local launch YAML never gets uploaded to S3.
+Overriding the CSV location to another object requires the feeder role to have
+read access to it; redeploy with that source configured to grant access.
 
-## Company directory bucket
+## Board sources and collection configuration
 
-The stack creates a private, encrypted, versioned S3 bucket for company-board files.
-Its generated name is available in the `JobSourceBucketName` stack output. Upload
-the directory after deployment, replacing the placeholder with that output:
+There are two separate inputs:
 
-```sh
-aws s3 cp config/job-board-directory.csv s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
+- `infra/board_sources/job-board-directory.csv`: companies and board locations.
+- `config/collections/default.yaml`: local launch settings, including the CSV's S3
+  location, optional AWS region, platform filters and limits.
+
+Example YAML:
+
+```yaml
+region: us-east-1
+boards_s3_uri: s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
+# Optional: omit to include all supported platforms.
+# platforms: [greenhouse, lever]
+# Optional: omit or use null for no limit.
+# max_boards: 100
+# max_jobs_per_board: 50
 ```
 
-The bucket and file versions are retained when the stack is deleted. The feeder
-currently still reads the CSV packaged in the Docker image; reading from S3 will
-be wired separately.
+`YOUR_JOB_SOURCE_BUCKET` is a placeholder resolved automatically to the bucket
+created by this stack, both by CDK and by `manage.py`. An actual bucket name is
+also supported. CDK defaults to `config/collections/default.yaml`; select a different
+local YAML when deploying with `-c collectionConfig=config/collections/other.yaml`.
+The YAML `region` is a manual-launch hint; CDK deploys to the AWS CLI's selected
+account/region, so keep those settings consistent.
+
+After deployment, get `JobSourceBucketName` using `infra.manage outputs`, then
+upload the CSV (replacing the bucket placeholder in this shell command):
+
+```sh
+aws s3 cp infra/board_sources/job-board-directory.csv s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
+```
+
+Only the CSV goes to S3. The feeder downloads and validates the complete directory
+before queueing boards. Missing objects and invalid directories fail the task;
+there is no fallback to a packaged CSV. Reads stay in memory and log object version
+IDs. The bucket and file versions are retained when the stack is deleted.
 
 ## Start a small run
 
@@ -154,13 +186,21 @@ uv run python -m infra.manage collect --region us-east-1 \
 This starts a feeder task, which queues up to three boards with up to five postings per
 board. Workers wake as the queue metrics arrive. A returned task ARN confirms
 launch only: check the feeder's stopped-task exit code, CloudWatch logs, queues
-and tables for completion. With no limits configured, a run queues all unique supported boards from the
-shipped directory and fetches all available postings per board. Use `--max-boards`
-and `--max-jobs-per-board` to bound a manual run. Scheduled runs use the SSM
-settings. Manual runs also inherit SSM values for omitted flags; explicit CLI
-limits override those values for that run. The default value `all` means no limit.
-Explicit CDK context settings
-`maxBoards` and `jobsPerBoard` can still set deployment-wide limits.
+and tables for completion. Without `--config`, manual runs inherit the fixed
+settings in the deployed feeder task definition. Daily runs use that same definition.
+Explicit `--platforms`, `--max-boards` and `--max-jobs-per-board` flags override
+those settings for a manual run.
+
+To launch using a local YAML:
+
+```sh
+uv run python -m infra.manage collect --config config/collections/default.yaml
+```
+
+The helper validates the YAML and passes its values to ECS as environment
+overrides. It does not upload YAML or modify the daily task definition. Omitted
+YAML limits are unlimited, even if the deployed definition has limits.
+`--region` overrides the YAML's `region`; otherwise normal AWS SDK configuration applies.
 
 To run all boards and postings with the default unlimited configuration:
 
@@ -188,8 +228,10 @@ is `JobPipeline`.
 | --- | --- | --- |
 | TypeSafe API key | Secrets Manager; injected as `TYPESAFE_API_KEY` | Empty until supplied |
 | Jev model | SSM StringParameter; injected as `JEV_MODEL` | `jev-latest` |
-| Company-board count per run | SSM StringParameter | `all` (unlimited) |
-| Maximum collected jobs per company | SSM StringParameter | `all` (unlimited) |
+| Company-board count per run | YAML `max_boards` | Unlimited when omitted/null |
+| Maximum collected jobs per company | YAML `max_jobs_per_board` | Unlimited when omitted/null |
+| Platforms | YAML `platforms` | All supported platforms when omitted/null |
+| Deployment collection YAML | CDK context `collectionConfig` | Local `config/collections/default.yaml` |
 | Scraper concurrency cap | CDK context `maxScrapers` | 4 |
 | Classifier concurrency cap | CDK context `maxClassifiers` | 2 |
 | Daily feeder schedule | CDK context `schedule` | false |
@@ -201,17 +243,14 @@ Neither service makes a key safe if it is committed or passed as a CLI argument.
 Configure deployment defaults, for example:
 
 ```sh
-cdk deploy JobPipeline -c maxScrapers=6 -c maxClassifiers=2 \
-  -c maxBoards=250 -c jobsPerBoard=20 -c jevModel=jev-latest
+cdk deploy JobPipeline -c maxScrapers=6 -c maxClassifiers=2 -c jevModel=jev-latest
 ```
 
-Runtime SSM parameter names are emitted as `JevModelParameter`,
-`MaxBoardsParameter`, and `JobsPerBoardParameter`. You can change them through
-SSM; redeploying with different CDK context updates the desired values too.
-Use the literal `all` in either limit parameter to remove its cap. CDK context
-limit values accept positive integers; omit those context settings for unlimited
-defaults. Pass your intended context settings on subsequent deployments as well,
-or persist them in `cdk.json`.
+The model's SSM parameter name is emitted as `JevModelParameter`. You can change
+it through SSM; changing `jevModel` context also updates its desired value.
+Collection limits now belong to YAML; the former `maxBoards`/`jobsPerBoard` CDK
+settings and their SSM parameters have been removed. Pass your intended concurrency,
+model and schedule context settings on subsequent deployments, or persist them in `cdk.json`.
 ECS injects values only when a task starts. After a key/model change, force a new
 deployment of the classifier service using the emitted cluster/service names, or
 allow idle tasks to scale to zero before launching new work. Merely changing a
@@ -227,6 +266,10 @@ cdk deploy JobPipeline -c schedule=true
 ```
 
 The `DailyCollection` EventBridge rule launches one feeder task every 24 hours.
+Every daily run uses the same URI, filters and limits captured from the local YAML
+at deployment. It downloads the current CSV at that URI. Uploading a new CSV changes
+the next run without deployment; changing the daily launch settings requires redeploying
+with the edited YAML. The feeder never downloads or reads YAML at runtime.
 The feeder queues boards; scraper and classifier services scale independently
 from their respective queues. Disable the schedule with `-c schedule=false`.
 Keep any other intended context settings when enabling/disabling the schedule.

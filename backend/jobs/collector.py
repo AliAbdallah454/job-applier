@@ -1,6 +1,7 @@
 """Collect multiple employer boards into a shared JSON-ready catalogue."""
 
 import csv
+import io
 import json
 import tempfile
 import time
@@ -37,10 +38,18 @@ class BoardConfig(BaseModel):
 
 
 def load_boards(path: Path, *, progress: Callable[[str], None] | None = None) -> list[BoardConfig]:
-    if path.suffix.lower() == ".csv":
-        return _load_csv_boards(path, progress=progress)
+    return load_boards_text(
+        path.read_text(encoding="utf-8-sig"), suffix=path.suffix, progress=progress
+    )
 
-    rows = json.loads(path.read_text(encoding="utf-8"))
+
+def load_boards_text(
+    text: str, *, suffix: str, progress: Callable[[str], None] | None = None
+) -> list[BoardConfig]:
+    if suffix.lower() == ".csv":
+        return _load_csv_boards(text, progress=progress)
+
+    rows = json.loads(text)
     if not isinstance(rows, list) or not rows:
         raise ValueError("The boards file must contain a non-empty JSON array")
 
@@ -48,12 +57,12 @@ def load_boards(path: Path, *, progress: Callable[[str], None] | None = None) ->
 
 
 def _load_csv_boards(
-    path: Path, *, progress: Callable[[str], None] | None = None
+    text: str, *, progress: Callable[[str], None] | None = None
 ) -> list[BoardConfig]:
     boards = []
     skipped = Counter()
 
-    with path.open(encoding="utf-8-sig", newline="") as stream:
+    with io.StringIO(text.lstrip("\ufeff"), newline="") as stream:
         reader = csv.DictReader(stream)
         if not {"platform", "token"}.issubset(reader.fieldnames or []):
             raise ValueError("CSV must have platform and token columns")

@@ -24,6 +24,18 @@ docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-app
 CDK builds and publishes all three images during deployment. See the pipeline guide
 for local container checks and AWS setup.
 
+Collection launch settings live in `config/collections/default.yaml`; the company
+directory is `infra/board_sources/job-board-directory.csv`. Edit the YAML's
+`boards_s3_uri` to point to your uploaded CSV, then launch a manual run:
+
+```sh
+uv run python -m infra.manage collect --config config/collections/default.yaml
+```
+
+The YAML stays local: `manage.py` passes its settings to ECS for manual runs, and
+CDK captures the same settings in the daily feeder task definition during deployment.
+Upload only the CSV to S3 before enabling the schedule. See [collection setup](infra/README.md#board-sources-and-collection-configuration).
+
 ## Product direction
 
 The intended workflow is:
@@ -113,7 +125,7 @@ partition key `job_id` and no sort key. Use `--table NAME`, `DYNAMODB_TABLE`,
 or the default `job-postings`.
 
 ```sh
-uv run python -m backend.jobs.cli.collect --boards-file config/job-board-directory.csv \
+uv run python -m backend.jobs.cli.collect --boards-file infra/board_sources/job-board-directory.csv \
   --platforms greenhouse lever --max-boards 3 --max-jobs-per-board 5 --total-limit 10 \
   --table job-postings --aws-region eu-west-3
 ```
@@ -229,7 +241,7 @@ Fetch from the supplied company-board directory, stopping at 100 jobs total:
 
 ```sh
 uv run python -m backend.jobs.cli.collect \
-  --boards-file config/job-board-directory.csv \
+  --boards-file infra/board_sources/job-board-directory.csv \
   --total-limit 100 \
   --output data/jobs.json
 ```
@@ -260,7 +272,7 @@ For a small test:
 
 ```sh
 uv run python -m backend.jobs.cli.collect \
-  --boards-file config/job-board-directory.csv \
+  --boards-file infra/board_sources/job-board-directory.csv \
   --platforms greenhouse lever \
   --max-boards 3 --max-jobs-per-board 5 --total-limit 10 \
   --output data/test-jobs.json
@@ -270,7 +282,7 @@ To apply the existing local text filters:
 
 ```sh
 uv run python -m backend.jobs.cli.collect "python" \
-  --boards-file config/job-board-directory.csv \
+  --boards-file infra/board_sources/job-board-directory.csv \
   --location Paris --total-limit 100 --output data/python-jobs.json
 ```
 
@@ -278,7 +290,7 @@ These filters are keyword matching, not semantic recommendations. There is no
 `--tech-only` option. Without a query, the catalogue includes non-technical roles;
 a cap of 100 therefore means 100 postings, not necessarily 100 relevant tech jobs.
 
-Use `--boards-file config/job-board-directory.csv` for batch runs with the supplied
+Use `--boards-file infra/board_sources/job-board-directory.csv` for batch runs with the supplied
 directory. Use `--help` for the complete CLI interface.
 
 ### Fetch a single company
@@ -348,7 +360,8 @@ backend/
       classify.py               local classification command
   tests/                        offline tests for backend behavior
 infra/                          AWS resources and deployment helpers
-config/                         company-board directory
+config/collections/             YAML collection settings
+infra/board_sources/            company-board CSV directory
 ```
 
 All eight fetchers inherit directly from `JobFetcher`. The base class handles
@@ -409,4 +422,4 @@ data out of Git.
 - [Feasibility assessment](FEASIBILITY.md)
 - [Initial implementation plan](INITIAL_PLAN.md) — earlier proposals, not a statement of shipped features.
 - [Provider documentation](docs/fetchers.md)
-- [Employer board directory](config/job-board-directory.csv)
+- [Employer board directory](infra/board_sources/job-board-directory.csv)

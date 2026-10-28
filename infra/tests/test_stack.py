@@ -1,6 +1,7 @@
 """CloudFormation contract tests; no AWS account or Docker daemon needed."""
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -163,7 +164,7 @@ class StackTests(unittest.TestCase):
                 if binding["Name"] == "TYPESAFE_API_KEY":
                     secret_consumers.append(container["Command"])
         self.assertEqual(secret_consumers, [["-m", "backend.jobs.workers.classifier"]])
-        self.template.resource_count_is("AWS::SSM::Parameter", 3)
+        self.template.resource_count_is("AWS::SSM::Parameter", 1)
 
     def test_stream_retries_partial_failures_and_queues_have_dead_letters(self):
         self.template.has_resource_properties(
@@ -190,15 +191,48 @@ class StackTests(unittest.TestCase):
         }
         self.assertEqual(len(roles), 3)
 
-    def test_collection_defaults_are_unlimited(self):
-        parameters = self.template.find_resources("AWS::SSM::Parameter")
-        limits = {
-            name: resource["Properties"]["Value"]
-            for name, resource in parameters.items()
-            if name.startswith(("MaxBoards", "JobsPerBoard"))
+    def test_feeder_has_fixed_settings_and_only_it_can_read_board_source(self):
+        tasks = self.template.find_resources("AWS::ECS::TaskDefinition")
+        seed = next(task for name, task in tasks.items() if name.startswith("SeedTask"))
+        container = seed["Properties"]["ContainerDefinitions"][0]
+        environment = {binding["Name"]: binding["Value"] for binding in container["Environment"]}
+        self.assertIn("job-board-directory.csv", json.dumps(environment["BOARDS_S3_URI"]))
+        self.assertNotIn("COLLECTION_CONFIG_URI", environment)
+        self.assertEqual(environment["MAX_BOARDS"], "all")
+        self.assertEqual(environment["MAX_JOBS_PER_BOARD"], "all")
+        self.assertNotIn("Secrets", container)
+        self.template.has_output("BoardSourceUri", {"Value": Match.any_value()})
+
+        for name, policy in self.template.find_resources("AWS::IAM::Policy").items():
+            document = json.dumps(policy["Properties"]["PolicyDocument"])
+            if "SeedTaskTaskRole" in name:
+                self.assertIn("s3:GetObject", document)
+                self.assertNotIn("s3:PutObject", document)
+                self.assertNotIn("secretsmanager", document)
+            elif "ScraperTaskTaskRole" in name or "ClassifierTaskTaskRole" in name:
+                self.assertNotIn("s3:", document)
+
+    def test_daily_task_captures_custom_local_yaml_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "collection.yaml"
+            config.write_text(
+                "boards_s3_uri: s3://company-boards/boards.csv\n"
+                "platforms: [lever]\nmax_boards: 3\nmax_jobs_per_board: 50\n"
+            )
+            app = App(context={"collectionConfig": str(config), "schedule": "true"})
+            template = Template.from_stack(JobPipelineStack(app, "CustomCollection"))
+
+        tasks = template.find_resources("AWS::ECS::TaskDefinition")
+        seed = next(task for name, task in tasks.items() if name.startswith("SeedTask"))
+        environment = {
+            binding["Name"]: binding["Value"]
+            for binding in seed["Properties"]["ContainerDefinitions"][0]["Environment"]
         }
-        self.assertEqual(len(limits), 2)
-        self.assertEqual(set(limits.values()), {"all"})
+        self.assertEqual(environment["BOARDS_S3_URI"], "s3://company-boards/boards.csv")
+        self.assertEqual(environment["COLLECTION_PLATFORMS"], "lever")
+        self.assertEqual(environment["MAX_BOARDS"], "3")
+        self.assertEqual(environment["MAX_JOBS_PER_BOARD"], "50")
+        template.has_resource_properties("AWS::Events::Rule", {"State": "ENABLED"})
 
     def test_parallelism_and_schedule_context(self):
         app = App(
@@ -236,4 +270,4 @@ class StackTests(unittest.TestCase):
 
     def test_invalid_cost_limits_are_rejected(self):
         with self.assertRaises(ValueError):
-            JobPipelineStack(App(context={"jobsPerBoard": "0"}), "InvalidPipeline")
+            JobPipelineStack(App(context={"maxScrapers": "0"}), "InvalidPipeline")
