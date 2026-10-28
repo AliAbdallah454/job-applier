@@ -1,8 +1,34 @@
 # AWS job pipeline
 
-This CDK application generates a CloudFormation stack containing the complete
-collection and Jev classification pipeline. It does not deploy anything merely
+This CDK application defines the `JobPipeline` collection/classification stack
+and a separate `Application` profile/document storage stack. It does not deploy anything merely
 by installing dependencies, running tests or synthesizing the template.
+
+## Application storage stack
+
+`infra/application_stack.py` currently creates only:
+
+- An on-demand **Profiles** DynamoDB table keyed by `user_id`, with encryption
+  and point-in-time recovery.
+- A private, encrypted, HTTPS-only, versioned **Documents** S3 bucket.
+
+Both resources are retained on stack deletion. CDK generates physical names to
+avoid collisions; the `ProfilesTable` and `DocumentsBucketName` outputs expose
+the actual names. Authentication, seeding, APIs and document workers are not
+included in this stack yet.
+
+Deploy it independently, from the repository root with AWS credentials loaded:
+
+```sh
+uv sync --locked --group infra
+cdk diff Application
+cdk deploy Application
+uv run python -m infra.manage outputs --stack Application --region us-east-1
+```
+
+Use explicit stack names when deploying: `Application` for profile/document
+storage and `JobPipeline` for collection. The remainder of this guide describes
+the jobs pipeline.
 
 ```mermaid
 flowchart TB
