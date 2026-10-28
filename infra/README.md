@@ -28,8 +28,14 @@ One short-lived feeder task queues the requested company boards. A Lambda routes
 new jobs and title/description changes to classifiers. Refreshing only
 `last_seen` does not trigger more paid classifications.
 
-Docker is appropriate here: one reproducible image supplies the feeder and both
-worker types. Fargate manages the machines; there are no EC2 hosts to maintain,
+Three Dockerfiles build separate images: `containers/Dockerfile.seed` for the feeder,
+`containers/Dockerfile.scrape` for scrapers and `containers/Dockerfile.classify` for classifiers. CDK
+builds and publishes each image and assigns it to its corresponding task definition.
+Each image packages its own entrypoint and required backend modules, using the same
+locked Python dependencies. The scraper excludes classification code; the classifier
+excludes fetchers. Only the feeder image includes the company directory. Workers
+share SQS polling, visibility renewal and shutdown handling in `workers/runtime.py`.
+Fargate manages the machines; there are no EC2 hosts to maintain,
 no inbound ports and no load balancer. Tasks use public subnets with public IPs
 for outbound employer/API access. Their security group has no inbound rules.
 There is no NAT gateway; running tasks still incur public IPv4 charges.
@@ -55,7 +61,7 @@ npm run deploy
 ```
 
 Bootstrapping is required once per account/region and creates CDK's asset bucket
-and ECR repository. Deployment builds and uploads the Docker image automatically.
+and ECR repository. Deployment builds and uploads all three Docker images automatically.
 The stack creates two new tables with generated names; it does not adopt or
 migrate earlier manually created tables. Resource names, queue URLs and helper
 settings are CloudFormation outputs.
@@ -278,8 +284,12 @@ uv run --locked --group infra python -m unittest discover -s infra/tests -v
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 npm run synth -- --no-lookups
-docker build -t job-applier-pipeline:test .
-docker run --rm --read-only job-applier-pipeline:test -m backend.jobs.workers.worker --help
+docker build --platform linux/amd64 -f containers/Dockerfile.seed -t job-applier-seed:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.scrape -t job-applier-scrape:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-applier-classify:test .
+docker run --rm --read-only job-applier-seed:test -m backend.jobs.workers.seed --help
+docker run --rm --read-only job-applier-scrape:test -m backend.jobs.workers.scraper --help
+docker run --rm --read-only job-applier-classify:test -m backend.jobs.workers.classifier --help
 ```
 
 CDK tests assert the table/index schema, zero-capacity worker services, queue retry
@@ -292,8 +302,8 @@ If your corporate/cloud build proxy intercepts TLS, supply your **trusted PEM CA
 bundle** as an optional BuildKit secret, retaining certificate verification:
 
 ```sh
-docker build --secret id=build_ca,src=/path/to/trusted-ca-bundle.pem \
-  -t job-applier-pipeline:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.seed \
+  --secret id=build_ca,src=/path/to/trusted-ca-bundle.pem -t job-applier-seed:test .
 # For CDK's Docker asset build:
 export PIPELINE_BUILD_CA=/path/to/trusted-ca-bundle.pem
 npm run deploy

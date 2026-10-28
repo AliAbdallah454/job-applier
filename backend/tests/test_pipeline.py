@@ -17,9 +17,11 @@ from backend.jobs.collector import BoardConfig
 from backend.jobs.models import JobPost
 from backend.jobs.storage.classifications import ClassificationBusy, ClassificationStore
 from backend.jobs.storage.jobs import DynamoJobStore
+from backend.jobs.workers.classifier import process_classify
+from backend.jobs.workers.runtime import handle_message
+from backend.jobs.workers.scraper import process_scrape
 from backend.jobs.workers.seed import backfill, enqueue
 from backend.jobs.workers.seed import main as seed_main
-from backend.jobs.workers.worker import handle_message, process_classify, process_scrape
 from infra.stream_router.handler import handler, needs_classification
 
 
@@ -134,7 +136,7 @@ class PipelineTests(unittest.TestCase):
         enqueue(self.sqs, self.queue, [board])
         body = json.loads(self.sqs.receive_message(QueueUrl=self.queue)["Messages"][0]["Body"])
 
-        with patch("backend.jobs.workers.worker.create_fetcher") as factory:
+        with patch("backend.jobs.workers.scraper.create_fetcher") as factory:
             fetcher = factory.return_value.__enter__.return_value
             fetcher.fetch.return_value = [JobPost.model_validate(self.job)] * 105
             store = Mock()
@@ -144,7 +146,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(store.save_jobs.call_args.args[0]), 105)
 
     def test_scrape_to_stream_to_queue_to_results_and_filter_index(self):
-        with patch("backend.jobs.workers.worker.create_fetcher") as factory:
+        with patch("backend.jobs.workers.scraper.create_fetcher") as factory:
             factory.return_value.__enter__.return_value.fetch.return_value = [
                 JobPost.model_validate(self.job)
             ]

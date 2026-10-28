@@ -1,5 +1,8 @@
 **
-!Dockerfile
+!containers/
+!containers/Dockerfile.seed
+!containers/Dockerfile.scrape
+!containers/Dockerfile.classify
 !pyproject.toml
 !uv.lock
 !backend/

@@ -12,6 +12,18 @@ Docker/Fargate workers.** The dashboard and application workflows are planned.
 For deployment, API-key setup and a small first run, see the
 [AWS pipeline guide](infra/README.md).
 
+The feeder, scraper and classifier have separate Dockerfiles and ECS images.
+Build them from the repository root:
+
+```sh
+docker build --platform linux/amd64 -f containers/Dockerfile.seed -t job-applier-seed:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.scrape -t job-applier-scrape:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-applier-classify:test .
+```
+
+CDK builds and publishes all three images during deployment. See the pipeline guide
+for local container checks and AWS setup.
+
 ## Product direction
 
 The intended workflow is:
@@ -102,7 +114,7 @@ or the default `job-postings`.
 
 ```sh
 uv run python -m backend.jobs.cli.collect --boards-file config/job-board-directory.csv \
-  --platforms greenhouse lever --max-boards 3 --limit 5 --total-limit 10 \
+  --platforms greenhouse lever --max-boards 3 --max-jobs-per-board 5 --total-limit 10 \
   --table job-postings --aws-region eu-west-3
 ```
 
@@ -232,7 +244,7 @@ Unknown providers are skipped, and supported tokens are validated before collect
 | Option | Meaning |
 | --- | --- |
 | `--total-limit 100` | Collect at most 100 jobs across all companies combined. |
-| `--limit 5` | Collect at most five matching jobs per company; CLI accepts 1–100. |
+| `--max-jobs-per-board 5` | Collect at most five matching jobs per company; default all. |
 | `--max-boards 3` | Attempt only the first three selected directory rows. |
 | `--platforms greenhouse lever` | Select these providers before applying the company-count cap. |
 | `--output PATH` | Select JSON export instead of default DynamoDB storage. |
@@ -250,7 +262,7 @@ For a small test:
 uv run python -m backend.jobs.cli.collect \
   --boards-file config/job-board-directory.csv \
   --platforms greenhouse lever \
-  --max-boards 3 --limit 5 --total-limit 10 \
+  --max-boards 3 --max-jobs-per-board 5 --total-limit 10 \
   --output data/test-jobs.json
 ```
 
@@ -272,10 +284,10 @@ directory. Use `--help` for the complete CLI interface.
 ### Fetch a single company
 
 ```sh
-uv run python -m backend.jobs.cli.collect --source greenhouse --board BOARD_TOKEN --limit 20
+uv run python -m backend.jobs.cli.collect --source greenhouse --board BOARD_TOKEN --max-jobs-per-board 20
 uv run python -m backend.jobs.cli.collect --source lever --board BOARD_TOKEN --region eu
-uv run python -m backend.jobs.cli.collect --source ashby --board BOARD_TOKEN --limit 10
-uv run python -m backend.jobs.cli.collect --source workday --board wd1/TENANT/SITE --limit 10
+uv run python -m backend.jobs.cli.collect --source ashby --board BOARD_TOKEN --max-jobs-per-board 10
+uv run python -m backend.jobs.cli.collect --source workday --board wd1/TENANT/SITE --max-jobs-per-board 10
 ```
 
 Add `--output data/jobs.json` to these single-company commands if you want a JSON
@@ -328,7 +340,9 @@ backend/
       classifications.py        classification persistence and worker leases
     workers/
       seed.py                   enqueue boards or existing job IDs in AWS
-      worker.py                 consume scraping and classification queues
+      scraper.py                fetch boards and save job postings
+      classifier.py             classify jobs and save results
+      runtime.py                shared queue polling and graceful shutdown
     cli/
       collect.py                local collection command, DynamoDB or JSON output
       classify.py               local classification command
@@ -344,7 +358,10 @@ mapping one record to `JobPost`.
 
 Local commands run with `uv run python -m backend.jobs.cli.collect` and
 `uv run python -m backend.jobs.cli.classify`. AWS worker entry points are
-`backend.jobs.workers.seed` and `backend.jobs.workers.worker`. Queue handling lives in
+`backend.jobs.workers.seed`, `backend.jobs.workers.scraper` and
+`backend.jobs.workers.classifier`. Scraping and classification have independent
+entrypoints and processing code; shared queue handling lives in `workers/runtime.py`.
+Worker code lives in
 `jobs/workers/`; fetching, classification, and persistence all belong to `jobs/`.
 
 In batch mode, the collection CLI delegates to `jobs/collector.py`, which chooses fetchers,

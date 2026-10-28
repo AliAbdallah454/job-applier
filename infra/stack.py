@@ -224,19 +224,23 @@ class JobPipelineStack(Stack):
             if not Path(build_ca).is_file():
                 raise ValueError("PIPELINE_BUILD_CA must point to a trusted PEM CA bundle")
             build_secrets = {"build_ca": assets.DockerBuildSecret.from_src(build_ca)}
-        image = ecs.ContainerImage.from_asset(
-            str(ROOT),
-            build_secrets=build_secrets,
-            platform=assets.Platform.LINUX_AMD64,
-            exclude=[".git", ".venv", "node_modules", "cdk.out", "data", ".ruff_cache"],
-        )
+
+        def task_image(role):
+            return ecs.ContainerImage.from_asset(
+                str(ROOT),
+                file=f"containers/Dockerfile.{role}",
+                build_secrets=build_secrets,
+                platform=assets.Platform.LINUX_AMD64,
+                exclude=[".git", ".venv", "node_modules", "cdk.out", "data", ".ruff_cache"],
+            )
+
         common_environment = {
             "JOBS_TABLE": self.jobs.table_name,
             "CLASSIFICATIONS_TABLE": self.results.table_name,
             "AWS_DEFAULT_REGION": self.region,
         }
 
-        def task(name, command, environment, secret_environment=None):
+        def task(name, image, command, environment, secret_environment=None):
             definition = ecs.FargateTaskDefinition(
                 self,
                 name,
@@ -265,14 +269,16 @@ class JobPipelineStack(Stack):
 
         scrape_task = task(
             "ScraperTask",
-            ["-m", "backend.jobs.workers.worker", "scrape"],
+            task_image("scrape"),
+            ["-m", "backend.jobs.workers.scraper"],
             {"QUEUE_URL": scrape_queue.queue_url},
         )
         self.jobs.grant(scrape_task.task_role, "dynamodb:DescribeTable", "dynamodb:UpdateItem")
         scrape_queue.grant_consume_messages(scrape_task.task_role)
         classify_task = task(
             "ClassifierTask",
-            ["-m", "backend.jobs.workers.worker", "classify"],
+            task_image("classify"),
+            ["-m", "backend.jobs.workers.classifier"],
             {"QUEUE_URL": classify_queue.queue_url},
             {
                 "TYPESAFE_API_KEY": ecs.Secret.from_secrets_manager(key),
@@ -340,6 +346,7 @@ class JobPipelineStack(Stack):
 
         seed_task = task(
             "SeedTask",
+            task_image("seed"),
             ["-m", "backend.jobs.workers.seed"],
             {"QUEUE_URL": scrape_queue.queue_url, "CLASSIFY_QUEUE_URL": classify_queue.queue_url},
             {

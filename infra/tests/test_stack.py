@@ -2,6 +2,7 @@
 
 import json
 import unittest
+from pathlib import Path
 
 from aws_cdk import App
 from aws_cdk.assertions import Match, Template
@@ -118,6 +119,37 @@ class StackTests(unittest.TestCase):
         for resource in self.template.find_resources("AWS::EC2::SecurityGroup").values():
             self.assertFalse(resource["Properties"].get("SecurityGroupIngress"))
 
+    def test_each_task_uses_a_separate_docker_image(self):
+        containers = [
+            task["Properties"]["ContainerDefinitions"][0]
+            for task in self.template.find_resources("AWS::ECS::TaskDefinition").values()
+        ]
+        self.assertEqual(len(containers), 3)
+        self.assertEqual(len({json.dumps(c["Image"], sort_keys=True) for c in containers}), 3)
+        self.assertEqual(
+            {tuple(c["Command"]) for c in containers},
+            {
+                ("-m", "backend.jobs.workers.seed"),
+                ("-m", "backend.jobs.workers.scraper"),
+                ("-m", "backend.jobs.workers.classifier"),
+            },
+        )
+
+        dockerfiles = set()
+        for manifest_path in Path(self.app.synth().directory).glob("*.assets.json"):
+            manifest = json.loads(manifest_path.read_text())
+            dockerfiles.update(
+                image["source"]["dockerFile"] for image in manifest.get("dockerImages", {}).values()
+            )
+        self.assertEqual(
+            dockerfiles,
+            {
+                "containers/Dockerfile.seed",
+                "containers/Dockerfile.scrape",
+                "containers/Dockerfile.classify",
+            },
+        )
+
     def test_key_is_empty_not_embedded_and_only_classifier_gets_it(self):
         self.template.resource_count_is("AWS::SecretsManager::Secret", 1)
         secret = next(iter(self.template.find_resources("AWS::SecretsManager::Secret").values()))
@@ -130,7 +162,7 @@ class StackTests(unittest.TestCase):
             for binding in container.get("Secrets", []):
                 if binding["Name"] == "TYPESAFE_API_KEY":
                     secret_consumers.append(container["Command"])
-        self.assertEqual(secret_consumers, [["-m", "backend.jobs.workers.worker", "classify"]])
+        self.assertEqual(secret_consumers, [["-m", "backend.jobs.workers.classifier"]])
         self.template.resource_count_is("AWS::SSM::Parameter", 3)
 
     def test_stream_retries_partial_failures_and_queues_have_dead_letters(self):
