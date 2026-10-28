@@ -1,5 +1,5 @@
 region: us-east-1
-boards_s3_uri: s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
+boards_s3_uri: s3://jobpipeline-jobsourcebucket8f3111ff-zq099yvqamjh/job-board-directory.csv
 
 platforms:
   - greenhouse

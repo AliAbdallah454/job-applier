@@ -42,9 +42,10 @@ def positive_context(scope, name, default):
 class JobPipelineStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
-        max_scrapers = positive_context(self, "maxScrapers", 4)
+        max_scrapers = positive_context(self, "maxScrapers", 8)
 
-        max_classifiers = positive_context(self, "maxClassifiers", 2)
+        max_classifiers = positive_context(self, "maxClassifiers", 8)
+        scrape_timeout = positive_context(self, "scrapeTimeoutSeconds", 900)
         config_path = Path(
             self.node.try_get_context("collectionConfig") or "config/collections/default.yaml"
         )
@@ -274,7 +275,10 @@ class JobPipelineStack(Stack):
             "ScraperTask",
             task_image("scrape"),
             ["-m", "backend.jobs.workers.scraper"],
-            {"QUEUE_URL": scrape_queue.queue_url},
+            {
+                "QUEUE_URL": scrape_queue.queue_url,
+                "SCRAPE_TIMEOUT_SECONDS": str(scrape_timeout),
+            },
         )
         self.jobs.grant(scrape_task.task_role, "dynamodb:DescribeTable", "dynamodb:UpdateItem")
         scrape_queue.grant_consume_messages(scrape_task.task_role)

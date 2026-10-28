@@ -101,6 +101,13 @@ class StackTests(unittest.TestCase):
         )
 
     def test_worker_services_start_at_zero_and_have_scaling_limits(self):
+        for task in self.template.find_resources("AWS::ECS::TaskDefinition").values():
+            container = task["Properties"]["ContainerDefinitions"][0]
+            environment = {item["Name"]: item["Value"] for item in container["Environment"]}
+            if container["Command"] == ["-m", "backend.jobs.workers.scraper"]:
+                self.assertEqual(environment["SCRAPE_TIMEOUT_SECONDS"], "900")
+            else:
+                self.assertNotIn("SCRAPE_TIMEOUT_SECONDS", environment)
         self.template.resource_count_is("AWS::ECS::Service", 2)
         for service in self.template.find_resources("AWS::ECS::Service").values():
             props = service["Properties"]
@@ -239,12 +246,32 @@ class StackTests(unittest.TestCase):
             context={
                 "maxScrapers": "8",
                 "maxClassifiers": "3",
+                "scrapeTimeoutSeconds": "30",
                 "schedule": "true",
             }
         )
         template = Template.from_stack(JobPipelineStack(app, "ConfiguredPipeline"))
         template.resource_count_is("AWS::SecretsManager::Secret", 1)
         template.has_resource_properties("AWS::Events::Rule", {"State": "ENABLED"})
+        template.has_resource_properties(
+            "AWS::ECS::TaskDefinition",
+            {
+                "ContainerDefinitions": Match.array_with(
+                    [
+                        Match.object_like(
+                            {
+                                "Command": ["-m", "backend.jobs.workers.scraper"],
+                                "Environment": Match.array_with(
+                                    [
+                                        {"Name": "SCRAPE_TIMEOUT_SECONDS", "Value": "30"},
+                                    ]
+                                ),
+                            }
+                        )
+                    ]
+                )
+            },
+        )
         template.has_resource_properties(
             "AWS::ApplicationAutoScaling::ScalableTarget", {"MaxCapacity": 8, "MinCapacity": 0}
         )

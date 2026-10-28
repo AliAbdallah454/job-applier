@@ -233,6 +233,7 @@ is `JobPipeline`.
 | Platforms | YAML `platforms` | All supported platforms when omitted/null |
 | Deployment collection YAML | CDK context `collectionConfig` | Local `config/collections/default.yaml` |
 | Scraper concurrency cap | CDK context `maxScrapers` | 4 |
+| Deadline per scraper board message | CDK context `scrapeTimeoutSeconds`; injected as `SCRAPE_TIMEOUT_SECONDS` | 900 seconds (15 minutes) |
 | Classifier concurrency cap | CDK context `maxClassifiers` | 2 |
 | Daily feeder schedule | CDK context `schedule` | false |
 
@@ -351,6 +352,16 @@ or dashboard is deployed by this stack.
   success; after five unsuccessful receives they move to a dead-letter queue.
   ECS shutdown stops polling and permits up to 120 seconds to finish. Work killed
   before acknowledgment is retried after its visibility timeout.
+- Scraping has a 15-minute deadline per board message, covering fetching and
+  persistence. If it expires, a watchdog exits that scraper process, stopping
+  both the blocked work and its visibility heartbeat. ECS replaces the task.
+  The message is not acknowledged: it becomes visible after the last visibility
+  extension expires (up to roughly 10 minutes) and can retry. Repeated timeouts
+  exhaust the normal five-delivery policy and reach `ScrapeDLQ`. Completed upserts
+  survive and are safe to repeat. Classifier tasks are unaffected.
+  Increase `-c scrapeTimeoutSeconds=1800` for slow/large boards, or set a
+  `max_jobs_per_board` limit in the collection YAML. This deadline is independent
+  of the SQS visibility timeout and does not send a message directly to the DLQ.
 - Jev transient failures get the SDK's bounded retries; SQS retries the job later.
   Invalid jobs or model outputs also reach the DLQ for investigation.
 - Duplicate API calls remain possible after a crash between the external call and
