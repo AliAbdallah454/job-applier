@@ -112,8 +112,8 @@ def collect_jobs(
     """Fetch each unique board once. None means all listings, not 100 per board."""
     if request_delay < 0:
         raise ValueError("request_delay must not be negative")
-    if limit is not None and not 1 <= limit <= 100:
-        raise ValueError("limit must be between 1 and 100, or omitted for all jobs")
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be positive, or omitted for all jobs")
     if total_limit is not None and total_limit < 1:
         raise ValueError("total_limit must be positive")
 

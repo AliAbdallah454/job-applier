@@ -66,7 +66,7 @@ class JobFetcher(ABC):
         ...
 
     def fetch(
-        self, query: str = "", location: str | None = None, limit: int | None = 20
+        self, query: str = "", location: str | None = None, limit: int | None = None
     ) -> list[JobPost]:
         """Fetch, normalize, deduplicate, and filter; None fetches all matches."""
         if limit is not None and limit < 1:

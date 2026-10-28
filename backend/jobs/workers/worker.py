@@ -47,9 +47,10 @@ def visibility_heartbeat(sqs, queue_url, receipt):
 
 def process_scrape(body, store):
     board = BoardConfig.model_validate(body["board"])
-    limit = body.get("limit", 100)
-    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
-        raise ValueError("Per-board limit must be between 1 and 100")
+    # Accept the old key for messages queued before the CLI rename.
+    limit = body.get("max_jobs_per_board", body.get("limit"))
+    if limit is not None and (not isinstance(limit, int) or isinstance(limit, bool) or limit < 1):
+        raise ValueError("max_jobs_per_board must be a positive integer or null")
 
     with create_fetcher(board.source, board.board, board.company, region=board.region) as fetcher:
         jobs = fetcher.fetch(limit=limit)

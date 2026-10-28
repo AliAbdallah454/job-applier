@@ -29,7 +29,7 @@ def main() -> int:
     parser.add_argument("--region", choices=["global", "eu"], default="global", help="Lever only")
     parser.add_argument("--location", help="Case-insensitive location substring")
     parser.add_argument(
-        "--limit", type=int, help="Maximum matching jobs per board (1–100); default all"
+        "--max-jobs-per-board", type=int, help="Maximum matching jobs per board; default all"
     )
     parser.add_argument(
         "--total-limit", type=int, help="Batch mode: maximum jobs across all companies combined"
@@ -48,14 +48,14 @@ def main() -> int:
         help="Batch mode: select platforms from the registry",
     )
     parser.add_argument(
-        "--max-boards", type=int, help="Batch mode: test only the first N supported boards"
+        "--max-boards", type=int, help="Batch mode: maximum company boards; default all"
     )
     args = parser.parse_args()
 
     if bool(args.source) != bool(args.board):
         parser.error("--source and --board must be used together")
-    if args.limit is not None and not 1 <= args.limit <= 100:
-        parser.error("--limit must be between 1 and 100, or omitted for all jobs")
+    if args.max_jobs_per_board is not None and args.max_jobs_per_board < 1:
+        parser.error("--max-jobs-per-board must be positive, or omitted for all jobs")
     if args.total_limit is not None and (args.total_limit < 1 or args.source):
         parser.error("--total-limit must be positive and is available only in batch mode")
     if args.max_boards is not None and (args.max_boards < 1 or args.source):
@@ -107,7 +107,7 @@ def main() -> int:
                 boards,
                 query=args.query,
                 location=args.location,
-                limit=args.limit,
+                limit=args.max_jobs_per_board,
                 total_limit=args.total_limit,
                 progress=lambda message: print(message, flush=True),
                 on_update=(
@@ -143,9 +143,10 @@ def main() -> int:
         return 2 if summary["failed_boards"] else 0
 
     output = args.output
+    job_count = "all" if args.max_jobs_per_board is None else f"up to {args.max_jobs_per_board}"
 
     print(
-        f"Fetching {'all' if args.limit is None else 'up to ' + str(args.limit)} jobs "
+        f"Fetching {job_count} jobs "
         f"from {args.source} board {args.board!r} "
         f"(query={args.query!r}, location={args.location!r})...",
         flush=True,
@@ -155,7 +156,7 @@ def main() -> int:
         fetcher = create_fetcher(args.source, args.board, args.company, region=args.region)
 
         with fetcher:
-            jobs = fetcher.fetch(args.query, location=args.location, limit=args.limit)
+            jobs = fetcher.fetch(args.query, location=args.location, limit=args.max_jobs_per_board)
 
         payload = [job.model_dump(mode="json") for job in jobs]
         if store:

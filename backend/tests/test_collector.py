@@ -42,7 +42,7 @@ class CollectorTests(unittest.TestCase):
                 )
             )
         ) as client:
-            jobs = GreenhouseJobFetcher("example", client=client).fetch(limit=None)
+            jobs = GreenhouseJobFetcher("example", client=client).fetch()
         self.assertEqual(len(jobs), 150)
 
     def test_lever_all_jobs_paginates_beyond_100(self):
@@ -56,7 +56,7 @@ class CollectorTests(unittest.TestCase):
             )
 
         with httpx.Client(transport=httpx.MockTransport(handler)) as client:
-            jobs = LeverJobFetcher("example", client=client, request_delay=0).fetch(limit=None)
+            jobs = LeverJobFetcher("example", client=client, request_delay=0).fetch()
         self.assertEqual(len(jobs), 105)
         self.assertEqual(offsets, [0, 100])
 

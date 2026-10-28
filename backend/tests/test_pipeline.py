@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 import time
 import unittest
 from unittest.mock import Mock, patch
@@ -17,6 +18,7 @@ from backend.jobs.models import JobPost
 from backend.jobs.storage.classifications import ClassificationBusy, ClassificationStore
 from backend.jobs.storage.jobs import DynamoJobStore
 from backend.jobs.workers.seed import backfill, enqueue
+from backend.jobs.workers.seed import main as seed_main
 from backend.jobs.workers.worker import handle_message, process_classify, process_scrape
 from infra.stream_router.handler import handler, needs_classification
 
@@ -88,10 +90,58 @@ class PipelineTests(unittest.TestCase):
 
     def test_seed_deduplicates_boards_and_preserves_region(self):
         board = BoardConfig(source="lever", board="example", region="eu")
-        self.assertEqual(enqueue(self.sqs, self.queue, [board, board], limit=5), 1)
+        self.assertEqual(enqueue(self.sqs, self.queue, [board, board], max_jobs_per_board=5), 1)
         body = json.loads(self.sqs.receive_message(QueueUrl=self.queue)["Messages"][0]["Body"])
         self.assertEqual(body["board"]["region"], "eu")
-        self.assertEqual(body["limit"], 5)
+        self.assertEqual(body["max_jobs_per_board"], 5)
+
+    def test_seed_defaults_to_all_boards_and_all_postings(self):
+        boards = [BoardConfig(source="greenhouse", board=f"company{i}") for i in range(105)]
+        with (
+            patch.dict(
+                os.environ,
+                {"QUEUE_URL": self.queue, "MAX_BOARDS": "all", "JOBS_PER_BOARD": "all"},
+                clear=True,
+            ),
+            patch.object(sys, "argv", ["seed"]),
+            patch("backend.jobs.workers.seed.boto3.client", return_value=self.sqs),
+            patch("backend.jobs.workers.seed.load_boards", return_value=boards),
+            patch("backend.jobs.workers.seed.enqueue", return_value=105) as send,
+            patch("builtins.print"),
+        ):
+            seed_main()
+
+        self.assertEqual(len(send.call_args.args[2]), 105)
+        self.assertIsNone(send.call_args.kwargs["max_jobs_per_board"])
+
+    def test_seed_explicit_limits_can_exceed_100_jobs(self):
+        boards = [BoardConfig(source="greenhouse", board=f"company{i}") for i in range(3)]
+        with (
+            patch.dict(os.environ, {"QUEUE_URL": self.queue}, clear=True),
+            patch.object(sys, "argv", ["seed", "--max-boards", "2", "--max-jobs-per-board", "150"]),
+            patch("backend.jobs.workers.seed.boto3.client", return_value=self.sqs),
+            patch("backend.jobs.workers.seed.load_boards", return_value=boards),
+            patch("backend.jobs.workers.seed.enqueue", return_value=2) as send,
+            patch("builtins.print"),
+        ):
+            seed_main()
+
+        self.assertEqual(len(send.call_args.args[2]), 2)
+        self.assertEqual(send.call_args.kwargs["max_jobs_per_board"], 150)
+
+    def test_unlimited_queue_message_reaches_fetcher_without_a_cap(self):
+        board = BoardConfig(source="greenhouse", board="example")
+        enqueue(self.sqs, self.queue, [board])
+        body = json.loads(self.sqs.receive_message(QueueUrl=self.queue)["Messages"][0]["Body"])
+
+        with patch("backend.jobs.workers.worker.create_fetcher") as factory:
+            fetcher = factory.return_value.__enter__.return_value
+            fetcher.fetch.return_value = [JobPost.model_validate(self.job)] * 105
+            store = Mock()
+            self.assertEqual(process_scrape(body, store), 105)
+
+        fetcher.fetch.assert_called_once_with(limit=None)
+        self.assertEqual(len(store.save_jobs.call_args.args[0]), 105)
 
     def test_scrape_to_stream_to_queue_to_results_and_filter_index(self):
         with patch("backend.jobs.workers.worker.create_fetcher") as factory:
