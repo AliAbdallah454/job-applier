@@ -6,22 +6,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-Seniority = Literal[
-    "intern",
-    "apprentice",
-    "entry",
-    "junior",
-    "mid",
-    "senior",
-    "lead",
-    "staff",
-    "principal",
-    "manager",
-    "director",
-    "executive",
-    "unknown",
+Seniority = Literal["entry", "junior", "mid", "senior"]
+ContractType = Literal[
+    "permanent",
+    "fixed_term",
+    "internship",
+    "apprenticeship",
+    "freelance",
+    "temporary",
 ]
 JobCategory = Literal[
     "software_engineer",
@@ -47,23 +41,23 @@ class JobClassification(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    seniority: Seniority
+    seniority: Seniority | None
+    contract_type: ContractType | None
     is_tech: bool | None
     category: JobCategory
 
-    # @model_validator(mode="after")
-    # def consistent_category(self) -> "JobClassification":
+    @model_validator(mode="after")
+    def consistent_category(self) -> "JobClassification":
+        if self.category == "non_technical":
+            if self.is_tech is not False:
+                raise ValueError("non_technical requires is_tech=false")
+        elif self.category == "unknown":
+            if self.is_tech is not None:
+                raise ValueError("unknown category requires is_tech=null")
+        elif self.is_tech is not True:
+            raise ValueError("Technical categories require is_tech=true")
 
-    #     if self.category == "non_technical":
-    #         if self.is_tech is not False:
-    #             raise ValueError("non_technical requires is_tech=false")
-    #     elif self.category == "unknown":
-    #         if self.is_tech is not None:
-    #             raise ValueError("unknown category requires is_tech=null")
-    #     elif self.is_tech is not True:
-    #         raise ValueError("Technical categories require is_tech=true")
-
-    #     return self
+        return self
 
 
 def classification_input(job: dict) -> dict:

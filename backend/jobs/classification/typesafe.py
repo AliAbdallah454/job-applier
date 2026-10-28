@@ -4,7 +4,12 @@ from typing import get_args
 
 from typesafe_sdk import Choice
 
-from backend.jobs.classification.models import JobCategory, JobClassification, Seniority
+from backend.jobs.classification.models import (
+    ContractType,
+    JobCategory,
+    JobClassification,
+    Seniority,
+)
 
 GUARDRAIL = (
     "Classify the advertised position using its title and description only. "
@@ -31,19 +36,21 @@ CATEGORIES = {
 }
 
 SENIORITIES = {
-    "intern": "Internship or stage.",
-    "apprentice": "Apprenticeship, alternance or work-study contract.",
-    "entry": "Explicit entry-level/graduate role without a stated junior label.",
-    "junior": "Explicit junior position or clearly limited professional experience.",
-    "mid": "Explicit intermediate or mid-level individual contributor.",
-    "senior": "Senior individual contributor with substantial autonomy.",
-    "lead": "Team or technical lead, not necessarily a people manager.",
-    "staff": "Explicit staff engineer or equivalent scope.",
-    "principal": "Explicit principal/distinguished engineer or equivalent scope.",
-    "manager": "People manager responsible for a team.",
-    "director": "Director or head of department overseeing teams.",
-    "executive": "VP or C-level leadership.",
-    "unknown": "Level not stated or insufficient/conflicting evidence; do not assume mid-level.",
+    "entry": "Entry-level/graduate role requiring little or no professional experience.",
+    "junior": "Junior or early-career role with limited professional experience.",
+    "mid": "Intermediate role with independent delivery and established professional experience.",
+    "senior": "Senior-level expertise, substantial autonomy and broad technical responsibility.",
+    "unknown": "Insufficient or conflicting evidence of experience level; do not assume mid.",
+}
+
+CONTRACT_TYPES = {
+    "permanent": "Explicit permanent/open-ended employment, such as CDI.",
+    "fixed_term": "Fixed-term employee contract, such as CDD; not internship or apprenticeship.",
+    "internship": "Internship or stage, including a paid internship.",
+    "apprenticeship": "Apprenticeship, alternance or work-study employment.",
+    "freelance": "Freelance, independent contractor or self-employed engagement.",
+    "temporary": "Temporary agency employment, interim or agency placement, such as intérim.",
+    "unknown": "Contract not specified or multiple types offered without a primary one.",
 }
 
 
@@ -58,8 +65,19 @@ class JevClassifier:
             model=self.model,
             questions={
                 "seniority": Choice(
-                    instructions=GUARDRAIL + "Choose the single most specific advertised level.",
+                    instructions=GUARDRAIL
+                    + "Choose the experience level independently of contract type. "
+                    "Internship or apprenticeship alone does not determine seniority. "
+                    "Map lead/staff/principal roles to senior only when their duties support it; "
+                    "a management title alone does not establish an experience level.",
                     criteria=SENIORITIES,
+                ),
+                "contract_type": Choice(
+                    instructions=GUARDRAIL + "Choose the explicitly advertised contract type. "
+                    "Use internship/apprenticeship rather than fixed_term when applicable. "
+                    "Full-time/part-time describe working hours, not contract duration; "
+                    "do not infer permanent from full-time.",
+                    criteria=CONTRACT_TYPES,
                 ),
                 "tech_relevance": Choice(
                     instructions=GUARDRAIL + "Is the role technical in IT/computing? "
@@ -83,7 +101,12 @@ class JevClassifier:
             raise ValueError("Invalid technical relevance label")
 
         result = JobClassification(
-            seniority=response.choices["seniority"].choice,
+            seniority=None
+            if response.choices["seniority"].choice == "unknown"
+            else response.choices["seniority"].choice,
+            contract_type=None
+            if response.choices["contract_type"].choice == "unknown"
+            else response.choices["contract_type"].choice,
             is_tech={"tech": True, "non_technical": False, "unknown": None}[relevance],
             category=response.choices["category"].choice,
         )
@@ -92,4 +115,5 @@ class JevClassifier:
 
 # Keep the provider rubric and persisted schema aligned when either is extended.
 assert set(CATEGORIES) == set(get_args(JobCategory))
-assert set(SENIORITIES) == set(get_args(Seniority))
+assert set(SENIORITIES) == set(get_args(Seniority)) | {"unknown"}
+assert set(CONTRACT_TYPES) == set(get_args(ContractType)) | {"unknown"}

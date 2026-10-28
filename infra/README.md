@@ -285,11 +285,21 @@ The **Jobs** table contains posting fields directly (`title`, `company`,
 and the stable SHA-256 `job_id`. Only scrapers update these records.
 
 The **Classifications** table has the same `job_id` partition key, with top-level
-`seniority`, `is_tech`, `category`, `provider`, `model`, `input_hash`,
+`seniority`, `contract_type`, `is_tech`, `category`, `provider`, `model`, `input_hash`,
 `schema_version`, `classified_at`, `tech_status`, and `seniority_job`.
 Results do not duplicate the full job description. A short-lived lease can leave
 an incomplete `job_id`-only row after an unsuccessful first attempt; such a row
 is not a completed result and does not appear in the filtering indexes.
+
+Schema version 2 limits seniority to `entry`, `junior`, `mid`, or `senior`; missing
+seniority is `null`. Contract types are `permanent`, `fixed_term`, `internship`,
+`apprenticeship`, `freelance`, `temporary`, or `null` when unspecified/ambiguous.
+The index sort key uses `unknown#<job_id>` for null seniority. Contract type is
+stored directly but has no dedicated filtering index.
+
+After deploying version 2, use `infra.manage backfill` to queue older results for
+upgrade. A version mismatch causes a fresh Jev call; subsequent unchanged deliveries
+are skipped. Deployment alone does not enqueue unchanged jobs.
 
 Two global secondary indexes allow filtering without scanning all job descriptions:
 

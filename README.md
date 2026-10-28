@@ -74,8 +74,8 @@ does not mean it has been deployed in your AWS account.
 - Optional local keyword and location matching.
 - DynamoDB upserts after each company; completed writes survive interrupted runs.
 - Optional JSON snapshots, including per-company failure diagnostics.
-- TypeSafe AI Jev classification of stored jobs by seniority, technical relevance
-  and primary role, saved to a separate DynamoDB results table.
+- TypeSafe AI Jev classification of stored jobs by seniority, contract type,
+  technical relevance and primary role, saved to a separate DynamoDB results table.
 - CDK stack with Docker/Fargate workers, SQS retries, filtering indexes and secure key setup.
 - Deduplication within a collection using provider, board, region, and posting identity.
 - Offline tests for provider formats, pagination, failures, limits, and exports.
@@ -174,17 +174,22 @@ uv run python -m backend.jobs.cli.classify \
 
 The default jobs table is `DYNAMODB_TABLE` or `job-postings`; the default results
 table is `CLASSIFICATIONS_TABLE` or `job-classifications`. `--model` selects a
-different supported Jev model. One System One request asks three typed Choice
+different supported Jev model. One System One request asks four typed Choice
 questions per posting, using only its title and description:
 
 | Field | Values |
 | --- | --- |
-| `seniority` | `intern`, `apprentice`, `entry`, `junior`, `mid`, `senior`, `lead`, `staff`, `principal`, `manager`, `director`, `executive`, `unknown` |
+| `seniority` | `entry`, `junior`, `mid`, `senior`, or `null` when unspecified |
+| `contract_type` | `permanent`, `fixed_term`, `internship`, `apprenticeship`, `freelance`, `temporary`, or `null` when unspecified/ambiguous |
 | `is_tech` | `true`, `false`, or `null` when evidence is insufficient |
 | `category` | `software_engineer`, `devops_engineer`, `cloud_engineer`, `ai_engineer`, `ml_engineer`, `data_engineer`, `data_scientist`, `security_engineer`, `qa_engineer`, `systems_engineer`, `technical_support`, `technical_management`, `other_tech`, `non_technical`, `unknown` |
 
-The classifier chooses one primary role and one advertised seniority, using
-`unknown` rather than inventing a level from a title without enough evidence.
+The classifier chooses one primary role, one experience level and one contract type.
+Seniority and contract type are independent: an internship/apprenticeship label
+does not automatically set seniority. Missing experience/contract information is
+stored as `null`. Full-time/part-time describe working hours and do not imply a
+permanent contract. CDI maps to `permanent`, CDD to `fixed_term`, stage to
+`internship`, alternance to `apprenticeship`, and agency/intérim to `temporary`.
 Non-technical roles get `is_tech=false` and `category=non_technical`.
 Unknown technical relevance gets `is_tech=null` and `category=unknown`.
 Invalid or contradictory provider results are rejected, counted and not saved.
@@ -196,11 +201,12 @@ source jobs by `job_id`. Source job fields are not modified:
 {
   "job_id": "<same ID as the source job>",
   "seniority": "senior",
+  "contract_type": "permanent",
   "is_tech": true,
   "category": "cloud_engineer",
   "provider": "typesafe",
   "model": "jev-latest",
-  "schema_version": 1,
+  "schema_version": 2,
   "input_hash": "<SHA-256 of title and description>",
   "classified_at": "<UTC timestamp>"
 }
@@ -209,6 +215,10 @@ source jobs by `job_id`. Source job fields are not modified:
 The command follows DynamoDB scan pagination. `--limit` bounds classification
 attempts (default 100), not scanned rows; `--page-size` controls scan pages.
 Unchanged inputs with matching provider, model and schema version are skipped.
+Schema version 2 adds contract type and the four-level seniority contract. Existing
+version-1 records are refreshed on their next classification delivery; rescraping
+an unchanged posting does not queue it again. Use `infra.manage backfill` after
+deploying to queue existing jobs for upgrade. This can incur fresh Jev calls.
 Changed titles/descriptions are reclassified. Use `--force` to refresh all results,
 including after a model alias such as `jev-latest` changes upstream.
 If a collector refreshes a posting, an older classification can remain until

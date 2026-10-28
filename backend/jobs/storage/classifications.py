@@ -58,7 +58,10 @@ class ClassificationStore:
 
             try:
                 JobClassification.model_validate(
-                    {key: previous[key] for key in ("seniority", "category", "is_tech")}
+                    {
+                        key: previous[key]
+                        for key in ("seniority", "category", "contract_type", "is_tech")
+                    }
                 )
             except (KeyError, ValueError):
                 return False
@@ -103,7 +106,7 @@ class ClassificationStore:
                 "input_hash": fingerprint,
                 "classified_at": datetime.now(UTC).isoformat(),
                 "tech_status": {True: "tech", False: "non_tech", None: "unknown"}[result.is_tech],
-                "seniority_job": f"{result.seniority}#{job_id}",
+                "seniority_job": f"{result.seniority or 'unknown'}#{job_id}",
             }
             serialize = TypeSerializer().serialize
 

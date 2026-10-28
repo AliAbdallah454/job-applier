@@ -18,7 +18,9 @@ from backend.jobs.classification.typesafe import JevClassifier
 from backend.jobs.cli.classify import main
 
 
-def response_body(seniority="senior", category="software_engineer", relevance="tech"):
+def response_body(
+    seniority="senior", category="software_engineer", relevance="tech", contract_type="permanent"
+):
     return {
         "model": "jev-latest",
         "usage": {},
@@ -33,6 +35,7 @@ def response_body(seniority="senior", category="software_engineer", relevance="t
                 "seniority": seniority,
                 "category": category,
                 "tech_relevance": relevance,
+                "contract_type": contract_type,
             }.items()
         },
     }
@@ -48,7 +51,7 @@ class JevTests(unittest.TestCase):
             retry=RetryPolicy(max_retries=0),
         )
 
-    def test_real_sdk_sends_three_choice_questions_and_reads_response(self):
+    def test_real_sdk_sends_four_choice_questions_and_reads_response(self):
         def handler(request):
             self.assertEqual(str(request.url), "https://api.typesafe.ai/v1/systemone")
             self.assertEqual(request.method, "POST")
@@ -56,7 +59,9 @@ class JevTests(unittest.TestCase):
             body = json.loads(request.content)
             self.assertEqual(body["model"], "jev-latest")
             self.assertEqual(body["state"], {"title": "Senior Dev", "description": "Python"})
-            self.assertEqual(set(body["questions"]), {"seniority", "category", "tech_relevance"})
+            self.assertEqual(
+                set(body["questions"]), {"seniority", "category", "tech_relevance", "contract_type"}
+            )
             for question in body["questions"].values():
                 self.assertEqual(question["type"], "choice")
                 self.assertIn("untrusted", question["instructions"])
@@ -69,6 +74,55 @@ class JevTests(unittest.TestCase):
         self.assertEqual(result.seniority, "senior")
         self.assertTrue(result.is_tech)
         self.assertEqual(result.category, "software_engineer")
+        self.assertEqual(result.contract_type, "permanent")
+
+    def test_contract_and_seniority_are_separate_and_unknowns_become_null(self):
+        for seniority, contract in [
+            ("entry", "internship"),
+            ("junior", "apprenticeship"),
+            ("mid", "fixed_term"),
+            ("senior", "freelance"),
+            ("senior", "temporary"),
+            ("unknown", "unknown"),
+        ]:
+            with (
+                self.subTest(seniority=seniority, contract=contract),
+                self.client(
+                    lambda _, seniority=seniority, contract=contract: httpx2.Response(
+                        200, json=response_body(seniority=seniority, contract_type=contract)
+                    )
+                ) as client,
+            ):
+                result = JevClassifier(client)({"title": "Engineer", "description": ""})
+            self.assertEqual(result.seniority, None if seniority == "unknown" else seniority)
+            self.assertEqual(result.contract_type, None if contract == "unknown" else contract)
+
+    def test_removed_levels_and_invalid_contracts_are_rejected(self):
+        for seniority in [
+            "intern",
+            "apprentice",
+            "lead",
+            "staff",
+            "principal",
+            "manager",
+            "director",
+            "executive",
+            "unknown",
+        ]:
+            with self.subTest(seniority=seniority), self.assertRaises(ValidationError):
+                JobClassification(
+                    seniority=seniority,
+                    contract_type=None,
+                    is_tech=True,
+                    category="software_engineer",
+                )
+        with self.assertRaises(ValidationError):
+            JobClassification(
+                seniority="junior",
+                contract_type="full_time",
+                is_tech=True,
+                category="software_engineer",
+            )
 
     def test_non_technical_and_unknown_results(self):
         for category, relevance, tech in [
@@ -85,7 +139,7 @@ class JevTests(unittest.TestCase):
             ):
                 result = JevClassifier(client)({"title": "Role", "description": ""})
                 self.assertIs(result.is_tech, tech)
-                self.assertEqual(result.seniority, "unknown")
+                self.assertIsNone(result.seniority)
 
     def test_unknown_labels_and_contradictory_output_rejected(self):
         for category, relevance in [
@@ -157,7 +211,7 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.table.put_item(Item={"job_id": "a", **self.job, "first_seen": "keep-me"})
         self.classifier = Mock(
             return_value=JobClassification(
-                seniority="unknown", is_tech=True, category="software_engineer"
+                contract_type=None, seniority=None, is_tech=True, category="software_engineer"
             )
         )
 
@@ -187,7 +241,7 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.assertNotIn("classification", item)
         result = self.result()
         self.assertEqual(result["category"], "software_engineer")
-        self.assertEqual(result["schema_version"], 1)
+        self.assertEqual(result["schema_version"], 2)
         self.assertEqual(result["provider"], "typesafe")
         self.assertIn("classified_at", result)
         self.classifier.assert_called_once_with(self.job)
@@ -218,6 +272,39 @@ class ClassificationPipelineTests(unittest.TestCase):
         )
         self.assertEqual(counts["classified"], 1)
 
+    def test_old_schema_is_refreshed_once_and_missing_contract_is_not_cached(self):
+        self.run_classifier()
+        self.results.update_item(
+            Key={"job_id": "a"},
+            UpdateExpression="SET schema_version = :old REMOVE contract_type",
+            ExpressionAttributeValues={":old": 1},
+        )
+        self.classifier.reset_mock()
+        self.assertEqual(self.run_classifier()["classified"], 1)
+        result = self.result()
+        self.assertEqual(result["schema_version"], 2)
+        self.assertIn("contract_type", result)
+        self.assertIsNone(result["seniority"])
+        self.assertEqual(result["seniority_job"], "unknown#a")
+        self.assertEqual(self.run_classifier()["skipped"], 1)
+        self.classifier.assert_called_once()
+
+        self.results.update_item(Key={"job_id": "a"}, UpdateExpression="REMOVE contract_type")
+        self.assertEqual(self.run_classifier()["classified"], 1)
+
+    def test_contract_type_is_saved_and_unchanged_result_is_skipped(self):
+        self.classifier.return_value = JobClassification(
+            seniority="entry",
+            contract_type="internship",
+            is_tech=True,
+            category="software_engineer",
+        )
+        self.assertEqual(self.run_classifier()["classified"], 1)
+        self.assertEqual(self.result()["contract_type"], "internship")
+        self.assertEqual(self.result()["seniority"], "entry")
+        self.assertEqual(self.run_classifier()["skipped"], 1)
+        self.classifier.assert_called_once()
+
     def test_pagination_and_limit_apply_to_calls_not_skipped_items(self):
         self.run_classifier()
         self.table.put_item(Item={"job_id": "b", **self.job})
@@ -232,7 +319,9 @@ class ClassificationPipelineTests(unittest.TestCase):
     def test_changed_or_deleted_posting_is_not_overwritten_or_resurrected(self):
         def mutate(job):
             self.table.delete_item(Key={"job_id": "a"})
-            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+            return JobClassification(
+                contract_type=None, seniority="senior", is_tech=True, category="ai_engineer"
+            )
 
         self.classifier.side_effect = mutate
         self.assertEqual(self.run_classifier()["conflicts"], 1)
@@ -241,7 +330,9 @@ class ClassificationPipelineTests(unittest.TestCase):
     def test_concurrent_edit_does_not_get_stale_classification(self):
         def mutate(job):
             self.table.put_item(Item={"job_id": "a", **job, "title": "New role"})
-            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+            return JobClassification(
+                contract_type=None, seniority="senior", is_tech=True, category="ai_engineer"
+            )
 
         self.classifier.side_effect = mutate
         self.assertEqual(self.run_classifier()["conflicts"], 1)
@@ -269,7 +360,9 @@ class ClassificationPipelineTests(unittest.TestCase):
                 UpdateExpression="SET description = :description",
                 ExpressionAttributeValues={":description": "A different role"},
             )
-            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+            return JobClassification(
+                contract_type=None, seniority="senior", is_tech=True, category="ai_engineer"
+            )
 
         self.classifier.side_effect = mutate
 
@@ -283,7 +376,9 @@ class ClassificationPipelineTests(unittest.TestCase):
                 UpdateExpression="SET last_seen = :now",
                 ExpressionAttributeValues={":now": "refreshed"},
             )
-            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+            return JobClassification(
+                contract_type=None, seniority="senior", is_tech=True, category="ai_engineer"
+            )
 
         self.classifier.side_effect = refresh
 

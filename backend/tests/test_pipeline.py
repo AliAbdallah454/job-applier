@@ -76,7 +76,7 @@ class PipelineTests(unittest.TestCase):
         }
         self.classifier = Mock(
             return_value=JobClassification(
-                seniority="senior", is_tech=True, category="cloud_engineer"
+                contract_type=None, seniority="senior", is_tech=True, category="cloud_engineer"
             )
         )
 
@@ -222,7 +222,11 @@ class PipelineTests(unittest.TestCase):
         self.classifier.assert_not_called()
 
     def test_result_is_rechecked_after_acquiring_lease(self):
-        from backend.jobs.classification.models import classification_input, input_hash
+        from backend.jobs.classification.models import (
+            SCHEMA_VERSION,
+            classification_input,
+            input_hash,
+        )
 
         DynamoJobStore("jobs").save_jobs([self.job])
         item = self.item()
@@ -236,17 +240,18 @@ class PipelineTests(unittest.TestCase):
                     UpdateExpression=(
                         "SET input_hash = :hash, model = :model, schema_version = :version, "
                         "#provider = :provider, seniority = :seniority, is_tech = :tech, "
-                        "category = :category"
+                        "category = :category, contract_type = :contract"
                     ),
                     ExpressionAttributeNames={"#provider": "provider"},
                     ExpressionAttributeValues={
                         ":hash": input_hash(classification_input(item)),
                         ":model": "jev-latest",
-                        ":version": 1,
+                        ":version": SCHEMA_VERSION,
                         ":provider": "typesafe",
                         ":seniority": "senior",
                         ":tech": True,
                         ":category": "cloud_engineer",
+                        ":contract": None,
                     },
                 )
             return response
