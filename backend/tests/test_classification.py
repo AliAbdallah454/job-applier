@@ -12,9 +12,10 @@ from moto import mock_aws
 from pydantic import ValidationError
 from typesafe_sdk import RetryPolicy, TypeSafeClient
 
-from backend.jobs.classification import JobClassification, classify_table
-from backend.jobs.classify import main
-from backend.jobs.typesafe import JevClassifier
+from backend.jobs.classification.models import JobClassification
+from backend.jobs.classification.service import classify_table
+from backend.jobs.classification.typesafe import JevClassifier
+from backend.jobs.cli.classify import main
 
 
 def response_body(seniority="senior", category="software_engineer", relevance="tech"):
@@ -153,7 +154,7 @@ class ClassificationPipelineTests(unittest.TestCase):
             BillingMode="PAY_PER_REQUEST",
         )
         self.job = {"title": "Software Engineer", "description": "Build Python services"}
-        self.table.put_item(Item={"job_id": "a", "job": self.job, "first_seen": "keep-me"})
+        self.table.put_item(Item={"job_id": "a", **self.job, "first_seen": "keep-me"})
         self.classifier = Mock(
             return_value=JobClassification(
                 seniority="unknown", is_tech=True, category="software_engineer"
@@ -180,7 +181,8 @@ class ClassificationPipelineTests(unittest.TestCase):
         counts = self.run_classifier()
         item = self.item()
         self.assertEqual(counts["classified"], 1)
-        self.assertEqual(item["job"], self.job)
+        self.assertEqual({key: item[key] for key in self.job}, self.job)
+        self.assertNotIn("job", item)
         self.assertEqual(item["first_seen"], "keep-me")
         self.assertNotIn("classification", item)
         result = self.result()
@@ -197,9 +199,9 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.classifier.assert_not_called()
         self.table.update_item(
             Key={"job_id": "a"},
-            UpdateExpression="SET #job = :job",
-            ExpressionAttributeNames={"#job": "job"},
-            ExpressionAttributeValues={":job": {**self.job, "title": "Senior Engineer"}},
+            UpdateExpression="SET #title = :title",
+            ExpressionAttributeNames={"#title": "title"},
+            ExpressionAttributeValues={":title": "Senior Engineer"},
         )
         self.assertEqual(self.run_classifier()["classified"], 1)
         self.assertEqual(self.classifier.call_count, 1)
@@ -218,8 +220,8 @@ class ClassificationPipelineTests(unittest.TestCase):
 
     def test_pagination_and_limit_apply_to_calls_not_skipped_items(self):
         self.run_classifier()
-        self.table.put_item(Item={"job_id": "b", "job": self.job})
-        self.table.put_item(Item={"job_id": "c", "job": self.job})
+        self.table.put_item(Item={"job_id": "b", **self.job})
+        self.table.put_item(Item={"job_id": "c", **self.job})
         self.classifier.reset_mock()
         counts = self.run_classifier(limit=1, page_size=1)
         self.assertEqual(counts["classified"], 1)
@@ -238,7 +240,7 @@ class ClassificationPipelineTests(unittest.TestCase):
 
     def test_concurrent_edit_does_not_get_stale_classification(self):
         def mutate(job):
-            self.table.put_item(Item={"job_id": "a", "job": {**job, "title": "New role"}})
+            self.table.put_item(Item={"job_id": "a", **job, "title": "New role"})
             return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
 
         self.classifier.side_effect = mutate
@@ -254,8 +256,48 @@ class ClassificationPipelineTests(unittest.TestCase):
         self.assertEqual(self.run_classifier()["failed"], 1)
         self.assertNotIn("category", self.result())
 
+    def test_legacy_posting_remains_readable_until_next_scrape(self):
+        self.table.put_item(Item={"job_id": "a", "job": self.job})
+
+        self.assertEqual(self.run_classifier()["classified"], 1)
+        self.classifier.assert_called_once_with(self.job)
+
+    def test_concurrent_description_edit_rejects_stale_classification(self):
+        def mutate(job):
+            self.table.update_item(
+                Key={"job_id": "a"},
+                UpdateExpression="SET description = :description",
+                ExpressionAttributeValues={":description": "A different role"},
+            )
+            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+
+        self.classifier.side_effect = mutate
+
+        self.assertEqual(self.run_classifier()["conflicts"], 1)
+        self.assertNotIn("category", self.result())
+
+    def test_last_seen_refresh_during_classification_does_not_invalidate_result(self):
+        def refresh(job):
+            self.table.update_item(
+                Key={"job_id": "a"},
+                UpdateExpression="SET last_seen = :now",
+                ExpressionAttributeValues={":now": "refreshed"},
+            )
+            return JobClassification(seniority="senior", is_tech=True, category="ai_engineer")
+
+        self.classifier.side_effect = refresh
+
+        self.assertEqual(self.run_classifier()["classified"], 1)
+        self.assertEqual(self.item()["last_seen"], "refreshed")
+
+    def test_flat_posting_without_description_can_be_classified(self):
+        self.table.put_item(Item={"job_id": "a", "title": "Software Engineer"})
+
+        self.assertEqual(self.run_classifier()["classified"], 1)
+        self.classifier.assert_called_once_with({"title": "Software Engineer", "description": ""})
+
     def test_invalid_records_do_not_call_provider(self):
-        self.table.put_item(Item={"job_id": "a", "job": {"description": "no title"}})
+        self.table.put_item(Item={"job_id": "a", "description": "no title"})
         self.assertEqual(self.run_classifier()["failed"], 1)
         self.classifier.assert_not_called()
 
@@ -269,7 +311,7 @@ class ClassificationPipelineTests(unittest.TestCase):
                     lambda _: httpx2.Response(200, json=response_body())
                 ),
             ) as client,
-            patch("backend.jobs.classify.TypeSafeClient", return_value=client),
+            patch("backend.jobs.cli.classify.TypeSafeClient", return_value=client),
             patch.dict(os.environ, {"TYPESAFE_API_KEY": "offline-test-key"}),
             patch.object(sys, "argv", ["classify", "--aws-region", "eu-west-3", "--limit", "1"]),
         ):
@@ -280,7 +322,7 @@ class ClassificationPipelineTests(unittest.TestCase):
         with (
             patch.dict(os.environ, {"TYPESAFE_API_KEY": ""}),
             patch.object(sys, "argv", ["classify"]),
-            patch("backend.jobs.classify.DynamoJobStore") as store,
+            patch("backend.jobs.cli.classify.DynamoJobStore") as store,
         ):
             self.assertEqual(main(), 1)
             store.assert_not_called()

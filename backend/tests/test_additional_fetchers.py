@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import httpx
 
-from backend.jobs.__main__ import main
+from backend.jobs.cli.collect import main
 from backend.jobs.collector import BoardConfig, collect_jobs, load_boards
 from backend.jobs.job_fetchers import (
     FETCHERS,
@@ -349,7 +349,7 @@ class AdditionalFetcherTests(unittest.TestCase):
                         str(output),
                     ],
                 ),
-                patch("backend.jobs.__main__.collect_jobs", return_value=report) as collect,
+                patch("backend.jobs.cli.collect.collect_jobs", return_value=report) as collect,
             ):
                 self.assertEqual(main(), 0)
             selected = collect.call_args.args[0]

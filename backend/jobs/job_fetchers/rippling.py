@@ -15,9 +15,11 @@ class RipplingJobFetcher(JobFetcher):
             f"https://{self.host}/platform/api/ats/v1/board/{self.board}/jobs",
             stage="board listings",
         )
+
         if isinstance(payload, list):
             if any(not isinstance(row, dict) for row in payload):
                 raise ValueError("Expected job objects")
+
             yield from payload
         else:
             yield from extract_rows(payload, "jobs")
@@ -26,6 +28,7 @@ class RipplingJobFetcher(JobFetcher):
         identifier = row.get("uuid") or row.get("id")
         if not identifier:
             raise ValueError("Job is missing its UUID")
+
         url = row.get("url") or f"https://ats.rippling.com/{self.board}/jobs/{identifier}"
         return JobPost(
             source=self.source,

@@ -27,6 +27,7 @@ class LeverJobFetcher(JobFetcher):
             raise ValueError("region must be global or eu")
         if not 1 <= page_size <= 100:
             raise ValueError("page_size must be between 1 and 100")
+
         self.host = "api.eu.lever.co" if region == "eu" else "api.lever.co"
         self.page_size = page_size
         super().__init__(board, company, client, request_delay=request_delay)
@@ -34,28 +35,37 @@ class LeverJobFetcher(JobFetcher):
     def _rows(self):
         seen = set()
         offset = 0
+
         for _ in range(100):
             rows = self._get_json(
                 f"https://{self.host}/v0/postings/{self.board}",
                 {"mode": "json", "skip": offset, "limit": self.page_size},
                 stage=f"board listings ({self.board}, offset {offset})",
             )
+
             if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                 raise ValueError("Expected a postings array of objects")
+
             ids = {str(row["id"]) for row in rows}
             if rows and not ids - seen:
                 raise ValueError("Repeated pagination page")
+
             seen.update(ids)
             yield from rows
+
             if len(rows) < self.page_size:
                 return
+
             offset += len(rows)
+
         raise ValueError("Lever pagination exceeded 100 pages; no results were exported")
 
     def _normalize(self, row: dict) -> JobPost:
         if row["id"] is None:
             raise ValueError("Missing posting ID")
+
         sections = [row.get("descriptionPlain") or html_to_text(row.get("description"))]
+
         for section in row.get("lists") or []:
             sections.extend(
                 [

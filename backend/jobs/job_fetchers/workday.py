@@ -17,6 +17,7 @@ class WorkdayJobFetcher(JobFetcher):
             raise ValueError(
                 "Workday token must be wdN/tenant/site, preserving site capitalization"
             )
+
         return board
 
     @property
@@ -32,6 +33,7 @@ class WorkdayJobFetcher(JobFetcher):
     def _rows(self):
         offset = 0
         seen = set()
+
         for _ in range(1000):
             payload = self._get_json(
                 f"{self.api_base}/jobs",
@@ -45,6 +47,7 @@ class WorkdayJobFetcher(JobFetcher):
                 raise ValueError("Missing or invalid listing total")
             if not postings and offset < total:
                 raise ValueError("Empty page before advertised listing total")
+
             for row in postings:
                 path = row["externalPath"]
                 if (
@@ -56,15 +59,19 @@ class WorkdayJobFetcher(JobFetcher):
                     raise ValueError("Invalid Workday job path")
                 if path in seen:
                     raise ValueError("Repeated Workday job across pages")
+
                 seen.add(path)
                 details = self._get_json(f"{self.api_base}{path}", stage=f"job details ({path})")
                 info = details.get("jobPostingInfo") if isinstance(details, dict) else None
                 if not isinstance(info, dict) or not info.get("title"):
                     raise ValueError("Missing jobPostingInfo detail object")
+
                 yield {**row, **info, "externalPath": path}
+
             offset += len(postings)
             if offset >= total:
                 return
+
         raise ValueError("Workday pagination exceeded 1000 pages")
 
     def _normalize(self, row: dict) -> JobPost:

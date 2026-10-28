@@ -15,7 +15,7 @@ def stack_outputs(session, stack_name):
 
 
 def launch(session, outputs, *, mode, max_boards=None, limit=None, platforms=None):
-    command = ["-m", "backend.pipeline.seed", "--mode", mode]
+    command = ["-m", "backend.jobs.workers.seed", "--mode", mode]
     if max_boards is not None:
         command += ["--max-boards", str(max_boards)]
     if limit is not None:

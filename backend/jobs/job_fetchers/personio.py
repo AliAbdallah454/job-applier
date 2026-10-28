@@ -23,19 +23,23 @@ class PersonioJobFetcher(JobFetcher):
         xml = self._get(f"https://{self.host}/xml", stage="XML positions", accept="application/xml")
         if "<!DOCTYPE" in xml.upper() or "<!ENTITY" in xml.upper():
             raise ValueError("XML entities and document types are not supported")
+
         try:
             root = ET.fromstring(xml)
         except ET.ParseError as exc:
             raise ValueError(f"Invalid XML: {exc}") from exc
         if root.tag != "workzag-jobs":
             raise ValueError("Expected a workzag-jobs XML feed")
+
         yield from [node for node in root if node.tag in {"position", "posting"}]
 
     def _normalize(self, row) -> JobPost:
         job_id = row.findtext("id")
         if not job_id:
             raise ValueError("Position is missing its ID")
+
         sections = []
+
         for section in row.findall("jobDescriptions/jobDescription"):
             for key in ("name", "value"):
                 value = html_to_text(section.findtext(key))

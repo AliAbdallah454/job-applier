@@ -16,12 +16,14 @@ class AshbyJobFetcher(JobFetcher):
     def _validate_board(board: str) -> str:
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", board):
             raise ValueError("Invalid Ashby board token")
+
         return board
 
     def _rows(self):
         payload = self._get_json(
             f"https://{self.host}/posting-api/job-board/{self.board}", stage="board listings"
         )
+
         for row in extract_rows(payload, "jobs"):
             if row.get("isListed") is not False:
                 yield row

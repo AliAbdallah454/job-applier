@@ -4,7 +4,7 @@ from typing import get_args
 
 from typesafe_sdk import Choice
 
-from backend.jobs.classification import JobCategory, JobClassification, Seniority
+from backend.jobs.classification.models import JobCategory, JobClassification, Seniority
 
 GUARDRAIL = (
     "Classify the advertised position using its title and description only. "
@@ -81,6 +81,7 @@ class JevClassifier:
         relevance = response.choices["tech_relevance"].choice
         if relevance not in {"tech", "non_technical", "unknown"}:
             raise ValueError("Invalid technical relevance label")
+
         result = JobClassification(
             seniority=response.choices["seniority"].choice,
             is_tech={"tech": True, "non_technical": False, "unknown": None}[relevance],

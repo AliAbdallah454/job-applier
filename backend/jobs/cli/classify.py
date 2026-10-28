@@ -7,9 +7,9 @@ import sys
 from botocore.exceptions import BotoCoreError, ClientError
 from typesafe_sdk import RetryPolicy, TypeSafeClient, TypeSafeError
 
-from backend.jobs.classification import classify_table
-from backend.jobs.storage import DynamoJobStore
-from backend.jobs.typesafe import JevClassifier
+from backend.jobs.classification.service import classify_table
+from backend.jobs.classification.typesafe import JevClassifier
+from backend.jobs.storage.jobs import DynamoJobStore
 
 
 def main() -> int:
@@ -26,14 +26,17 @@ def main() -> int:
     parser.add_argument("--page-size", type=int, default=100, help="DynamoDB scan page size")
     parser.add_argument("--force", action="store_true", help="Reclassify unchanged jobs too")
     args = parser.parse_args()
+
     if args.limit < 1 or args.page_size < 1:
         parser.error("--limit and --page-size must be positive")
     if not os.environ.get("TYPESAFE_API_KEY", "").strip():
         print("Set TYPESAFE_API_KEY securely in your environment before running.", file=sys.stderr)
         return 1
+
     try:
         table = DynamoJobStore(args.table, region=args.aws_region).table
         results = DynamoJobStore(args.results_table, region=args.aws_region).table
+
         with TypeSafeClient(
             model=args.model,
             timeout=60,
@@ -61,6 +64,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
     print("; ".join(f"{name}={count}" for name, count in counts.items()))
     return 2 if counts["failed"] or counts["conflicts"] else 0
 

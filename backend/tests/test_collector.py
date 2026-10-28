@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import httpx
 
-from backend.jobs.__main__ import main
+from backend.jobs.cli.collect import main
 from backend.jobs.collector import BoardConfig, collect_jobs, load_boards, save_report
 from backend.jobs.job_fetchers import GreenhouseJobFetcher, LeverJobFetcher
 
@@ -264,7 +264,7 @@ class CollectorTests(unittest.TestCase):
                         str(output),
                     ],
                 ),
-                patch("backend.jobs.__main__.collect_jobs", return_value=report),
+                patch("backend.jobs.cli.collect.collect_jobs", return_value=report),
             ):
                 self.assertEqual(main(), 2)
             saved = json.loads(output.read_text())

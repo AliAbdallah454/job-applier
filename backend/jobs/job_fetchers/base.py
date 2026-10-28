@@ -32,6 +32,7 @@ class JobFetcher(ABC):
     ) -> None:
         if request_delay < 0:
             raise ValueError("request_delay must not be negative")
+
         self.board = self._validate_board(board)
         self.company = company or board
         self._owns_client = client is None
@@ -70,25 +71,31 @@ class JobFetcher(ABC):
         """Fetch, normalize, deduplicate, and filter; None fetches all matches."""
         if limit is not None and limit < 1:
             raise ValueError("limit must be positive")
+
         jobs = []
         seen = set()
+
         try:
             for row in self._rows():
                 job = self._normalize(row)
                 identity = job.source_id or str(job.posting_url)
+
                 if identity not in seen and self._matches(job, query, location):
                     jobs.append(job)
                 seen.add(identity)
+
                 if limit is not None and len(jobs) == limit:
                     break
         except (KeyError, TypeError, AttributeError, ValueError) as exc:
             raise FetchError(f"Invalid {self.source.value} board {self.board}: {exc}") from exc
+
         return jobs
 
     @staticmethod
     def _validate_board(board: str) -> str:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", board):
             raise ValueError("board must be an employer board token, not a URL")
+
         return board
 
     @staticmethod
@@ -110,6 +117,7 @@ class JobFetcher(ABC):
         text = self._get(
             url, params, stage=stage, accept="application/json", method=method, body=body
         )
+
         try:
             return json.loads(text)
         except ValueError as exc:
@@ -123,6 +131,7 @@ class JobFetcher(ABC):
             f"  HTTP: {response.status_code} {response.reason_phrase}".rstrip(),
             f"  Requests attempted in this fetcher session: {self._request_count}",
         ]
+
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             if retry_after is None:
@@ -168,6 +177,7 @@ class JobFetcher(ABC):
             if self._request_count:
                 time.sleep(self._request_delay)
             self._request_count += 1
+
             try:
                 response = self._client.request(
                     method,
@@ -182,17 +192,22 @@ class JobFetcher(ABC):
                         **getattr(self, "request_headers", {}),
                     },
                 )
+
                 if response.is_redirect:
                     if method != "GET" and response.status_code not in {307, 308}:
                         raise FetchError(f"Unexpected redirect for {method} {url}")
+
                     target = response.headers.get("location")
                     if not target:
                         raise FetchError("Source returned a redirect without a destination")
+
                     url = urljoin(str(response.url), target)
                     params = None
                     continue
+
                 if response.status_code in {401, 403, 429, 999}:
                     raise self._http_error(response, stage)
+
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 raise self._http_error(exc.response, stage) from exc
@@ -205,6 +220,7 @@ class JobFetcher(ABC):
                     f"  HTTP: no response received\n"
                     f"  Cause: {type(exc).__name__}: {exc}"
                 ) from exc
+
             if any(
                 marker in response.text.lower()
                 for marker in (
@@ -214,5 +230,7 @@ class JobFetcher(ABC):
                 )
             ):
                 raise FetchError(f"{self.source.value} returned an access challenge")
+
             return response.text
+
         raise FetchError("Too many redirects")

@@ -6,13 +6,22 @@ import os
 import boto3
 
 
+def posting_image(image):
+    """Read flat items, accepting old nested images during the transition."""
+    if "title" in image or "description" in image:
+        return image
+
+    return image.get("job", {}).get("M", {})
+
+
 def needs_classification(record):
     if record.get("eventName") not in {"INSERT", "MODIFY"}:
         return False
     stream = record["dynamodb"]
-    new_job = stream.get("NewImage", {}).get("job", {}).get("M", {})
-    old_job = stream.get("OldImage", {}).get("job", {}).get("M", {})
-    if not new_job:
+    new_job = posting_image(stream.get("NewImage", {}))
+    old_job = posting_image(stream.get("OldImage", {}))
+
+    if not new_job.get("title"):
         return False
     return record["eventName"] == "INSERT" or any(
         new_job.get(key) != old_job.get(key) for key in ("title", "description")

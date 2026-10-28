@@ -10,7 +10,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from backend.jobs.collector import collect_jobs, load_boards, save_report
 from backend.jobs.job_fetchers import FETCHERS, FetchError, create_fetcher
-from backend.jobs.storage import DynamoJobStore
+from backend.jobs.storage.jobs import DynamoJobStore
 
 
 def main() -> int:
@@ -18,6 +18,7 @@ def main() -> int:
     parser.add_argument(
         "query", nargs="?", default="", help="Optional words to match in title/description"
     )
+
     sources = parser.add_mutually_exclusive_group()
     sources.add_argument("--source", choices=list(FETCHERS), help="Single-board mode")
     sources.add_argument(
@@ -33,6 +34,7 @@ def main() -> int:
     parser.add_argument(
         "--total-limit", type=int, help="Batch mode: maximum jobs across all companies combined"
     )
+
     destination = parser.add_mutually_exclusive_group()
     destination.add_argument("--output", type=Path, help="Export JSON instead of using DynamoDB")
     destination.add_argument(
@@ -49,6 +51,7 @@ def main() -> int:
         "--max-boards", type=int, help="Batch mode: test only the first N supported boards"
     )
     args = parser.parse_args()
+
     if bool(args.source) != bool(args.board):
         parser.error("--source and --board must be used together")
     if args.limit is not None and not 1 <= args.limit <= 100:
@@ -63,6 +66,7 @@ def main() -> int:
         parser.error("For batch collection, set company and region in the boards file")
     if args.source and args.source != "lever" and args.region != "global":
         parser.error("--region eu is supported only by Lever")
+
     store = None
     if args.output is None:
         try:
@@ -73,20 +77,24 @@ def main() -> int:
         except (BotoCoreError, ClientError, ValueError) as exc:
             print(f"Error initializing DynamoDB: {exc}", file=sys.stderr)
             return 1
+
     destination_name = str(args.output) if args.output else f"DynamoDB table {store.table.name}"
 
     if not args.source:
         output = args.output
+
         try:
             boards = load_boards(
                 args.boards_file or Path("config/boards.json"),
                 progress=lambda message: print(message, flush=True),
             )
             loaded_board_count = len(boards)
+
             if args.platforms:
                 boards = [board for board in boards if board.source in args.platforms]
             if args.max_boards is not None:
                 boards = boards[: args.max_boards]
+
             input_info = {
                 "boards_file": str(args.boards_file or Path("config/boards.json")),
                 "loaded_supported_rows": loaded_board_count,
@@ -94,6 +102,7 @@ def main() -> int:
                 "max_boards": args.max_boards,
                 "platforms": args.platforms,
             }
+
             report = collect_jobs(
                 boards,
                 query=args.query,
@@ -118,6 +127,7 @@ def main() -> int:
         except (ValueError, OSError, BotoCoreError, ClientError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
+
         summary = report["summary"]
         print(
             f"Saved {summary['total_jobs']} jobs to {destination_name}; "
@@ -129,6 +139,7 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+
         return 2 if summary["failed_boards"] else 0
 
     output = args.output
@@ -139,10 +150,13 @@ def main() -> int:
         f"(query={args.query!r}, location={args.location!r})...",
         flush=True,
     )
+
     try:
         fetcher = create_fetcher(args.source, args.board, args.company, region=args.region)
+
         with fetcher:
             jobs = fetcher.fetch(args.query, location=args.location, limit=args.limit)
+
         payload = [job.model_dump(mode="json") for job in jobs]
         if store:
             store.save_jobs(

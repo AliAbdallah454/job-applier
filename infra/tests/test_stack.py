@@ -82,7 +82,7 @@ class StackTests(unittest.TestCase):
             for binding in container.get("Secrets", []):
                 if binding["Name"] == "TYPESAFE_API_KEY":
                     secret_consumers.append(container["Command"])
-        self.assertEqual(secret_consumers, [["-m", "backend.pipeline.worker", "classify"]])
+        self.assertEqual(secret_consumers, [["-m", "backend.jobs.workers.worker", "classify"]])
         self.template.resource_count_is("AWS::SSM::Parameter", 3)
 
     def test_stream_retries_partial_failures_and_queues_have_dead_letters(self):

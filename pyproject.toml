@@ -5,6 +5,7 @@ description = "Job discovery and application assistant"
 requires-python = ">=3.12"
 dependencies = [
     "boto3>=1.35,<2",
+    "botocore[crt]>=1.43.119",
     "httpx>=0.28,<1",
     "pydantic>=2.10,<3",
     "typesafe-sdk>=0.7.5,<0.8",

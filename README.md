@@ -101,13 +101,14 @@ partition key `job_id` and no sort key. Use `--table NAME`, `DYNAMODB_TABLE`,
 or the default `job-postings`.
 
 ```sh
-uv run python -m backend.jobs --boards-file config/job-board-directory.csv \
+uv run python -m backend.jobs.cli.collect --boards-file config/job-board-directory.csv \
   --platforms greenhouse lever --max-boards 3 --limit 5 --total-limit 10 \
   --table job-postings --aws-region eu-west-3
 ```
 
-Each item contains `job_id`, a normalized `job` map including board and region,
-and UTC `first_seen`/`last_seen` timestamps. IDs are SHA-256 hashes of provider,
+Each posting is its own DynamoDB item. Fields such as `title`, `company`,
+`description`, `source`, `board`, and `region` are top-level attributes beside
+`job_id` and UTC `first_seen`/`last_seen` timestamps; there is no nested `job` map. IDs are SHA-256 hashes of provider,
 board, region and source ID (falling back to posting URL). Reruns update existing
 items and retain `first_seen`; jobs missing from later runs are not deleted.
 Batch collection writes new postings after each company. Writes are not a
@@ -115,6 +116,12 @@ transaction: on failure, earlier writes remain and the CLI returns failure.
 DynamoDB's 400 KB item limit applies, including descriptions; oversized items
 fail explicitly rather than silently losing content. Batch run diagnostics are
 printed to the console, not stored as job items. Automatic resume is not implemented.
+
+Existing nested items are flattened when the same posting is fetched again,
+preserving its ID and `first_seen`. Classifiers and stream routing accept old
+records during this transition. Local code changes do not migrate a deployed
+table automatically. Deploy the updated workers/router together, then refresh
+boards to rewrite existing items.
 
 Use `--output PATH` to explicitly select the legacy JSON export instead of DynamoDB.
 It cannot be combined with `--table`. The examples below illustrate JSON exports.
@@ -137,7 +144,7 @@ Allow network access to `api.typesafe.ai` and your regional DynamoDB endpoint.
 
 ```sh
 uv sync --locked
-uv run python -m backend.jobs.classify \
+uv run python -m backend.jobs.cli.classify \
   --table job-postings --results-table job-classifications --aws-region eu-west-3 --limit 100
 ```
 
@@ -183,7 +190,7 @@ including after a model alias such as `jev-latest` changes upstream.
 If a collector refreshes a posting, an older classification can remain until
 the next classifier run; consumers should compare its input hash before use.
 
-A DynamoDB transaction checks that the posting still exists, its source data has
+A DynamoDB transaction checks that the posting still exists, its title and description have
 not changed during the API call, and the worker still owns the result lease. Conflicting results are discarded, without
 resurrecting deleted jobs. Previously written results survive later failures or
 interruption. A five-minute per-job lease limits overlapping workers, and current
@@ -209,7 +216,7 @@ accuracy and deployment access are not established by those tests.
 Fetch from the supplied company-board directory, stopping at 100 jobs total:
 
 ```sh
-uv run python -m backend.jobs \
+uv run python -m backend.jobs.cli.collect \
   --boards-file config/job-board-directory.csv \
   --total-limit 100 \
   --output data/jobs.json
@@ -240,7 +247,7 @@ order rather than randomly sampling companies.
 For a small test:
 
 ```sh
-uv run python -m backend.jobs \
+uv run python -m backend.jobs.cli.collect \
   --boards-file config/job-board-directory.csv \
   --platforms greenhouse lever \
   --max-boards 3 --limit 5 --total-limit 10 \
@@ -250,7 +257,7 @@ uv run python -m backend.jobs \
 To apply the existing local text filters:
 
 ```sh
-uv run python -m backend.jobs "python" \
+uv run python -m backend.jobs.cli.collect "python" \
   --boards-file config/job-board-directory.csv \
   --location Paris --total-limit 100 --output data/python-jobs.json
 ```
@@ -265,10 +272,10 @@ directory. Use `--help` for the complete CLI interface.
 ### Fetch a single company
 
 ```sh
-uv run python -m backend.jobs --source greenhouse --board BOARD_TOKEN --limit 20
-uv run python -m backend.jobs --source lever --board BOARD_TOKEN --region eu
-uv run python -m backend.jobs --source ashby --board BOARD_TOKEN --limit 10
-uv run python -m backend.jobs --source workday --board wd1/TENANT/SITE --limit 10
+uv run python -m backend.jobs.cli.collect --source greenhouse --board BOARD_TOKEN --limit 20
+uv run python -m backend.jobs.cli.collect --source lever --board BOARD_TOKEN --region eu
+uv run python -m backend.jobs.cli.collect --source ashby --board BOARD_TOKEN --limit 10
+uv run python -m backend.jobs.cli.collect --source workday --board wd1/TENANT/SITE --limit 10
 ```
 
 Add `--output data/jobs.json` to these single-company commands if you want a JSON
@@ -307,20 +314,27 @@ and an empty job list, not successfully fetched postings.
 ## Backend organization
 
 ```text
-frontend/                       dashboard placeholder
-backend/jobs/
-  models.py                     JobSource, JobPost, SavedJobPost
-  __main__.py                   CLI arguments and JSON export
-  collector.py                  board loading, batch coordination, global limits
-  job_fetchers/
-    base.py                     shared HTTP handling and fetch workflow
-    utils.py                    text, datetime, location, and payload helpers
-    greenhouse.py               one provider module per platform
-    lever.py
-    ...
-backend/tests/                  offline provider and collection tests
-config/                         company and board directories
-docs/                           provider notes and company discovery
+backend/
+  jobs/
+    models.py                   JobSource, JobPost, SavedJobPost
+    collector.py                board loading, batch coordination, global limits
+    job_fetchers/               shared base and one adapter per provider
+    classification/
+      models.py                 classification fields, validation, input fingerprints
+      service.py                classification workflow for stored postings
+      typesafe.py               Jev integration
+    storage/
+      jobs.py                   DynamoDB posting persistence
+      classifications.py        classification persistence and worker leases
+    workers/
+      seed.py                   enqueue boards or existing job IDs in AWS
+      worker.py                 consume scraping and classification queues
+    cli/
+      collect.py                local collection command, DynamoDB or JSON output
+      classify.py               local classification command
+  tests/                        offline tests for backend behavior
+infra/                          AWS resources and deployment helpers
+config/                         company-board directory
 ```
 
 All eight fetchers inherit directly from `JobFetcher`. The base class handles
@@ -328,7 +342,12 @@ normalization flow, filtering, deduplication, limits, and HTTP lifecycle. Each
 provider implements `_rows()` for retrieval/pagination and `_normalize()` for
 mapping one record to `JobPost`.
 
-In batch mode, the CLI delegates to `collector.py`, which chooses fetchers,
+Local commands run with `uv run python -m backend.jobs.cli.collect` and
+`uv run python -m backend.jobs.cli.classify`. AWS worker entry points are
+`backend.jobs.workers.seed` and `backend.jobs.workers.worker`. Queue handling lives in
+`jobs/workers/`; fetching, classification, and persistence all belong to `jobs/`.
+
+In batch mode, the collection CLI delegates to `jobs/collector.py`, which chooses fetchers,
 combines results, enforces the global cap, and triggers snapshot updates.
 Single-company mode calls a fetcher directly. Fetchers do not save files or submit
 applications. `SavedJobPost` is reserved for future storage with observation times.

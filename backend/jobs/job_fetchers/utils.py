@@ -34,6 +34,7 @@ def parse_datetime(value: Any) -> datetime | None:
     """Preserve timezone-aware dates without inventing timezone information."""
     if not isinstance(value, str):
         return None
+
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed if parsed.utcoffset() is not None else None
@@ -45,17 +46,22 @@ def extract_rows(payload: Any, key: str) -> list[dict]:
     value = payload.get(key) if isinstance(payload, dict) else None
     if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
         raise ValueError(f"Expected a {key} array of objects")
+
     return value
 
 
 def format_location(value: Any) -> str | None:
     if isinstance(value, str):
         return value or None
+
     if isinstance(value, dict):
         if value.get("name"):
             return str(value["name"])
+
         parts = [value.get(key) for key in ("city", "region", "country")]
         return ", ".join(str(part) for part in parts if part) or None
+
     if isinstance(value, list):
         return "; ".join(part for item in value if (part := format_location(item))) or None
+
     return None

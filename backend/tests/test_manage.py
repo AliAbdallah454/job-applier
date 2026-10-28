@@ -44,7 +44,7 @@ class ManageTests(unittest.TestCase):
             args["overrides"]["containerOverrides"][0]["command"],
             [
                 "-m",
-                "backend.pipeline.seed",
+                "backend.jobs.workers.seed",
                 "--mode",
                 "scrape",
                 "--max-boards",

@@ -11,13 +11,13 @@ from boto3.dynamodb.conditions import Key
 from boto3.dynamodb.types import TypeSerializer
 from moto import mock_aws
 
-from backend.jobs.classification import JobClassification
+from backend.jobs.classification.models import JobClassification
 from backend.jobs.collector import BoardConfig
 from backend.jobs.models import JobPost
-from backend.jobs.results import ClassificationBusy, ClassificationStore
-from backend.jobs.storage import DynamoJobStore
-from backend.pipeline.seed import backfill, enqueue
-from backend.pipeline.worker import handle_message, process_classify, process_scrape
+from backend.jobs.storage.classifications import ClassificationBusy, ClassificationStore
+from backend.jobs.storage.jobs import DynamoJobStore
+from backend.jobs.workers.seed import backfill, enqueue
+from backend.jobs.workers.worker import handle_message, process_classify, process_scrape
 from infra.stream_router.handler import handler, needs_classification
 
 
@@ -94,7 +94,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(body["limit"], 5)
 
     def test_scrape_to_stream_to_queue_to_results_and_filter_index(self):
-        with patch("backend.pipeline.worker.create_fetcher") as factory:
+        with patch("backend.jobs.workers.worker.create_fetcher") as factory:
             factory.return_value.__enter__.return_value.fetch.return_value = [
                 JobPost.model_validate(self.job)
             ]
@@ -170,7 +170,7 @@ class PipelineTests(unittest.TestCase):
         self.classifier.assert_not_called()
 
     def test_result_is_rechecked_after_acquiring_lease(self):
-        from backend.jobs.classification import classification_input, input_hash
+        from backend.jobs.classification.models import classification_input, input_hash
 
         DynamoJobStore("jobs").save_jobs([self.job])
         item = self.item()
@@ -188,7 +188,7 @@ class PipelineTests(unittest.TestCase):
                     ),
                     ExpressionAttributeNames={"#provider": "provider"},
                     ExpressionAttributeValues={
-                        ":hash": input_hash(classification_input(item["job"])),
+                        ":hash": input_hash(classification_input(item)),
                         ":model": "jev-latest",
                         ":version": 1,
                         ":provider": "typesafe",
@@ -262,12 +262,18 @@ class PipelineTests(unittest.TestCase):
         record = {
             "eventName": "MODIFY",
             "dynamodb": {
-                "OldImage": {"job": serialize(job), "last_seen": {"S": "old"}},
-                "NewImage": {"job": serialize(job), "last_seen": {"S": "new"}},
+                "OldImage": {
+                    **{key: serialize(value) for key, value in job.items()},
+                    "last_seen": {"S": "old"},
+                },
+                "NewImage": {
+                    **{key: serialize(value) for key, value in job.items()},
+                    "last_seen": {"S": "new"},
+                },
             },
         }
         self.assertFalse(needs_classification(record))
-        record["dynamodb"]["NewImage"]["job"] = serialize({**job, "title": "Senior Cloud Engineer"})
+        record["dynamodb"]["NewImage"]["title"] = serialize("Senior Cloud Engineer")
         self.assertTrue(needs_classification(record))
         record["eventName"] = "REMOVE"
         self.assertFalse(needs_classification(record))
@@ -279,7 +285,7 @@ class PipelineTests(unittest.TestCase):
                 "SequenceNumber": "42",
                 "NewImage": {
                     "job_id": {"S": "a"},
-                    "job": {"M": {"title": {"S": "Engineer"}}},
+                    "title": {"S": "Engineer"},
                 },
             },
         }
@@ -289,3 +295,20 @@ class PipelineTests(unittest.TestCase):
                 handler({"Records": [record]}, None),
                 {"batchItemFailures": [{"itemIdentifier": "42"}]},
             )
+
+    def test_flattening_legacy_posting_does_not_schedule_another_classification(self):
+        serialize = TypeSerializer().serialize
+        job = {"title": "Cloud Engineer", "description": "AWS"}
+        record = {
+            "eventName": "MODIFY",
+            "dynamodb": {
+                "OldImage": {"job": serialize(job)},
+                "NewImage": {key: serialize(value) for key, value in job.items()},
+            },
+        }
+
+        self.assertFalse(needs_classification(record))
+
+        record["dynamodb"]["NewImage"]["description"] = serialize("Build AI tools")
+
+        self.assertTrue(needs_classification(record))

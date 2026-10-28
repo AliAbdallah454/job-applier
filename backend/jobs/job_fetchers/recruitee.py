@@ -28,6 +28,7 @@ class RecruiteeJobFetcher(JobFetcher):
             url = f"https://{self.host}/o/{row['slug']}"
         if not url:
             raise ValueError("Offer is missing its public URL")
+
         return JobPost(
             source=self.source,
             source_id=str(row["id"]) if row.get("id") is not None else None,

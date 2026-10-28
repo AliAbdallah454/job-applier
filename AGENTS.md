@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 The Python backend lives in `backend/jobs/`; distributed SQS workers and feeders
-live in `backend/pipeline/`. Tests are in `backend/tests/`. AWS CDK infrastructure
+live in `backend/jobs/workers/`. Tests are in `backend/tests/`. AWS CDK infrastructure
 lives in `infra/`, with template tests in `infra/tests/` and a stream-routing
 Lambda in `infra/stream_router/`. The root Dockerfile packages the workers.
 `config/` contains the employer-board registry. See `infra/README.md` for AWS setup.

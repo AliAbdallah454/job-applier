@@ -28,18 +28,22 @@ class BoardConfig(BaseModel):
     def validate_region(self) -> "BoardConfig":
         if self.source not in FETCHERS:
             raise ValueError(f"Unsupported source: {self.source}")
+
         FETCHERS[self.source]._validate_board(self.board)
         if self.source != "lever" and self.region != "global":
             raise ValueError("Only Lever uses the region option")
+
         return self
 
 
 def load_boards(path: Path, *, progress: Callable[[str], None] | None = None) -> list[BoardConfig]:
     if path.suffix.lower() == ".csv":
         return _load_csv_boards(path, progress=progress)
+
     rows = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(rows, list) or not rows:
         raise ValueError("The boards file must contain a non-empty JSON array")
+
     return [BoardConfig.model_validate(row) for row in rows]
 
 
@@ -48,15 +52,18 @@ def _load_csv_boards(
 ) -> list[BoardConfig]:
     boards = []
     skipped = Counter()
+
     with path.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
         if not {"platform", "token"}.issubset(reader.fieldnames or []):
             raise ValueError("CSV must have platform and token columns")
+
         for row in reader:
             source = (row.get("platform") or "").strip().lower()
             if source not in FETCHERS:
                 skipped[source or "unknown"] += 1
                 continue
+
             region = (row.get("region") or "").strip().lower()
             if not region:
                 hosts = {
@@ -65,6 +72,7 @@ def _load_csv_boards(
                 region = "eu" if hosts & {"jobs.eu.lever.co", "api.eu.lever.co"} else "global"
             if region == "us":
                 region = "global"
+
             try:
                 boards.append(
                     BoardConfig(
@@ -108,9 +116,11 @@ def collect_jobs(
         raise ValueError("limit must be between 1 and 100, or omitted for all jobs")
     if total_limit is not None and total_limit < 1:
         raise ValueError("total_limit must be positive")
+
     unique_boards = {(row.source, row.region, row.board): row for row in boards}
     if not unique_boards:
         raise ValueError("At least one board is required")
+
     report = {
         "started_at": datetime.now(UTC).isoformat(),
         "status": "running",
@@ -133,11 +143,14 @@ def collect_jobs(
             "pending_boards": len(unique_boards) - len(report["boards"]),
             "total_jobs": len(report["jobs"]),
         }
+
         if on_update:
             on_update(report)
 
     notify()
+
     seen_jobs = set()
+
     try:
         with httpx.Client() if client is None else nullcontext(client) as http:
             for index, (identity, board) in enumerate(unique_boards.items()):
@@ -152,6 +165,7 @@ def collect_jobs(
                 if progress:
                     progress(f"[{index + 1}/{len(unique_boards)}] {board.source}: {board.board}")
                 result = {**board.model_dump(), "status": "ok", "job_count": 0}
+
                 try:
                     fetcher = create_fetcher(
                         board.source,
@@ -161,8 +175,10 @@ def collect_jobs(
                         region=board.region,
                         request_delay=request_delay,
                     )
+
                     with fetcher:
                         jobs = fetcher.fetch(query, location=location, limit=board_limit)
+
                     for job in jobs:
                         key = (*identity, job.source_id or str(job.posting_url))
                         if key not in seen_jobs:
@@ -177,12 +193,15 @@ def collect_jobs(
                             result["job_count"] += 1
                             if total_limit is not None and len(report["jobs"]) == total_limit:
                                 break
+
                     if progress:
                         progress(f"  Collected {result['job_count']} jobs")
                 except (FetchError, ValueError) as exc:
                     result.update(status="error", error=str(exc))
+
                     if progress:
                         progress(f"  Failed: {exc}")
+
                 report["boards"].append(result)
                 notify()
     except KeyboardInterrupt:
@@ -190,6 +209,7 @@ def collect_jobs(
         report["finished_at"] = datetime.now(UTC).isoformat()
         notify()
         raise
+
     report["status"] = (
         "limit_reached"
         if total_limit is not None and len(report["jobs"]) >= total_limit
@@ -197,6 +217,7 @@ def collect_jobs(
     )
     report["finished_at"] = datetime.now(UTC).isoformat()
     notify()
+
     return report
 
 
@@ -204,6 +225,7 @@ def save_report(report: dict, output: Path) -> None:
     """Replace the JSON atomically, keeping the previous snapshot intact on write failure."""
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = None
+
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -216,6 +238,7 @@ def save_report(report: dict, output: Path) -> None:
             temporary = Path(stream.name)
             json.dump(report, stream, ensure_ascii=False, indent=2)
             stream.write("\n")
+
         temporary.replace(output)
     finally:
         if temporary is not None:

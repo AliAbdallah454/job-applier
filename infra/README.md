@@ -157,7 +157,8 @@ catches target delivery failures, not application failures inside a launched tas
 
 ## Data model and filtering
 
-The **Jobs** table contains the normalized `job` map, `first_seen`, `last_seen`
+The **Jobs** table contains posting fields directly (`title`, `company`,
+`description`, `source`, `board`, and `region`), plus `first_seen`, `last_seen`
 and the stable SHA-256 `job_id`. Only scrapers update these records.
 
 The **Classifications** table has the same `job_id` partition key, with top-level
@@ -179,7 +180,7 @@ Example in Python (use table names from stack outputs):
 ```python
 import boto3
 from boto3.dynamodb.conditions import Key
-from backend.jobs.classification import classification_input, input_hash
+from backend.jobs.classification.models import classification_input, input_hash
 
 db = boto3.resource("dynamodb", region_name="eu-west-3")
 results = db.Table("YOUR_CLASSIFICATIONS_TABLE")
@@ -192,8 +193,8 @@ jobs = db.Table("YOUR_JOBS_TABLE")
 for result in page["Items"]:
     job = jobs.get_item(Key={"job_id": result["job_id"]}, ConsistentRead=True).get("Item")
     # Drop missing/stale jobs; source changes can occur after a result was saved.
-    if job and result["input_hash"] == input_hash(classification_input(job["job"])):
-        print(result["seniority"], job["job"]["title"])
+    if job and result["input_hash"] == input_hash(classification_input(job)):
+        print(result["seniority"], job["title"])
 # Follow LastEvaluatedKey with ExclusiveStartKey for subsequent result pages.
 ```
 
@@ -238,7 +239,7 @@ budget. To force an unchanged alias refresh or perform a bounded local backfill:
 
 ```sh
 # Set TYPESAFE_API_KEY securely in this local process first.
-uv run python -m backend.jobs.classify \
+uv run python -m backend.jobs.cli.classify \
   --table YOUR_JOBS_TABLE --results-table YOUR_CLASSIFICATIONS_TABLE \
   --aws-region eu-west-3 --limit 100 --force
 ```
@@ -274,7 +275,7 @@ uv run --locked ruff check .
 uv run --locked ruff format --check .
 npm run synth -- --no-lookups
 docker build -t job-applier-pipeline:test .
-docker run --rm --read-only job-applier-pipeline:test -m backend.pipeline.worker --help
+docker run --rm --read-only job-applier-pipeline:test -m backend.jobs.workers.worker --help
 ```
 
 CDK tests assert the table/index schema, zero-capacity worker services, queue retry

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import httpx
 
-from backend.jobs.__main__ import main
+from backend.jobs.cli.collect import main
 from backend.jobs.job_fetchers import FetchError, GreenhouseJobFetcher, LeverJobFetcher
 from backend.jobs.models import JobSource
 
@@ -178,7 +178,7 @@ class BoardFetcherTests(unittest.TestCase):
                         str(output),
                     ],
                 ),
-                patch("backend.jobs.__main__.create_fetcher") as factory,
+                patch("backend.jobs.cli.collect.create_fetcher") as factory,
             ):
                 with httpx.Client() as client:
                     job = GreenhouseJobFetcher("example", client=client)._normalize(

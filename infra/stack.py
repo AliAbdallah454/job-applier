@@ -3,55 +3,21 @@
 import os
 from pathlib import Path
 
-from aws_cdk import (
-    CfnOutput,
-    Duration,
-    Fn,
-    RemovalPolicy,
-    Stack,
-)
-from aws_cdk import (
-    aws_applicationautoscaling as autoscaling,
-)
-from aws_cdk import (
-    aws_cloudwatch as cloudwatch,
-)
-from aws_cdk import (
-    aws_dynamodb as dynamodb,
-)
-from aws_cdk import (
-    aws_ec2 as ec2,
-)
-from aws_cdk import (
-    aws_ecr_assets as assets,
-)
-from aws_cdk import (
-    aws_ecs as ecs,
-)
-from aws_cdk import (
-    aws_events as events,
-)
-from aws_cdk import (
-    aws_events_targets as targets,
-)
-from aws_cdk import (
-    aws_lambda as lambda_,
-)
-from aws_cdk import (
-    aws_lambda_event_sources as sources,
-)
-from aws_cdk import (
-    aws_logs as logs,
-)
-from aws_cdk import (
-    aws_secretsmanager as secretsmanager,
-)
-from aws_cdk import (
-    aws_sqs as sqs,
-)
-from aws_cdk import (
-    aws_ssm as ssm,
-)
+from aws_cdk import CfnOutput, Duration, Fn, RemovalPolicy, Stack
+from aws_cdk import aws_applicationautoscaling as autoscaling
+from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_dynamodb as dynamodb
+from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecr_assets as assets
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_events as events
+from aws_cdk import aws_events_targets as targets
+from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_lambda_event_sources as sources
+from aws_cdk import aws_logs as logs
+from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import aws_sqs as sqs
+from aws_cdk import aws_ssm as ssm
 from constructs import Construct
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -290,14 +256,14 @@ class JobPipelineStack(Stack):
 
         scrape_task = task(
             "ScraperTask",
-            ["-m", "backend.pipeline.worker", "scrape"],
+            ["-m", "backend.jobs.workers.worker", "scrape"],
             {"QUEUE_URL": scrape_queue.queue_url},
         )
         self.jobs.grant(scrape_task.task_role, "dynamodb:DescribeTable", "dynamodb:UpdateItem")
         scrape_queue.grant_consume_messages(scrape_task.task_role)
         classify_task = task(
             "ClassifierTask",
-            ["-m", "backend.pipeline.worker", "classify"],
+            ["-m", "backend.jobs.workers.worker", "classify"],
             {"QUEUE_URL": classify_queue.queue_url},
             {
                 "TYPESAFE_API_KEY": ecs.Secret.from_secrets_manager(key),
@@ -365,7 +331,7 @@ class JobPipelineStack(Stack):
 
         seed_task = task(
             "SeedTask",
-            ["-m", "backend.pipeline.seed"],
+            ["-m", "backend.jobs.workers.seed"],
             {"QUEUE_URL": scrape_queue.queue_url, "CLASSIFY_QUEUE_URL": classify_queue.queue_url},
             {
                 "MAX_BOARDS": ecs.Secret.from_ssm_parameter(parameters["MaxBoards"]),

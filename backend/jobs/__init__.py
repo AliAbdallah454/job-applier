@@ -1,1 +1,1 @@
-"""Job posting models."""
+"""Jobs service: collection, classification, persistence, and background processing."""

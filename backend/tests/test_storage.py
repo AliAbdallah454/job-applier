@@ -12,9 +12,9 @@ import boto3
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
-from backend.jobs.__main__ import main
+from backend.jobs.cli.collect import main
 from backend.jobs.models import JobPost
-from backend.jobs.storage import DynamoJobStore
+from backend.jobs.storage.jobs import DynamoJobStore
 
 
 @mock_aws
@@ -57,7 +57,44 @@ class DynamoStorageTests(unittest.TestCase):
         self.assertEqual(len(updated), 1)
         self.assertEqual(updated[0]["first_seen"], original["first_seen"])
         self.assertGreaterEqual(updated[0]["last_seen"], original["last_seen"])
-        self.assertEqual(updated[0]["job"]["title"], "Senior Engineer")
+        self.assertEqual(updated[0]["title"], "Senior Engineer")
+        self.assertNotIn("job", updated[0])
+        self.assertNotIn("jobs", updated[0])
+        self.assertEqual(updated[0]["company"], "Example")
+        self.assertEqual(updated[0]["source"], "greenhouse")
+
+    def test_refresh_flattens_legacy_item_without_changing_id_or_first_seen(self):
+        self.store().save_jobs([self.job])
+        job_id = self.items()[0]["job_id"]
+        self.table.put_item(
+            Item={
+                "job_id": job_id,
+                "job": self.job,
+                "first_seen": "original-observation",
+                "last_seen": "previous-observation",
+            }
+        )
+
+        self.store().save_jobs([{**self.job, "title": "Updated Engineer"}])
+        item = self.items()[0]
+
+        self.assertEqual(item["job_id"], job_id)
+        self.assertEqual(item["first_seen"], "original-observation")
+        self.assertEqual(item["title"], "Updated Engineer")
+        self.assertNotIn("job", item)
+
+    def test_missing_optional_posting_field_clears_old_value(self):
+        self.store().save_jobs([{**self.job, "location": "Paris"}])
+        self.store().save_jobs([self.job])
+
+        self.assertIsNone(self.items()[0]["location"])
+
+    def test_posting_cannot_override_storage_metadata(self):
+        for field in ("job_id", "first_seen", "last_seen", "job"):
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                self.store().save_jobs([{**self.job, field: "unexpected"}])
+
+        self.assertEqual(self.items(), [])
 
     def test_board_and_region_and_url_fallback_distinguish_jobs(self):
         self.store().save_jobs(
@@ -105,7 +142,7 @@ class DynamoStorageTests(unittest.TestCase):
                     "eu-west-3",
                 ],
             ),
-            patch("backend.jobs.__main__.create_fetcher") as factory,
+            patch("backend.jobs.cli.collect.create_fetcher") as factory,
         ):
             self.assertEqual(main(), 1)
             factory.assert_not_called()
@@ -125,11 +162,11 @@ class DynamoStorageTests(unittest.TestCase):
                     "eu-west-3",
                 ],
             ),
-            patch("backend.jobs.__main__.create_fetcher") as factory,
+            patch("backend.jobs.cli.collect.create_fetcher") as factory,
         ):
             factory.return_value.fetch.return_value = [JobPost.model_validate(self.job)]
             self.assertEqual(main(), 0)
-        self.assertEqual(self.items()[0]["job"]["board"], "example")
+        self.assertEqual(self.items()[0]["board"], "example")
 
     def test_batch_cli_persists_completed_boards_before_failure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -184,7 +221,7 @@ class DynamoStorageTests(unittest.TestCase):
                     "eu-west-3",
                 ],
             ),
-            patch("backend.jobs.__main__.create_fetcher") as factory,
+            patch("backend.jobs.cli.collect.create_fetcher") as factory,
             patch.object(DynamoJobStore, "save_jobs", side_effect=error),
         ):
             factory.return_value.fetch.return_value = [JobPost.model_validate(self.job)]

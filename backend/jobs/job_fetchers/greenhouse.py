@@ -22,14 +22,18 @@ class GreenhouseJobFetcher(JobFetcher):
         total = (payload.get("meta") or {}).get("total")
         if total is not None and total != len(rows):
             raise ValueError("Incomplete board response")
+
         yield from rows
 
     def _normalize(self, row: dict) -> JobPost:
         if row["id"] is None:
             raise ValueError("Missing posting ID")
+
         content = row.get("content") or ""
+
         for _ in range(2):
             content = unescape(content)
+
         return JobPost(
             source=self.source,
             source_id=str(row["id"]),
