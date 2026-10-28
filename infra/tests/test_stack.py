@@ -16,6 +16,54 @@ class StackTests(unittest.TestCase):
         cls.stack = JobPipelineStack(cls.app, "TestPipeline")
         cls.template = Template.from_stack(cls.stack)
 
+    def test_job_source_bucket_is_private_encrypted_and_retained(self):
+        self.template.resource_count_is("AWS::S3::Bucket", 1)
+        self.template.has_resource(
+            "AWS::S3::Bucket",
+            {
+                "DeletionPolicy": "Retain",
+                "UpdateReplacePolicy": "Retain",
+                "Properties": Match.object_like(
+                    {
+                        "BucketEncryption": {
+                            "ServerSideEncryptionConfiguration": [
+                                {"ServerSideEncryptionByDefault": {"SSEAlgorithm": "AES256"}}
+                            ]
+                        },
+                        "PublicAccessBlockConfiguration": {
+                            "BlockPublicAcls": True,
+                            "BlockPublicPolicy": True,
+                            "IgnorePublicAcls": True,
+                            "RestrictPublicBuckets": True,
+                        },
+                        "OwnershipControls": {
+                            "Rules": [{"ObjectOwnership": "BucketOwnerEnforced"}]
+                        },
+                        "VersioningConfiguration": {"Status": "Enabled"},
+                    }
+                ),
+            },
+        )
+        self.template.has_resource_properties(
+            "AWS::S3::BucketPolicy",
+            {
+                "PolicyDocument": {
+                    "Statement": Match.array_with(
+                        [
+                            Match.object_like(
+                                {
+                                    "Effect": "Deny",
+                                    "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+                                }
+                            )
+                        ]
+                    ),
+                    "Version": "2012-10-17",
+                }
+            },
+        )
+        self.template.has_output("JobSourceBucketName", {"Value": Match.any_value()})
+
     def test_two_retained_on_demand_tables_and_filter_indexes(self):
         self.template.resource_count_is("AWS::DynamoDB::Table", 2)
         self.template.has_resource(
@@ -110,18 +158,26 @@ class StackTests(unittest.TestCase):
         }
         self.assertEqual(len(roles), 3)
 
-    def test_existing_secret_and_parallelism_context(self):
-        existing_key = "arn:aws:secretsmanager:eu-west-3:123456789012:secret:key-abcdef"
+    def test_collection_defaults_are_unlimited(self):
+        parameters = self.template.find_resources("AWS::SSM::Parameter")
+        limits = {
+            name: resource["Properties"]["Value"]
+            for name, resource in parameters.items()
+            if name.startswith(("MaxBoards", "JobsPerBoard"))
+        }
+        self.assertEqual(len(limits), 2)
+        self.assertEqual(set(limits.values()), {"all"})
+
+    def test_parallelism_and_schedule_context(self):
         app = App(
             context={
-                "typesafeSecretArn": existing_key,
                 "maxScrapers": "8",
                 "maxClassifiers": "3",
                 "schedule": "true",
             }
         )
         template = Template.from_stack(JobPipelineStack(app, "ConfiguredPipeline"))
-        template.resource_count_is("AWS::SecretsManager::Secret", 0)
+        template.resource_count_is("AWS::SecretsManager::Secret", 1)
         template.has_resource_properties("AWS::Events::Rule", {"State": "ENABLED"})
         template.has_resource_properties(
             "AWS::ApplicationAutoScaling::ScalableTarget", {"MaxCapacity": 8, "MinCapacity": 0}
@@ -148,4 +204,4 @@ class StackTests(unittest.TestCase):
 
     def test_invalid_cost_limits_are_rejected(self):
         with self.assertRaises(ValueError):
-            JobPipelineStack(App(context={"jobsPerBoard": "101"}), "InvalidPipeline")
+            JobPipelineStack(App(context={"jobsPerBoard": "0"}), "InvalidPipeline")

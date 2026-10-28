@@ -77,30 +77,35 @@ AWS credentials. The deployment/operator identity needs CloudFormation
 `DescribeStacks`, Secrets Manager `DescribeSecret` and `PutSecretValue` for the
 key, and ECS `RunTask` plus `iam:PassRole` for the two seed roles shown in outputs.
 
-If you already have a populated Secrets Manager secret, import its full ARN:
+## Company directory bucket
+
+The stack creates a private, encrypted, versioned S3 bucket for company-board files.
+Its generated name is available in the `JobSourceBucketName` stack output. Upload
+the directory after deployment, replacing the placeholder with that output:
 
 ```sh
-npm run deploy -- -c typesafeSecretArn=arn:aws:secretsmanager:eu-west-3:123456789012:secret:my-key-abcdef
+aws s3 cp config/job-board-directory.csv s3://YOUR_JOB_SOURCE_BUCKET/job-board-directory.csv
 ```
 
-For a customer-managed KMS key, add the execution role's decrypt permission and
-the key policy before using an imported encrypted secret. The default stack uses
-AWS-managed encryption and needs no custom KMS configuration.
+The bucket and file versions are retained when the stack is deleted. The feeder
+currently still reads the CSV packaged in the Docker image; reading from S3 will
+be wired separately.
 
 ## Start a small run
 
 ```sh
 uv run python -m infra.manage collect --region eu-west-3 \
-  --max-boards 3 --limit 5 --platforms greenhouse lever
+  --max-boards 3 --max-jobs-per-board 5 --platforms greenhouse lever
 ```
 
 This starts a feeder task, which queues three boards with up to five postings per
 board. Workers wake as the queue metrics arrive. A returned task ARN confirms
 launch only: check the feeder's stopped-task exit code, CloudWatch logs, queues
-and tables for completion. With no overrides, a run queues the first 100 unique
-boards from the shipped directory and collects up to 20 jobs per board. Repeated
-runs use directory order; this is not random sampling. Increase the company cap
-explicitly to process more of the 12,236 directory rows.
+and tables for completion. With no limits configured, a run queues all unique supported boards from the
+shipped directory and fetches all available postings per board. Use `--max-boards`
+and `--max-jobs-per-board` to bound a manual run. Scheduled runs use the SSM
+settings; the default value `all` means no limit. Explicit CDK context settings
+`maxBoards` and `jobsPerBoard` can still set deployment-wide limits.
 
 View generated resource names and configuration:
 
@@ -118,8 +123,8 @@ is `JobPipeline`.
 | --- | --- | --- |
 | TypeSafe API key | Secrets Manager; injected as `TYPESAFE_API_KEY` | Empty until supplied |
 | Jev model | SSM StringParameter; injected as `JEV_MODEL` | `jev-latest` |
-| Company-board count per run | SSM StringParameter | 100 |
-| Maximum collected jobs per company | SSM StringParameter | 20 |
+| Company-board count per run | SSM StringParameter | `all` (unlimited) |
+| Maximum collected jobs per company | SSM StringParameter | `all` (unlimited) |
 | Scraper concurrency cap | CDK context `maxScrapers` | 4 |
 | Classifier concurrency cap | CDK context `maxClassifiers` | 2 |
 | Daily feeder schedule | CDK context `schedule` | false |
@@ -262,7 +267,6 @@ or spend, and do not enforce a provider-wide requests-per-minute quota.
 `npx cdk destroy` deletes the workers and queues (including queued work) but retains
 both data tables and the created API-key secret. These retained resources keep
 their costs until you explicitly remove them. Bootstrap assets can also remain.
-An imported secret is never owned/deleted by this stack.
 
 ## Verification
 

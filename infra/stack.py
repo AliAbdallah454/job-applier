@@ -15,6 +15,7 @@ from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_lambda_event_sources as sources
 from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_ssm as ssm
@@ -25,9 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def positive_context(scope, name, default):
     raw = scope.node.try_get_context(name)
+    if raw is None and default is None:
+        return "all"
+
     value = int(default if raw is None else raw)
     if value < 1:
         raise ValueError(f"{name} must be positive")
+
     return value
 
 
@@ -35,15 +40,26 @@ class JobPipelineStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
         max_scrapers = positive_context(self, "maxScrapers", 4)
+
         max_classifiers = positive_context(self, "maxClassifiers", 2)
-        max_boards = positive_context(self, "maxBoards", 100)
-        jobs_per_board = positive_context(self, "jobsPerBoard", 20)
-        if jobs_per_board > 100:
-            raise ValueError("jobsPerBoard must be at most 100")
+        max_boards = positive_context(self, "maxBoards", None)
+        jobs_per_board = positive_context(self, "jobsPerBoard", None)
         model = self.node.try_get_context("jevModel") or "jev-latest"
         schedule = str(self.node.try_get_context("schedule") or "false").lower()
+
         if schedule not in {"true", "false"}:
             raise ValueError("schedule must be true or false")
+
+        self.job_source_bucket = s3.Bucket(
+            self,
+            "JobSourceBucket",
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            object_ownership=s3.ObjectOwnership.BUCKET_OWNER_ENFORCED,
+            enforce_ssl=True,
+            versioned=True,
+            removal_policy=RemovalPolicy.RETAIN,
+        )
 
         self.jobs = dynamodb.Table(
             self,
@@ -158,22 +174,15 @@ class JobPipelineStack(Stack):
             treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
         )
 
-        existing_key_arn = self.node.try_get_context("typesafeSecretArn")
-        if existing_key_arn:
-            key = secretsmanager.Secret.from_secret_complete_arn(
-                self, "TypeSafeKey", existing_key_arn
-            )
-        else:
-            # Intentionally empty: do not generate a random, invalid provider key.
-            raw_key = secretsmanager.CfnSecret(
-                self,
-                "TypeSafeKey",
-                description="TypeSafe API key as plain string; populate with infra.manage set-key",
-            )
-            raw_key.apply_removal_policy(RemovalPolicy.RETAIN)
-            key = secretsmanager.Secret.from_secret_complete_arn(
-                self, "TypeSafeKeyReference", raw_key.ref
-            )
+        raw_key = secretsmanager.CfnSecret(
+            self,
+            "TypeSafeKey",
+            description="TypeSafe API key as plain string; populate with infra.manage set-key",
+        )
+        raw_key.apply_removal_policy(RemovalPolicy.RETAIN)
+        key = secretsmanager.Secret.from_secret_complete_arn(
+            self, "TypeSafeKeyReference", raw_key.ref
+        )
 
         parameters = {}
         for name, value in {
@@ -376,6 +385,7 @@ class JobPipelineStack(Stack):
             )
         )
         outputs = {
+            "JobSourceBucketName": self.job_source_bucket.bucket_name,
             "JobsTable": self.jobs.table_name,
             "ClassificationsTable": self.results.table_name,
             "TypesafeSecretArn": key.secret_arn,
