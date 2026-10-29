@@ -10,6 +10,11 @@ backend with CLI tools, two-table DynamoDB storage, and a CDK deployment for par
 Docker/Fargate workers, a local jobs dashboard, and asynchronous Bedrock document generation.**
 Application submission and mailbox workflows are planned.
 
+For contributors and LLM assistants, start with the [documentation map](docs/README.md).
+CDK creates the worker ECR repositories; you push images to them from a laptop or CI/CD
+(see [worker image repositories](infra/README.md#worker-image-repositories)). The
+[image publishing plan](docs/plans/image-publishing.md) describes the remaining CI/release work.
+
 For deployment, API-key setup and a small first run, see the
 [AWS pipeline guide](infra/README.md).
 
@@ -55,11 +60,9 @@ docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-app
 docker build --platform linux/amd64 -f containers/Dockerfile.documents -t job-applier-documents:test .
 ```
 
-CDK builds and publishes the images needed by the selected stack during deployment.
-Each worker has its own private repository: `jobpipeline/seed`, `jobpipeline/scraper`,
+CDK does not build or publish images. Each worker has its own private repository: `jobpipeline/seed`, `jobpipeline/scraper`,
 `jobpipeline/classifier`, and `application/documents`. Names use the lowercase stack
-name. CDK stages assets in its bootstrap repository, then a deployment-time CodeBuild
-step copies them to the worker repositories before ECS uses them. See the
+name. Push images to them, then deploy with `-c imageTag=<tag>`. See the
 [repository and deployment guide](infra/README.md#worker-image-repositories).
 
 Collection launch settings live in `config/collections/default.yaml`; the company
@@ -451,12 +454,13 @@ persistent history remain future work.
 
 ## Next milestones
 
-1. Add catalogue queries and closed-posting reconciliation to DynamoDB storage.
-2. Add per-user profile/preferences filtering using the stored classifications.
-3. Evaluate inexpensive matching models before implementing personalized ranking.
-4. Generate tailored CVs and motivation letters with review and version history.
-5. Track applications and match email responses; add supported submission channels.
-6. Build the dashboard and deploy the application, workers, and storage on AWS.
+1. Add a CI/CD workflow and release manifest per the
+   [image publishing plan](docs/plans/image-publishing.md); repositories and manual pushes work today.
+2. Add closed-posting reconciliation and per-user recommendations to the catalogue.
+3. Add authenticated profile APIs and a document review/editor interface around
+   the existing generation worker.
+4. Track submitted applications and match email responses; add supported submission channels.
+5. Host the frontend and complete environment separation and release operations.
 
 ## Development and references
 
@@ -470,7 +474,7 @@ DynamoDB tests use Moto to exercise table writes, upserts, and CLI failures offl
 Tests do not send real applications. Keep credentials, personal CVs, and mailbox
 data out of Git.
 
-- [Feasibility assessment](FEASIBILITY.md)
-- [Initial implementation plan](INITIAL_PLAN.md) — earlier proposals, not a statement of shipped features.
+- [Documentation map](docs/README.md)
+- [Direct CI/CD image publishing plan](docs/plans/image-publishing.md) — repositories done; CI and manifest planned.
 - [Provider documentation](docs/fetchers.md)
 - [Employer board directory](infra/board_sources/job-board-directory.csv)

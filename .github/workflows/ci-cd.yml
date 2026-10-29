@@ -1,0 +1,121 @@
+name: CI/CD
+
+# Pull requests: tests only. Pushes to main: tests, deploy both CDK stacks, then build and
+# push the four worker images tagged with the commit SHA. See docs/ci-cd.md.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "frontend/**"]
+  workflow_dispatch:
+
+# One deployment at a time: ECR tags are immutable and CloudFormation locks a stack anyway.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --group infra
+      - run: npm ci
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run python -m unittest discover -s backend/tests -v
+      - run: uv run python -m unittest discover -s scripts/tests -v
+      - run: uv run python -m unittest discover -s frontend/tests -v
+      - run: uv run --group infra python -m unittest discover -s infra/tests -v
+      - run: npm run synth -- --quiet
+
+  deploy-infra:
+    # Creates the ECR repositories (first run) and points the ECS task definitions at the
+    # commit's image tag. CloudFormation skips resources that did not change.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --group infra
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Show infrastructure changes
+        run: npx cdk diff JobPipeline Application -c imageTag="$IMAGE_TAG" || true
+      - name: Deploy infrastructure
+        run: npx cdk deploy JobPipeline Application --require-approval never -c imageTag="$IMAGE_TAG"
+
+  push-images:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each entry links one Dockerfile to one ECR repository (<lowercase-stack>/<worker>).
+        include:
+          - repository: jobpipeline/seed
+            dockerfile: containers/Dockerfile.seed
+          - repository: jobpipeline/scraper
+            dockerfile: containers/Dockerfile.scrape
+          - repository: jobpipeline/classifier
+            dockerfile: containers/Dockerfile.classify
+          - repository: application/documents
+            dockerfile: containers/Dockerfile.documents
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: login
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: existing
+        # Tags are immutable, so re-running a commit must not push again.
+        run: |
+          if aws ecr describe-images --repository-name "${{ matrix.repository }}" \
+              --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.existing.outputs.published != 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.existing.outputs.published != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=${{ matrix.repository }}
+          cache-to: type=gha,scope=${{ matrix.repository }},mode=max
