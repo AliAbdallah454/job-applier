@@ -7,21 +7,55 @@ The goal is to collect opportunities once, match them to each applicant, prepare
 truthful tailored documents, and track the application from submission to response.
 The project is being built incrementally. **Today, it is a Python job-collection
 backend with CLI tools, two-table DynamoDB storage, and a CDK deployment for parallel
-Docker/Fargate workers.** The dashboard and application workflows are planned.
+Docker/Fargate workers, a local jobs dashboard, and asynchronous Bedrock document generation.**
+Application submission and mailbox workflows are planned.
 
 For deployment, API-key setup and a small first run, see the
 [AWS pipeline guide](infra/README.md).
 
-The feeder, scraper and classifier have separate Dockerfiles and ECS images.
+Browse your collected jobs locally with the [jobs frontend](frontend/README.md):
+
+```sh
+uv run python -m frontend.server --region us-east-1
+```
+
+Open http://127.0.0.1:8000. Use `--demo` to preview example jobs without AWS.
+
+Detailed candidate records are defined in [backend/profiles/models.py](backend/profiles/models.py).
+This provides validated models and a fictional-profile seeder for the separate
+Application stack's Profiles table. After deploying that stack, seed/reset demo data:
+
+```sh
+uv run python -m scripts.seed_profiles --stack Application --region us-east-1
+```
+
+Each run replaces `demo-user-*` profiles and the supplied `ali` seed profile,
+while preserving other users. The profile
+API is not implemented yet.
+
+Generate a tailored CV and motivation letter asynchronously using Bedrock:
+
+```sh
+uv run python -m backend.documents generate \
+  --user-id demo-user-001 --job-id YOUR_SAVED_JOB_ID --region us-east-1
+```
+
+Deploy `Application` first. Its SQS queue feeds independent ECS document workers,
+which store PDFs/LaTeX in S3 and user/job links in DynamoDB. See the
+[documents guide](backend/documents/README.md) for templates, status/downloads,
+retries and deployment settings.
+
+The feeder, scraper, classifier and document worker have separate Dockerfiles and ECS images.
 Build them from the repository root:
 
 ```sh
 docker build --platform linux/amd64 -f containers/Dockerfile.seed -t job-applier-seed:test .
 docker build --platform linux/amd64 -f containers/Dockerfile.scrape -t job-applier-scrape:test .
 docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-applier-classify:test .
+docker build --platform linux/amd64 -f containers/Dockerfile.documents -t job-applier-documents:test .
 ```
 
-CDK builds and publishes all three images during deployment. See the pipeline guide
+CDK builds and publishes the images needed by the selected stack during deployment. See the pipeline guide
 for local container checks and AWS setup.
 
 Collection launch settings live in `config/collections/default.yaml`; the company
@@ -59,7 +93,8 @@ documents, approvals, and application history will belong to each user.
 Document generation will start from an existing CV, including an Overleaf/LaTeX
 project, and preserve verified facts. The intended deployment is on AWS, with
 Amazon Bedrock for model inference and cost-aware routing: inexpensive assessments
-before more capable document generation. Document generation remains a proposal.
+before more capable document generation. The initial document worker supports
+profile-based tailoring; Overleaf integration remains planned.
 The collection/classification infrastructure is implemented in CDK; its presence
 does not mean it has been deployed in your AWS account.
 
@@ -81,7 +116,7 @@ does not mean it has been deployed in your AWS account.
 - Offline tests for provider formats, pagination, failures, limits, and exports.
 
 There is currently no recommendation model, application submission,
-mailbox connection, CV generator or running frontend. LinkedIn
+or mailbox connection. The local dashboard and CV/letter generation are implemented. LinkedIn
 and Welcome to the Jungle fetching have been removed.
 
 ## Setup
@@ -368,6 +403,8 @@ backend/
     cli/
       collect.py                local collection command, DynamoDB or JSON output
       classify.py               local classification command
+  profiles/                     detailed candidate models
+  documents/                    Bedrock generation, templates, storage and worker
   tests/                        offline tests for backend behavior
 infra/                          AWS resources and deployment helpers
 config/collections/             YAML collection settings

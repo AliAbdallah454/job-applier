@@ -1,0 +1,1436 @@
+[
+  {
+    "user_id": "demo-user-001",
+    "full_name": "Demo Candidate — Python and ML",
+    "email": "python-ml@example.com",
+    "location": "Paris, France",
+    "background": "Fictional computer science student interested in applied machine learning and Python backend development. Enjoys turning experimental notebooks into reproducible tools and describing the limitations of results.",
+    "education": [
+      {
+        "id": "education-ml-001",
+        "institution": "Example University",
+        "qualification": "MSc",
+        "field_of_study": "Computer Science",
+        "start_date": "2024-09",
+        "current": true,
+        "description": "Studied machine learning, databases and software engineering through coursework and team projects.",
+        "coursework": [
+          "Machine learning",
+          "Relational databases",
+          "Software engineering"
+        ]
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-ml-001",
+        "organization": "Example Analytics Company",
+        "role": "Python development intern",
+        "start_date": "2025-03",
+        "end_date": "2025-08",
+        "description": "Built Python scripts that collected supplier records every morning. Investigated intermittent request failures, added bounded retries and stored normalized records in PostgreSQL. Worked with a mentor on code reviews and documented how to rerun a failed collection.",
+        "responsibilities": [
+          "Maintained collection scripts",
+          "Wrote pytest tests",
+          "Documented operational steps"
+        ],
+        "achievements": [
+          "Delivered a repeatable collection workflow with failure diagnostics"
+        ],
+        "technologies": [
+          "Python",
+          "PostgreSQL",
+          "pytest",
+          "Git"
+        ]
+      },
+      {
+        "id": "experience-ml-002",
+        "organization": "Example University Computing Lab",
+        "role": "Student research assistant",
+        "start_date": "2024-06",
+        "description": "Helped a research student reproduce text classification experiments. Cleaned inconsistent labels, separated training and evaluation data and documented preprocessing choices. Compared a majority-class baseline against TF-IDF features and discussed errors with the supervisor rather than claiming the model was production-ready.",
+        "technologies": [
+          "Python",
+          "pandas",
+          "scikit-learn",
+          "Jupyter"
+        ],
+        "responsibilities": [
+          "Prepared datasets and reproducible notebooks",
+          "Reviewed misclassified examples"
+        ],
+        "achievements": [
+          "Delivered a documented baseline and a reproducible evaluation notebook"
+        ],
+        "end_date": "2024-12"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-ml-001",
+        "name": "Support ticket classifier",
+        "description": "A fictional university project comparing a TF-IDF baseline with a small text classifier. Used a held-out evaluation set and examined incorrect predictions before changing the model.",
+        "contribution": "Prepared data, implemented the baseline and built a FastAPI prediction endpoint.",
+        "technologies": [
+          "Python",
+          "scikit-learn",
+          "pandas",
+          "FastAPI"
+        ],
+        "outcomes": [
+          "Reproducible training and evaluation scripts"
+        ],
+        "links": [
+          {
+            "label": "Example project",
+            "url": "https://example.com/projects/ticket-classifier"
+          }
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "Python",
+        "description": "Used for data collection, testing and ML experiments."
+      },
+      {
+        "name": "PostgreSQL",
+        "description": "Designed tables and wrote SQL queries for supplier records."
+      },
+      {
+        "name": "scikit-learn",
+        "description": "Built classification baselines and evaluated errors."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-ml-001",
+        "name": "Example Python Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02"
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "ml_engineer",
+        "software_engineer"
+      ],
+      "seniorities": [
+        "entry",
+        "junior"
+      ],
+      "contract_types": [
+        "internship",
+        "apprenticeship"
+      ],
+      "locations": [
+        "Paris"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "onsite"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-002",
+    "full_name": "Demo Candidate — Cloud and DevOps",
+    "email": "cloud-devops@example.com",
+    "location": "Lyon, France",
+    "background": "Fictional junior engineer focused on infrastructure automation, deployment reliability and clear operational documentation.",
+    "education": [
+      {
+        "id": "education-cloud-001",
+        "institution": "Example Engineering School",
+        "qualification": "Engineering degree",
+        "field_of_study": "Information Systems",
+        "start_date": "2021",
+        "end_date": "2025",
+        "coursework": [
+          "Linux administration",
+          "Networking",
+          "Distributed systems"
+        ]
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-cloud-001",
+        "organization": "Example Platform Company",
+        "role": "Cloud engineering apprentice",
+        "start_date": "2023-09",
+        "end_date": "2025-08",
+        "description": "Helped maintain a staging environment on AWS. Updated Terraform modules under supervision, added checks to GitHub Actions workflows and investigated failed container deployments using application logs. Wrote a checklist for routine releases and rollback exercises.",
+        "responsibilities": [
+          "Reviewed infrastructure changes with a mentor",
+          "Maintained release automation",
+          "Documented deployment troubleshooting"
+        ],
+        "achievements": [
+          "Made a repeatable staging deployment and rollback exercise"
+        ],
+        "technologies": [
+          "AWS",
+          "Terraform",
+          "Docker",
+          "GitHub Actions",
+          "Linux"
+        ]
+      },
+      {
+        "id": "experience-cloud-002",
+        "organization": "Example Internal Tools Team",
+        "role": "Infrastructure automation intern",
+        "start_date": "2023-05",
+        "description": "Wrote Python scripts to check staging configuration before releases. Added validation for missing environment variables and documented required permissions. Ran the checks in GitHub Actions and reviewed failures with a platform engineer.",
+        "technologies": [
+          "Python",
+          "GitHub Actions",
+          "Linux",
+          "Bash"
+        ],
+        "responsibilities": [
+          "Automated pre-release checks",
+          "Documented deployment prerequisites"
+        ],
+        "achievements": [
+          "Replaced a manual staging checklist with repeatable checks"
+        ],
+        "end_date": "2023-08"
+      },
+      {
+        "id": "experience-cloud-003",
+        "organization": "Example Campus IT",
+        "role": "Part-time IT support assistant",
+        "start_date": "2022-09",
+        "description": "Helped students troubleshoot Linux workstations and connectivity issues. Collected useful diagnostics, explained workarounds and escalated access requests to the authorized administrator. Maintained a short knowledge base of recurring issues.",
+        "technologies": [
+          "Linux",
+          "Networking",
+          "Bash"
+        ],
+        "responsibilities": [
+          "Investigated workstation issues",
+          "Maintained troubleshooting notes"
+        ],
+        "achievements": [
+          "Created reusable troubleshooting instructions for common connectivity problems"
+        ],
+        "end_date": "2023-04"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-cloud-001",
+        "name": "Container deployment lab",
+        "description": "A fictional personal lab deploying a small Python service with infrastructure as code and observing its logs.",
+        "contribution": "Created infrastructure definitions, configured CI checks and documented teardown.",
+        "technologies": [
+          "Python",
+          "Docker",
+          "Terraform",
+          "AWS"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "AWS",
+        "description": "Hands-on staging work with compute, storage and CloudWatch logs."
+      },
+      {
+        "name": "Terraform"
+      },
+      {
+        "name": "Docker"
+      },
+      {
+        "name": "Python",
+        "description": "Wrote small deployment and validation scripts."
+      },
+      {
+        "name": "Linux"
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-cloud-001",
+        "name": "Example Cloud Fundamentals Certificate",
+        "issuer": "Fictional Cloud Academy",
+        "issued_at": "2024-11"
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "C1, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "devops_engineer",
+        "cloud_engineer"
+      ],
+      "seniorities": [
+        "junior"
+      ],
+      "contract_types": [
+        "permanent"
+      ],
+      "locations": [
+        "Lyon",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "remote",
+        "hybrid"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-003",
+    "full_name": "Demo Candidate — Web Development",
+    "email": "web-development@example.com",
+    "location": "Bordeaux, France",
+    "background": "Fictional final-year student seeking a software development internship. Interested in usable web interfaces, API design and relational databases.",
+    "education": [
+      {
+        "id": "education-web-001",
+        "institution": "Example College",
+        "qualification": "BSc",
+        "field_of_study": "Software Development",
+        "start_date": "2023-09",
+        "current": true,
+        "coursework": [
+          "Web development",
+          "Algorithms",
+          "SQL databases"
+        ]
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-web-001",
+        "organization": "Example Student Association",
+        "role": "Volunteer web developer",
+        "start_date": "2024-10",
+        "current": true,
+        "description": "Maintained an event registration website for a student association. Collected organizer feedback, added accessible form labels and improved error messages. Reviewed changes with other student volunteers.",
+        "technologies": [
+          "JavaScript",
+          "HTML",
+          "CSS",
+          "Git"
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-web-001",
+        "name": "Event registration application",
+        "description": "A fictional course project combining a browser interface with a Python API and a relational database.",
+        "contribution": "Implemented registration forms, input validation and SQL queries. Added tests for duplicate registrations.",
+        "technologies": [
+          "Python",
+          "FastAPI",
+          "JavaScript",
+          "SQLite"
+        ],
+        "outcomes": [
+          "A working registration flow with automated validation tests"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "JavaScript"
+      },
+      {
+        "name": "HTML/CSS"
+      },
+      {
+        "name": "Python"
+      },
+      {
+        "name": "SQL"
+      },
+      {
+        "name": "SQLite"
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-web-001",
+        "name": "Example Web Accessibility Workshop",
+        "issuer": "Fictional Student Training Group",
+        "issued_at": "2025-01"
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      },
+      {
+        "name": "Spanish",
+        "proficiency": "A2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "software_engineer"
+      ],
+      "seniorities": [
+        "entry"
+      ],
+      "contract_types": [
+        "internship"
+      ],
+      "locations": [
+        "Bordeaux",
+        "Paris"
+      ],
+      "work_arrangements": [
+        "onsite",
+        "hybrid"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-004",
+    "full_name": "Demo Candidate — Data Engineering",
+    "email": "demo-004@example.com",
+    "location": "Nantes, France",
+    "background": "Fictional early-career data engineer with experience moving operational data into reliable reporting pipelines. Interested in data quality, SQL modeling and explaining pipeline failures to analysts.",
+    "education": [
+      {
+        "id": "education-004-001",
+        "institution": "Example Data Institute",
+        "qualification": "MSc",
+        "field_of_study": "Data Engineering",
+        "start_date": "2022-09",
+        "end_date": "2024-09",
+        "description": "Fictional qualification in data engineering with practical team assignments."
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-data-001",
+        "organization": "Example Logistics Platform",
+        "role": "Junior data engineer",
+        "start_date": "2024-10",
+        "description": "Maintained scheduled ingestion of shipment events from REST APIs into PostgreSQL. Added checks for duplicate event identifiers and late-arriving records. Worked with analysts to define reporting tables and documented how to replay a failed batch without duplicating records.",
+        "technologies": [
+          "Python",
+          "PostgreSQL",
+          "Airflow",
+          "SQL"
+        ],
+        "responsibilities": [
+          "Maintained ingestion workflows",
+          "Investigated data quality issues",
+          "Reviewed reporting requirements"
+        ],
+        "achievements": [
+          "Added repeatable batch replay and duplicate checks"
+        ],
+        "current": true
+      },
+      {
+        "id": "experience-data-002",
+        "organization": "Example Retail Analytics",
+        "role": "Data engineering intern",
+        "start_date": "2024-03",
+        "description": "Helped move daily CSV exports into a warehouse. Compared source and target row counts, documented schema changes and wrote SQL transformations with review from an experienced engineer. Learned to distinguish missing data from a legitimate zero value.",
+        "technologies": [
+          "Python",
+          "SQL",
+          "dbt",
+          "Git"
+        ],
+        "responsibilities": [
+          "Validated incoming CSV files",
+          "Wrote tested SQL transformations"
+        ],
+        "achievements": [
+          "Documented source-to-report field mappings"
+        ],
+        "end_date": "2024-09"
+      },
+      {
+        "id": "experience-data-003",
+        "organization": "Example University Observatory",
+        "role": "Student data assistant",
+        "start_date": "2023-05",
+        "description": "Prepared survey datasets for a university reporting project. Standardized date formats, identified inconsistent codes and kept a record of cleaning decisions so another student could reproduce the work.",
+        "technologies": [
+          "Python",
+          "pandas",
+          "CSV"
+        ],
+        "responsibilities": [
+          "Cleaned survey exports",
+          "Recorded reproducibility notes"
+        ],
+        "achievements": [
+          "Produced reusable data cleaning scripts"
+        ],
+        "end_date": "2023-12"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-data-001",
+        "name": "Public transport pipeline",
+        "description": "A fictional personal pipeline ingesting public transport arrival data into a database.",
+        "contribution": "Implemented incremental collection, deduplication and a daily completeness report.",
+        "technologies": [
+          "Python",
+          "PostgreSQL",
+          "Docker"
+        ],
+        "outcomes": [
+          "Repeatable incremental ingestion with data quality checks"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "Python",
+        "description": "API ingestion and workflow automation."
+      },
+      {
+        "name": "SQL",
+        "description": "Reporting queries and data quality checks."
+      },
+      {
+        "name": "PostgreSQL",
+        "description": "Tables, constraints and incremental loads."
+      },
+      {
+        "name": "Airflow",
+        "description": "Maintained scheduled DAGs."
+      },
+      {
+        "name": "dbt",
+        "description": "Reviewed and tested transformations."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-004-001",
+        "name": "Example Data Engineering Workshop Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02",
+        "description": "Fictional course-completion certificate for development fixtures."
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "data_engineer"
+      ],
+      "seniorities": [
+        "junior"
+      ],
+      "contract_types": [
+        "permanent"
+      ],
+      "locations": [
+        "Nantes",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-005",
+    "full_name": "Demo Candidate — Applied AI",
+    "email": "demo-005@example.com",
+    "location": "Paris, France",
+    "background": "Fictional software engineer moving toward applied AI products. Has built small evaluation tools and retrieval prototypes, while treating generated answers as uncertain outputs that need checking.",
+    "education": [
+      {
+        "id": "education-005-001",
+        "institution": "Example Technology University",
+        "qualification": "MSc",
+        "field_of_study": "Computer Science",
+        "start_date": "2021-09",
+        "end_date": "2023-09",
+        "description": "Fictional qualification in computer science with practical team assignments."
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-ai-001",
+        "organization": "Example Knowledge Tools",
+        "role": "Junior AI application engineer",
+        "start_date": "2024-06",
+        "description": "Built a prototype assistant for searching internal documentation. Implemented document chunking, retrieval and source links, then collected examples of unanswered or misleading questions. Collaborated with a product engineer to keep the tool explicit about missing evidence.",
+        "technologies": [
+          "Python",
+          "FastAPI",
+          "LLM APIs",
+          "Vector search"
+        ],
+        "responsibilities": [
+          "Built retrieval endpoints",
+          "Maintained evaluation examples",
+          "Added source references to answers"
+        ],
+        "achievements": [
+          "Created a repeatable evaluation set covering supported and unsupported questions"
+        ],
+        "current": true
+      },
+      {
+        "id": "experience-ai-002",
+        "organization": "Example Business Software",
+        "role": "Backend developer intern",
+        "start_date": "2023-03",
+        "description": "Added API endpoints for a document tracking product. Implemented input validation, wrote database queries and tested access restrictions with a mentor. Investigated slow requests by tracing database access and unnecessary repeated queries.",
+        "technologies": [
+          "Python",
+          "FastAPI",
+          "PostgreSQL",
+          "pytest"
+        ],
+        "responsibilities": [
+          "Implemented backend features",
+          "Wrote API tests"
+        ],
+        "achievements": [
+          "Delivered tested document lookup endpoints"
+        ],
+        "end_date": "2023-09"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-ai-001",
+        "name": "Document question-answering evaluation",
+        "description": "A fictional portfolio project comparing retrieval settings on a small collection of public documents.",
+        "contribution": "Prepared expected answers, compared retrieval results and documented failure cases.",
+        "technologies": [
+          "Python",
+          "Embeddings",
+          "Jupyter"
+        ],
+        "outcomes": [
+          "An evaluation report with example failures and source references"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "Python",
+        "description": "Backend services and evaluation scripts."
+      },
+      {
+        "name": "FastAPI",
+        "description": "Validated endpoints and API tests."
+      },
+      {
+        "name": "PostgreSQL",
+        "description": "Document metadata queries."
+      },
+      {
+        "name": "LLM integration",
+        "description": "Retrieval prototypes and grounded answer evaluation."
+      },
+      {
+        "name": "Vector search",
+        "description": "Experimented with document retrieval settings."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-005-001",
+        "name": "Example Applied AI Workshop Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02",
+        "description": "Fictional course-completion certificate for development fixtures."
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "ai_engineer",
+        "software_engineer"
+      ],
+      "seniorities": [
+        "junior"
+      ],
+      "contract_types": [
+        "permanent",
+        "fixed_term"
+      ],
+      "locations": [
+        "Paris",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-006",
+    "full_name": "Demo Candidate — Full-stack Development",
+    "email": "demo-006@example.com",
+    "location": "Lille, France",
+    "background": "Fictional developer with several years of web application experience, including frontend accessibility, backend APIs and collaborative feature delivery.",
+    "education": [
+      {
+        "id": "education-006-001",
+        "institution": "Example Engineering College",
+        "qualification": "BSc",
+        "field_of_study": "Software Engineering",
+        "start_date": "2018-09",
+        "end_date": "2021-06",
+        "description": "Fictional qualification in software engineering with practical team assignments."
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-fullstack-001",
+        "organization": "Example Booking Software",
+        "role": "Software engineer",
+        "start_date": "2023-09",
+        "description": "Implemented booking-management features across a React interface and Python APIs. Discussed edge cases with support colleagues, added server-side validation and wrote tests for conflicting reservations. Participated in code reviews and documented deployment steps.",
+        "technologies": [
+          "React",
+          "TypeScript",
+          "Python",
+          "PostgreSQL"
+        ],
+        "responsibilities": [
+          "Delivered frontend and API features",
+          "Reviewed changes and investigated support issues"
+        ],
+        "achievements": [
+          "Added tests covering concurrent reservation conflicts"
+        ],
+        "current": true
+      },
+      {
+        "id": "experience-fullstack-002",
+        "organization": "Example Web Agency",
+        "role": "Junior web developer",
+        "start_date": "2021-09",
+        "description": "Developed responsive pages for small business applications. Integrated forms with APIs and worked with a designer on keyboard navigation and readable validation errors. Added automated checks to reduce accidental UI regressions.",
+        "technologies": [
+          "JavaScript",
+          "HTML",
+          "CSS",
+          "Python"
+        ],
+        "responsibilities": [
+          "Built accessible form flows",
+          "Integrated APIs",
+          "Maintained regression tests"
+        ],
+        "achievements": [
+          "Improved keyboard navigation across a multi-step registration form"
+        ],
+        "end_date": "2023-08"
+      },
+      {
+        "id": "experience-fullstack-003",
+        "organization": "Example Local Association",
+        "role": "Web development intern",
+        "start_date": "2021-03",
+        "description": "Helped maintain a membership website and implemented a simple event listing. Cleaned up HTML structure, checked mobile layouts and wrote handover notes for the volunteer maintainer.",
+        "technologies": [
+          "HTML",
+          "CSS",
+          "JavaScript",
+          "Git"
+        ],
+        "responsibilities": [
+          "Maintained pages and event listings",
+          "Documented content updates"
+        ],
+        "achievements": [
+          "Delivered a responsive event listing with a maintenance guide"
+        ],
+        "end_date": "2021-07"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-fullstack-001",
+        "name": "Collaborative task board",
+        "description": "A fictional project exploring multi-user task management.",
+        "contribution": "Built the interface, API and permission checks, and tested rejected unauthorized edits.",
+        "technologies": [
+          "React",
+          "TypeScript",
+          "Python"
+        ],
+        "outcomes": [
+          "A tested role-based editing flow"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "React",
+        "description": "Built production-style interfaces and forms."
+      },
+      {
+        "name": "TypeScript",
+        "description": "Typed UI state and API responses."
+      },
+      {
+        "name": "Python",
+        "description": "Backend validation and API implementation."
+      },
+      {
+        "name": "PostgreSQL",
+        "description": "Application queries and constraints."
+      },
+      {
+        "name": "Accessibility",
+        "description": "Keyboard navigation and form semantics."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-006-001",
+        "name": "Example Full-stack Development Workshop Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02",
+        "description": "Fictional course-completion certificate for development fixtures."
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "C1, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "software_engineer"
+      ],
+      "seniorities": [
+        "mid"
+      ],
+      "contract_types": [
+        "permanent"
+      ],
+      "locations": [
+        "Lille",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-007",
+    "full_name": "Demo Candidate — Security Engineering",
+    "email": "demo-007@example.com",
+    "location": "Rennes, France",
+    "background": "Fictional junior security candidate with hands-on log analysis, application security testing and a prior support role. Interested in explaining risk clearly and verifying that fixes work.",
+    "education": [
+      {
+        "id": "education-007-001",
+        "institution": "Example Security School",
+        "qualification": "MSc",
+        "field_of_study": "Cybersecurity",
+        "start_date": "2022-09",
+        "end_date": "2024-09",
+        "description": "Fictional qualification in cybersecurity with practical team assignments."
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-security-001",
+        "organization": "Example Security Consultancy",
+        "role": "Security analyst intern",
+        "start_date": "2024-03",
+        "description": "Reviewed application logs during supervised security assessments. Reproduced authorization issues in test environments and wrote reports describing the request, observed behavior and expected access boundary. Retested fixes with the engineering team.",
+        "technologies": [
+          "Python",
+          "HTTP",
+          "Linux",
+          "Log analysis"
+        ],
+        "responsibilities": [
+          "Reproduced findings in approved test environments",
+          "Wrote remediation notes",
+          "Retested fixes"
+        ],
+        "achievements": [
+          "Created reproducible examples for authorization findings"
+        ],
+        "end_date": "2024-09"
+      },
+      {
+        "id": "experience-security-002",
+        "organization": "Example Campus Services",
+        "role": "IT support assistant",
+        "start_date": "2021-09",
+        "description": "Handled account-access and workstation support requests under documented procedures. Confirmed authorization before escalating access changes and recorded troubleshooting steps for the next support shift.",
+        "technologies": [
+          "Linux",
+          "Networking",
+          "Identity management"
+        ],
+        "responsibilities": [
+          "Triaged support tickets",
+          "Followed access approval procedures"
+        ],
+        "achievements": [
+          "Updated support documentation for recurring account issues"
+        ],
+        "end_date": "2022-07"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-security-001",
+        "name": "Authorization testing lab",
+        "description": "A fictional local test application used to explore broken access controls.",
+        "contribution": "Wrote tests for cross-user access and documented corrected behavior.",
+        "technologies": [
+          "Python",
+          "pytest",
+          "HTTP"
+        ],
+        "outcomes": [
+          "A regression suite for user ownership checks"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "Python",
+        "description": "Security test scripts and log processing."
+      },
+      {
+        "name": "Linux",
+        "description": "Workstation troubleshooting and log review."
+      },
+      {
+        "name": "HTTP",
+        "description": "Request analysis and authorization tests."
+      },
+      {
+        "name": "SQL",
+        "description": "Basic database queries for investigations."
+      },
+      {
+        "name": "Security reporting",
+        "description": "Reproducible findings and retest notes."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-007-001",
+        "name": "Example Security Engineering Workshop Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02",
+        "description": "Fictional course-completion certificate for development fixtures."
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "security_engineer"
+      ],
+      "seniorities": [
+        "entry",
+        "junior"
+      ],
+      "contract_types": [
+        "permanent",
+        "fixed_term"
+      ],
+      "locations": [
+        "Rennes",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ]
+    }
+  },
+  {
+    "user_id": "demo-user-008",
+    "full_name": "Demo Candidate — QA Automation",
+    "email": "demo-008@example.com",
+    "location": "Toulouse, France",
+    "background": "Fictional junior QA engineer interested in reliable automated checks, clear bug reports and collaboration with developers.",
+    "education": [
+      {
+        "id": "education-008-001",
+        "institution": "Example Applied Computing College",
+        "qualification": "BSc",
+        "field_of_study": "Computer Science",
+        "start_date": "2020-09",
+        "end_date": "2023-06",
+        "description": "Fictional qualification in computer science with practical team assignments."
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-qa-001",
+        "organization": "Example Travel Product",
+        "role": "Junior test automation engineer",
+        "start_date": "2024-02",
+        "description": "Maintained browser tests for booking and cancellation flows. Investigated intermittent failures by checking test data isolation, selectors and asynchronous page behavior. Worked with developers to add API tests for cases that did not require a browser.",
+        "technologies": [
+          "Playwright",
+          "TypeScript",
+          "Python",
+          "pytest"
+        ],
+        "responsibilities": [
+          "Maintained regression tests",
+          "Investigated flaky tests",
+          "Reviewed bug reports"
+        ],
+        "achievements": [
+          "Replaced shared test data with isolated fixtures in key booking tests"
+        ],
+        "current": true
+      },
+      {
+        "id": "experience-qa-002",
+        "organization": "Example Mobile Services",
+        "role": "QA intern",
+        "start_date": "2023-03",
+        "description": "Executed release checklists and reported bugs with reproduction steps and expected behavior. Added Python tests for a small internal API, then documented how to run them locally and in CI.",
+        "technologies": [
+          "Python",
+          "pytest",
+          "HTTP",
+          "GitHub Actions"
+        ],
+        "responsibilities": [
+          "Performed exploratory testing",
+          "Documented defects",
+          "Added basic API tests"
+        ],
+        "achievements": [
+          "Introduced repeatable API checks for the release checklist"
+        ],
+        "end_date": "2023-08"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-qa-001",
+        "name": "Checkout test suite",
+        "description": "A fictional demonstration of browser and API tests for a small shop application.",
+        "contribution": "Created test fixtures and separated smoke checks from slower end-to-end scenarios.",
+        "technologies": [
+          "Playwright",
+          "TypeScript",
+          "pytest"
+        ],
+        "outcomes": [
+          "Documented smoke and full regression commands"
+        ]
+      }
+    ],
+    "skills": [
+      {
+        "name": "Playwright",
+        "description": "Browser regression tests and stable selectors."
+      },
+      {
+        "name": "TypeScript",
+        "description": "Test helpers and reusable fixtures."
+      },
+      {
+        "name": "Python",
+        "description": "API tests and data setup."
+      },
+      {
+        "name": "SQL",
+        "description": "Inspecting and validating test data."
+      },
+      {
+        "name": "GitHub Actions",
+        "description": "Maintaining test jobs in CI."
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certificate-008-001",
+        "name": "Example QA Automation Workshop Certificate",
+        "issuer": "Fictional Training Provider",
+        "issued_at": "2025-02",
+        "description": "Fictional course-completion certificate for development fixtures."
+      }
+    ],
+    "languages": [
+      {
+        "name": "French",
+        "proficiency": "Native"
+      },
+      {
+        "name": "English",
+        "proficiency": "B2, self-assessed"
+      }
+    ],
+    "preferences": {
+      "categories": [
+        "qa_engineer",
+        "software_engineer"
+      ],
+      "seniorities": [
+        "junior"
+      ],
+      "contract_types": [
+        "permanent",
+        "fixed_term"
+      ],
+      "locations": [
+        "Toulouse",
+        "Remote, France"
+      ],
+      "work_arrangements": [
+        "hybrid",
+        "remote"
+      ]
+    }
+  },
+  {
+    "user_id": "ali",
+    "schema_version": 1,
+    "version": 1,
+    "full_name": "Ali Abdallah",
+    "email": "alikhaledabdallah454@gmail.com",
+    "phone": "+33 753846569",
+    "location": "Paris, France",
+    "background": "Software Engineer / AI Engineer / Cloud Engineer",
+    "links": [
+      {
+        "label": "LinkedIn",
+        "url": "https://www.linkedin.com/in/ali-khaled-abdallah/"
+      },
+      {
+        "label": "GitHub",
+        "url": "https://github.com/AliAbdallah454"
+      }
+    ],
+    "experiences": [
+      {
+        "id": "experience-ericsson-2026",
+        "start_date": "2026-04",
+        "end_date": "2026-09",
+        "current": false,
+        "organization": "Ericsson",
+        "role": "AI Engineer Intern",
+        "location": "Massy, France",
+        "description": "Worked on scalable telecom figure extraction, vision-language model training, multimodal retrieval, and end-to-end MLOps infrastructure.",
+        "responsibilities": [
+          "Extracted 3GPP figures at scale and generated synthetic training captions using AWS Bedrock.",
+          "Fine-tuned vision-language models for telecom image retrieval using distributed data parallel (DDP) training on AWS EC2.",
+          "Developed a hybrid search engine combining BM25, text embeddings, and fine-tuned multimodal embeddings.",
+          "Built an end-to-end MLOps pipeline automating data processing, training, indexing, and deployment using Metaflow, AWS Step Functions, and CloudFormation."
+        ],
+        "achievements": [],
+        "technologies": [
+          "Python",
+          "AWS Bedrock",
+          "AWS EC2",
+          "PyTorch",
+          "DDP",
+          "BM25",
+          "Multimodal embeddings",
+          "Metaflow",
+          "AWS Step Functions",
+          "AWS CloudFormation"
+        ],
+        "links": []
+      },
+      {
+        "id": "experience-white-stork-2024",
+        "start_date": "2024-09",
+        "end_date": "2025-01",
+        "current": false,
+        "organization": "White Stork",
+        "role": "Software Engineer Intern",
+        "location": "Beirut, Lebanon",
+        "description": "Worked on distributed database engineering, high-performance ingestion and indexing, containerized services, and infrastructure as code.",
+        "responsibilities": [
+          "Developed EgretDB, a distributed key-value store in Rust and RocksDB, implementing consistent hashing, sharding, and fault tolerance.",
+          "Built high-performance data ingestion and indexing pipelines.",
+          "Containerized and deployed distributed services using Docker and Amazon ECS, supporting horizontal scaling.",
+          "Automated AWS infrastructure provisioning and deployment configurations using Terraform."
+        ],
+        "achievements": [
+          "Achieved millisecond-level query latency for ingestion and indexing system queries."
+        ],
+        "technologies": [
+          "Rust",
+          "RocksDB",
+          "Docker",
+          "Amazon ECS",
+          "Terraform",
+          "AWS"
+        ],
+        "links": []
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-gpt2-reimplementation",
+        "start_date": null,
+        "end_date": null,
+        "current": false,
+        "name": "GPT-2 124M Reimplementation",
+        "description": "Reimplemented GPT-2 124M from scratch, including its tokenizer and Transformer architecture.",
+        "contribution": "Implemented the model and tokenizer, evaluated it on HellaSwag, and built a multi-GPU distributed training pipeline with DDP, NCCL, and mixed precision.",
+        "outcomes": [
+          "Evaluated the reimplemented GPT-2 124M on HellaSwag.",
+          "Built a multi-GPU distributed training pipeline."
+        ],
+        "technologies": [
+          "Python",
+          "PyTorch",
+          "GPT-2",
+          "DDP",
+          "NCCL",
+          "Mixed precision"
+        ],
+        "links": []
+      },
+      {
+        "id": "project-rust-neural-network",
+        "name": "Neural Network Framework in Rust",
+        "description": "Built an MLP from scratch in Rust and evaluated sequential, multithreaded, SIMD, and CUDA matrix multiplication backends.",
+        "contribution": "Wrote CUDA matrix multiplication kernels and integrated them into Rust via FFI.",
+        "technologies": [
+          "Rust",
+          "C++",
+          "CUDA",
+          "SIMD",
+          "FFI"
+        ]
+      },
+      {
+        "id": "project-rag-code-assistant",
+        "name": "AI-Powered Code Assistant with RAG",
+        "description": "Built a ChatGPT-style full-stack application with React, FastAPI, and PostgreSQL.",
+        "contribution": "Developed a LangChain RAG pipeline where one LLM extracts tasks and libraries, while a tool-augmented LLM retrieves relevant functions and classes using Pinecone and Context7.",
+        "technologies": [
+          "Python",
+          "LangChain",
+          "FastAPI",
+          "React",
+          "PostgreSQL",
+          "Pinecone",
+          "Context7"
+        ]
+      }
+    ],
+    "education": [
+      {
+        "id": "education-paris-saclay-ipp",
+        "institution": "Université Paris-Saclay & Institut Polytechnique de Paris (Double Degree)",
+        "qualification": "Master 2 (M2)",
+        "field_of_study": "Multimedia Networking",
+        "start_date": "2025-09",
+        "end_date": "2026-09",
+        "current": false
+      },
+      {
+        "id": "education-lebanese-university",
+        "institution": "Lebanese University — Faculty of Engineering III",
+        "qualification": "Diploma",
+        "field_of_study": "Computer and Telecommunication Engineering",
+        "start_date": "2021-09",
+        "end_date": "2026-09",
+        "current": false
+      }
+    ],
+    "skills": [
+      {
+        "name": "Python"
+      },
+      {
+        "name": "Rust"
+      },
+      {
+        "name": "C/C++"
+      },
+      {
+        "name": "Go"
+      },
+      {
+        "name": "Java"
+      },
+      {
+        "name": "JavaScript"
+      },
+      {
+        "name": "TypeScript"
+      },
+      {
+        "name": "PyTorch"
+      },
+      {
+        "name": "TensorFlow"
+      },
+      {
+        "name": "Hugging Face Transformers"
+      },
+      {
+        "name": "PEFT/LoRA"
+      },
+      {
+        "name": "Scikit-learn"
+      },
+      {
+        "name": "OpenCV"
+      },
+      {
+        "name": "Optuna"
+      },
+      {
+        "name": "AWS"
+      },
+      {
+        "name": "AWS EC2"
+      },
+      {
+        "name": "Amazon ECS"
+      },
+      {
+        "name": "AWS Bedrock"
+      },
+      {
+        "name": "Amazon SageMaker"
+      },
+      {
+        "name": "AWS Step Functions"
+      },
+      {
+        "name": "AWS CloudFormation"
+      },
+      {
+        "name": "Docker"
+      },
+      {
+        "name": "Terraform"
+      },
+      {
+        "name": "Metaflow"
+      },
+      {
+        "name": "CI/CD"
+      },
+      {
+        "name": "Linux"
+      },
+      {
+        "name": "PostgreSQL"
+      },
+      {
+        "name": "MongoDB"
+      },
+      {
+        "name": "Redis"
+      },
+      {
+        "name": "RocksDB"
+      }
+    ],
+    "certifications": [
+      {
+        "id": "certification-aws-ml-associate",
+        "name": "AWS Machine Learning Engineer Associate",
+        "issuer": "Amazon Web Services"
+      },
+      {
+        "id": "certification-aws-cloud-practitioner",
+        "name": "AWS Cloud Practitioner",
+        "issuer": "Amazon Web Services"
+      },
+      {
+        "id": "certification-ccna",
+        "name": "CCNA",
+        "issuer": "Cisco"
+      }
+    ],
+    "languages": [
+      {
+        "name": "English",
+        "proficiency": "C2"
+      },
+      {
+        "name": "French",
+        "proficiency": "B1"
+      },
+      {
+        "name": "Arabic",
+        "proficiency": "Native"
+      }
+    ],
+    "additional_information": "Also lists Machine Learning Specialization, Deep Learning Specialization, and NLP Specialization; issuers and dates were not supplied."
+  }
+]

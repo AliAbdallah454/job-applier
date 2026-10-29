@@ -9,3 +9,4 @@
 !backend/**
 backend/tests/
 **/__pycache__/
+!containers/Dockerfile.documents

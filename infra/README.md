@@ -1,21 +1,42 @@
 # AWS job pipeline
 
 This CDK application defines the `JobPipeline` collection/classification stack
-and a separate `Application` profile/document storage stack. It does not deploy anything merely
+and a separate `Application` profile/document generation stack. It does not deploy anything merely
 by installing dependencies, running tests or synthesizing the template.
 
-## Application storage stack
+## Application stack: profiles and document generation
 
-`infra/application_stack.py` currently creates only:
+`infra/application_stack.py` creates:
 
 - An on-demand **Profiles** DynamoDB table keyed by `user_id`, with encryption
   and point-in-time recovery.
 - A private, encrypted, HTTPS-only, versioned **Documents** S3 bucket.
+- An on-demand **DocumentGenerations** table with per-user/job lookup.
+- A generation queue, DLQ, alarm and autoscaling Fargate document workers.
 
-Both resources are retained on stack deletion. CDK generates physical names to
+The two tables and documents bucket are retained on stack deletion. CDK generates physical names to
 avoid collisions; the `ProfilesTable` and `DocumentsBucketName` outputs expose
-the actual names. Authentication, seeding, APIs and document workers are not
-included in this stack yet.
+the actual names. The stack also includes a `DocumentGenerations` table, SQS
+generation queue and DLQ, and a separate ECS document worker image with XeLaTeX.
+Workers scale from zero to two by default, call Bedrock, save CV/letter sources
+and PDFs to S3, and link their versions to the user/job in DynamoDB. A lease
+prevents concurrent duplicate work; a model-output checkpoint allows compilation
+retries without calling Bedrock again. Authentication and APIs remain deferred.
+
+See the [document generation guide](../backend/documents/README.md) for the flow
+diagram, submission/status commands, custom templates, retries and IAM boundaries.
+Additional outputs: `DocumentGenerationsTable`, `DocumentQueueUrl`, `DocumentDLQUrl`,
+`DocumentModelId`, `DocumentClusterName`, `DocumentWorkerService`,
+`DocumentWorkerLogGroup`. Context options: `maxDocumentWorkers` (2),
+`documentTimeoutSeconds` (600), `documentModelId` (`us.amazon.nova-pro-v1:0`).
+Seed/reset development profiles separately after deployment:
+
+```sh
+uv run python -m scripts.seed_profiles --stack Application --region us-east-1
+```
+
+This replaces `demo-user-*` records and the explicitly included `ali` seed profile. See the
+[profile seeder guide](../scripts/README.md).
 
 Deploy it independently, from the repository root with AWS credentials loaded:
 
@@ -27,7 +48,7 @@ uv run python -m infra.manage outputs --stack Application --region us-east-1
 ```
 
 Use explicit stack names when deploying: `Application` for profile/document
-storage and `JobPipeline` for collection. The remainder of this guide describes
+generation and `JobPipeline` for collection. The remainder of this guide describes
 the jobs pipeline.
 
 ```mermaid

@@ -14,7 +14,8 @@ from infra.stack import JobPipelineStack
 class StackTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app = App()
+        # Exercise explicit limits independently of the deployment defaults.
+        cls.app = App(context={"maxScrapers": 4, "maxClassifiers": 2})
         cls.stack = JobPipelineStack(cls.app, "TestPipeline")
         cls.template = Template.from_stack(cls.stack)
 

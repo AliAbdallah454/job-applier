@@ -111,6 +111,13 @@ fails or times out, its log and failing LaTeX source are stored privately in S3.
 even for failed generations. These files can contain personal CV text; they are
 not included in CloudWatch logs. Diagnostics capture is limited to 2 MB.
 
+The worker image explicitly installs `texlive-fonts-recommended` (including
+`marvosym.sty`) and checks that package file during the image build. The current
+Jake template no longer imports the unused `marvosym` package; the image retains
+support for existing input snapshots that still import it. After deploying this
+image fix, retry an existing failed generation to reuse its model-output checkpoint;
+editing a local template alone does not change an already frozen request.
+
 Identical inputs reuse a generation; `--force` creates a new revision. A DynamoDB
 lease prevents simultaneous processing. Each attempt writes separate artifact
 keys. Model output is checkpointed before compilation, so render retries reuse
