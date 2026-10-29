@@ -10,7 +10,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
 
-from backend.documents.models import DocumentJob, GenerationInput
+from backend.documents.models import GenerationInput, Job
 from backend.documents.render import DEFAULT_TEMPLATE
 from backend.documents.storage import GenerationStore, encode
 from backend.profiles.models import CandidateProfile
@@ -38,7 +38,7 @@ def load_job(args, session):
         data = {
             key: data[key] for key in ("job_id", "title", "description", "company") if key in data
         }
-    return DocumentJob.model_validate(data)
+    return Job.model_validate(data)
 
 
 def main():

@@ -18,7 +18,7 @@ from moto import mock_aws
 from backend.documents.__main__ import main as cli_main
 from backend.documents.bedrock import BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.models import DocumentJob, GeneratedContent, GenerationInput, SelectedEntry
+from backend.documents.models import GeneratedContent, GenerationInput, Job, TailoredEntry
 from backend.documents.render import DEFAULT_TEMPLATE, compile_pdf, escape, render_sources
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
@@ -33,7 +33,7 @@ def request():
     )
     return GenerationInput(
         profile=profile,
-        job=DocumentJob(job_id="job-1", title="Python engineer", description="Build APIs"),
+        job=Job(job_id="job-1", title="Python engineer", description="Build APIs"),
         model_id="us.amazon.nova-pro-v1:0",
         cv_template=DEFAULT_TEMPLATE.read_text(),
     )
@@ -94,7 +94,7 @@ class RenderingTests(unittest.TestCase):
         snapshot.profile.links = [Link(label="GitHub", url="https://github.com/example")]
         generated = content()
         generated.projects = [
-            SelectedEntry(
+            TailoredEntry(
                 source_id=snapshot.profile.projects[0].id,
                 bullets=[r"Built tooling with 50% fewer steps & tests."],
             )

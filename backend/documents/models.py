@@ -11,11 +11,15 @@ PROMPT_VERSION = 1
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 
 
-class DocumentModel(BaseModel):
+class StrictModel(BaseModel):
+    """Base for document models: unknown fields are rejected, not silently dropped."""
+
     model_config = ConfigDict(extra="forbid")
 
 
-class DocumentJob(DocumentModel):
+class Job(StrictModel):
+    """The job being applied to, as given to the model."""
+
     job_id: Text
     title: Text
     description: Annotated[
@@ -24,24 +28,30 @@ class DocumentJob(DocumentModel):
     company: Text | None = None
 
 
-class GenerationInput(DocumentModel):
+class GenerationInput(StrictModel):
+    """Everything one generation depends on; frozen in S3 when the request is submitted."""
+
     profile: CandidateProfile
-    job: DocumentJob
+    job: Job
     model_id: Text
     cv_template: Text
     prompt_version: Literal[1] = PROMPT_VERSION
 
 
-class SelectedEntry(DocumentModel):
+class TailoredEntry(StrictModel):
+    """A profile experience or project chosen for this job, with rewritten bullets."""
+
     source_id: Text
     bullets: list[Text] = Field(min_length=1, max_length=5)
 
 
-class GeneratedContent(DocumentModel):
+class GeneratedContent(StrictModel):
+    """The model's output: which profile facts to show and the text for the CV and letter."""
+
     headline: Text
     summary: Text
-    experiences: list[SelectedEntry]
-    projects: list[SelectedEntry]
+    experiences: list[TailoredEntry]
+    projects: list[TailoredEntry]
     education_ids: list[Text]
     skill_names: list[Text]
     certification_ids: list[Text]
