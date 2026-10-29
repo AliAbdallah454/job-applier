@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from backend.jobs.classification.models import ContractType, JobCategory, Seniority
+from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 from frontend.catalogue import JobCatalogue, JobFilters
 
 FRONTEND = Path(__file__).resolve().parent

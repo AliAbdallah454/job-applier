@@ -428,7 +428,7 @@ Local commands run with `uv run python -m backend.jobs.cli.collect` and
 `uv run python -m backend.jobs.cli.classify`. AWS worker entry points are
 `backend.jobs.workers.seed`, `backend.jobs.workers.scraper` and
 `backend.jobs.workers.classifier`. Scraping and classification have independent
-entrypoints and processing code; shared queue handling lives in `workers/runtime.py`.
+entrypoints and processing code; shared queue handling lives in `backend/utils/runtime.py`, also used by the document worker.
 Worker code lives in
 `jobs/workers/`; fetching, classification, and persistence all belong to `jobs/`.
 

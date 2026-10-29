@@ -32,11 +32,9 @@ known key. Until then, nothing collects jobs automatically.
 
 ## CI/CD
 
-- Images are all rebuilt on every push to `main`; skipping unchanged images (for example
-  content-hash tags) was considered and dropped as not worth the complexity.
 - No ECR lifecycle rule: images accumulate. A "keep the last N" rule is a few lines per repository.
 - No release manifest or rollback workflow (see `plans/image-publishing.md`); rollback is
-  `cdk deploy -c imageTag=<older sha>`.
+  `cdk deploy -c <worker>ImageTag=<older tag>`.
 - The CI runs in a single environment; there are no dev/prod stage separation or approvals.
 
 ## Application

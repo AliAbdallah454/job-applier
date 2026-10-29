@@ -1,7 +1,9 @@
 name: CI/CD
 
 # Pull requests: tests only. Pushes to main: tests, deploy both CDK stacks, then build and
-# push the four worker images tagged with the commit SHA. See docs/ci-cd.md.
+# push the worker images whose contents changed. Each image is tagged with a hash of its
+# inputs (scripts/image_tag.sh), so unchanged images keep their tag and their ECS task
+# definition does not change. See docs/ci-cd.md.
 on:
   pull_request:
   push:
@@ -16,9 +18,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   test:
@@ -43,8 +42,8 @@ jobs:
       - run: npm run synth -- --quiet
 
   deploy-infra:
-    # Creates the ECR repositories (first run) and points the ECS task definitions at the
-    # commit's image tag. CloudFormation skips resources that did not change.
+    # Creates the ECR repositories (first run) and points each ECS task definition at its
+    # image's content tag. CloudFormation skips resources that did not change.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
@@ -67,10 +66,21 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - name: Compute image tags
+        # Keep in step with the push-images matrix below.
+        run: |
+          {
+            echo "CDK_CONTEXT<<EOF"
+            echo "-c seedImageTag=$(scripts/image_tag.sh containers/Dockerfile.seed)"
+            echo "-c scraperImageTag=$(scripts/image_tag.sh containers/Dockerfile.scrape)"
+            echo "-c classifierImageTag=$(scripts/image_tag.sh containers/Dockerfile.classify)"
+            echo "-c documentsImageTag=$(scripts/image_tag.sh containers/Dockerfile.documents)"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
       - name: Show infrastructure changes
-        run: npx cdk diff JobPipeline Application -c imageTag="$IMAGE_TAG" || true
+        run: npx cdk diff JobPipeline Application $CDK_CONTEXT || true
       - name: Deploy infrastructure
-        run: npx cdk deploy JobPipeline Application --require-approval never -c imageTag="$IMAGE_TAG"
+        run: npx cdk deploy JobPipeline Application --require-approval never $CDK_CONTEXT
 
   push-images:
     needs: deploy-infra
@@ -101,10 +111,12 @@ jobs:
       - id: login
         uses: aws-actions/amazon-ecr-login@v2
       - id: existing
-        # Tags are immutable, so re-running a commit must not push again.
+        # The tag is a content hash: if it is already in ECR, the image is unchanged.
         run: |
+          tag=$(scripts/image_tag.sh "${{ matrix.dockerfile }}")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if aws ecr describe-images --repository-name "${{ matrix.repository }}" \
-              --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+              --image-ids imageTag="$tag" >/dev/null 2>&1; then
             echo "published=true" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.existing.outputs.published != 'true'
@@ -117,6 +129,6 @@ jobs:
           platforms: linux/amd64
           push: true
           provenance: false
-          tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ env.IMAGE_TAG }}
+          tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ steps.existing.outputs.tag }}
           cache-from: type=gha,scope=${{ matrix.repository }}
           cache-to: type=gha,scope=${{ matrix.repository }},mode=max
