@@ -7,14 +7,13 @@ from aws_cdk import aws_applicationautoscaling as autoscaling
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
-
-from infra.worker_images import WorkerImages
 
 
 class ApplicationStack(Stack):
@@ -121,11 +120,25 @@ class ApplicationStack(Stack):
             retention=logs.RetentionDays.ONE_MONTH,
             removal_policy=RemovalPolicy.DESTROY,
         )
+
+        def worker_image(name):
+            repository = ecr.Repository(
+                self,
+                name.title() + "Repository",
+                repository_name=f"{self.stack_name.lower()}/{name}",
+                image_tag_mutability=ecr.TagMutability.IMMUTABLE,
+                image_scan_on_push=True,
+                removal_policy=RemovalPolicy.RETAIN,
+            )
+            CfnOutput(self, name.title() + "RepositoryUri", value=repository.repository_uri)
+            tag = self.node.try_get_context(f"{name}ImageTag") or self.node.try_get_context(
+                "imageTag"
+            )
+            return ecs.ContainerImage.from_ecr_repository(repository, tag=tag or "unpublished")
+
         task.add_container(
             "Documents",
-            image=WorkerImages(self, "WorkerImages").image(
-                "documents", "containers/Dockerfile.documents"
-            ),
+            image=worker_image("documents"),
             logging=ecs.LogDrivers.aws_logs(stream_prefix="documents", log_group=log_group),
             environment={
                 "GENERATIONS_TABLE": self.generations.table_name,

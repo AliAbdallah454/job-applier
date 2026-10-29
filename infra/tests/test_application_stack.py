@@ -176,8 +176,8 @@ class ApplicationStackTests(unittest.TestCase):
                 "ImageTagMutability": "IMMUTABLE",
             },
         )
-        self.template.resource_count_is("Custom::WorkerImage", 1)
-        self.template.resource_count_is("AWS::CodeBuild::Project", 1)
+        self.template.resource_count_is("Custom::WorkerImage", 0)
+        self.template.resource_count_is("AWS::CodeBuild::Project", 0)
 
     def test_outputs(self):
         for name in [

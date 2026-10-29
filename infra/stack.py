@@ -7,6 +7,7 @@ from aws_cdk import aws_applicationautoscaling as autoscaling
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
@@ -24,7 +25,6 @@ from backend.jobs.collection_config import (
     load_collection_config,
     s3_location,
 )
-from infra.worker_images import WorkerImages
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -221,11 +221,21 @@ class JobPipelineStack(Stack):
             retention=logs.RetentionDays.ONE_MONTH,
             removal_policy=RemovalPolicy.DESTROY,
         )
-        images = WorkerImages(self, "WorkerImages")
 
-        def task_image(role):
-            name = {"seed": "seed", "scrape": "scraper", "classify": "classifier"}[role]
-            return images.image(name, f"containers/Dockerfile.{role}")
+        def worker_image(name):
+            repository = ecr.Repository(
+                self,
+                name.title() + "Repository",
+                repository_name=f"{self.stack_name.lower()}/{name}",
+                image_tag_mutability=ecr.TagMutability.IMMUTABLE,
+                image_scan_on_push=True,
+                removal_policy=RemovalPolicy.RETAIN,
+            )
+            CfnOutput(self, name.title() + "RepositoryUri", value=repository.repository_uri)
+            tag = self.node.try_get_context(f"{name}ImageTag") or self.node.try_get_context(
+                "imageTag"
+            )
+            return ecs.ContainerImage.from_ecr_repository(repository, tag=tag or "unpublished")
 
         common_environment = {
             "JOBS_TABLE": self.jobs.table_name,
@@ -262,7 +272,7 @@ class JobPipelineStack(Stack):
 
         scrape_task = task(
             "ScraperTask",
-            task_image("scrape"),
+            worker_image("scraper"),
             ["-m", "backend.jobs.workers.scraper"],
             {
                 "QUEUE_URL": scrape_queue.queue_url,
@@ -273,7 +283,7 @@ class JobPipelineStack(Stack):
         scrape_queue.grant_consume_messages(scrape_task.task_role)
         classify_task = task(
             "ClassifierTask",
-            task_image("classify"),
+            worker_image("classifier"),
             ["-m", "backend.jobs.workers.classifier"],
             {"QUEUE_URL": classify_queue.queue_url},
             {
@@ -342,7 +352,7 @@ class JobPipelineStack(Stack):
 
         seed_task = task(
             "SeedTask",
-            task_image("seed"),
+            worker_image("seed"),
             ["-m", "backend.jobs.workers.seed"],
             {
                 "QUEUE_URL": scrape_queue.queue_url,

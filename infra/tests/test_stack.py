@@ -25,8 +25,8 @@ class StackTests(unittest.TestCase):
             {item["Properties"]["RepositoryName"] for item in repositories.values()},
             {"testpipeline/seed", "testpipeline/scraper", "testpipeline/classifier"},
         )
-        self.template.resource_count_is("Custom::WorkerImage", 3)
-        self.template.resource_count_is("AWS::CodeBuild::Project", 1)
+        for resource_type in ["Custom::WorkerImage", "AWS::CodeBuild::Project"]:
+            self.template.resource_count_is(resource_type, 0)
 
     def test_job_source_bucket_is_private_encrypted_and_retained(self):
         self.template.resource_count_is("AWS::S3::Bucket", 1)
@@ -153,20 +153,9 @@ class StackTests(unittest.TestCase):
             },
         )
 
-        dockerfiles = set()
-        for manifest_path in Path(self.app.synth().directory).glob("*.assets.json"):
-            manifest = json.loads(manifest_path.read_text())
-            dockerfiles.update(
-                image["source"]["dockerFile"] for image in manifest.get("dockerImages", {}).values()
-            )
-        self.assertEqual(
-            dockerfiles,
-            {
-                "containers/Dockerfile.seed",
-                "containers/Dockerfile.scrape",
-                "containers/Dockerfile.classify",
-            },
-        )
+        manifests = Path(self.app.synth().directory).glob("*.assets.json")
+        for manifest_path in manifests:
+            self.assertFalse(json.loads(manifest_path.read_text()).get("dockerImages"))
 
     def test_key_is_empty_not_embedded_and_only_classifier_gets_it(self):
         self.template.resource_count_is("AWS::SecretsManager::Secret", 1)
@@ -308,3 +297,26 @@ class StackTests(unittest.TestCase):
     def test_invalid_cost_limits_are_rejected(self):
         with self.assertRaises(ValueError):
             JobPipelineStack(App(context={"maxScrapers": "0"}), "InvalidPipeline")
+
+
+class ImageTagTests(unittest.TestCase):
+    def images(self, context):
+        template = Template.from_stack(JobPipelineStack(App(context=context), "TagPipeline"))
+        tasks = template.find_resources("AWS::ECS::TaskDefinition")
+        return " ".join(
+            json.dumps(task["Properties"]["ContainerDefinitions"][0]["Image"])
+            for task in tasks.values()
+        )
+
+    def test_default_tag_is_placeholder(self):
+        self.assertIn("unpublished", self.images({}))
+
+    def test_image_tag_applies_to_all_workers(self):
+        images = self.images({"imageTag": "abc-1"})
+        self.assertEqual(images.count("abc-1"), 3)
+        self.assertNotIn("unpublished", images)
+
+    def test_worker_tag_overrides_shared_tag(self):
+        images = self.images({"imageTag": "abc-1", "seedImageTag": "def-2"})
+        self.assertEqual(images.count("def-2"), 1)
+        self.assertEqual(images.count("abc-1"), 2)
