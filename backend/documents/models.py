@@ -7,7 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.documents.errors import DocumentError
 from backend.profiles.models import CandidateProfile
 
-PROMPT_VERSION = 1
+# Part of the request hash: bumping it makes an unchanged profile/job produce a new generation.
+PROMPT_VERSION = 2
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 
 
@@ -35,28 +36,40 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_template: Text
-    prompt_version: Literal[1] = PROMPT_VERSION
+    prompt_version: Literal[1, 2] = PROMPT_VERSION
 
 
 class TailoredEntry(StrictModel):
     """A profile experience or project chosen for this job, with rewritten bullets."""
 
-    source_id: Text
-    bullets: list[Text] = Field(min_length=1, max_length=5)
+    source_id: Text = Field(description="ID of the experience or project in the candidate facts")
+    bullets: list[Text] = Field(
+        min_length=1,
+        max_length=5,
+        description="One-line achievement bullets, most important for this job first",
+    )
 
 
 class GeneratedContent(StrictModel):
     """The model's output: which profile facts to show and the text for the CV and letter."""
 
-    headline: Text
-    summary: Text
-    experiences: list[TailoredEntry]
-    projects: list[TailoredEntry]
-    education_ids: list[Text]
-    skill_names: list[Text]
-    certification_ids: list[Text]
-    letter_paragraphs: list[Text] = Field(min_length=2, max_length=6)
-    letter_source_ids: list[Text]
+    headline: Text = Field(description="Professional identity aimed at this role, under 10 words")
+    summary: Text = Field(description="2-3 sentences, 40-70 words, no pronouns or clichés")
+    experiences: list[TailoredEntry] = Field(description="Relevant experiences, most recent first")
+    projects: list[TailoredEntry] = Field(description="1-3 relevant projects, most relevant first")
+    education_ids: list[Text] = Field(description="Education entry IDs, most recent first")
+    skill_names: list[Text] = Field(
+        description="8-15 exact skill names from the facts, most relevant to the job first"
+    )
+    certification_ids: list[Text] = Field(description="IDs of relevant certifications only")
+    letter_paragraphs: list[Text] = Field(
+        min_length=2,
+        max_length=6,
+        description="3-4 letter body paragraphs; no greeting, sign-off, date or address",
+    )
+    letter_source_ids: list[Text] = Field(
+        description="IDs of every experience, project, education or certification the letter uses"
+    )
 
     def validate_sources(self, profile: CandidateProfile):
         for field, selected, available in (
