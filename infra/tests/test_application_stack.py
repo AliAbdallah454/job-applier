@@ -167,6 +167,18 @@ class ApplicationStackTests(unittest.TestCase):
         self.assertIn("bedrock:InferenceProfileArn", foundation["Condition"]["StringEquals"])
         self.assertIn("foundation-model/amazon.nova-pro-v1:0", str(foundation["Resource"]))
 
+    def test_document_repository_is_separate_from_pipeline_images(self):
+        self.template.resource_count_is("AWS::ECR::Repository", 1)
+        self.template.has_resource_properties(
+            "AWS::ECR::Repository",
+            {
+                "RepositoryName": "testapplication/documents",
+                "ImageTagMutability": "IMMUTABLE",
+            },
+        )
+        self.template.resource_count_is("Custom::WorkerImage", 1)
+        self.template.resource_count_is("AWS::CodeBuild::Project", 1)
+
     def test_outputs(self):
         for name in [
             "ProfilesTable",

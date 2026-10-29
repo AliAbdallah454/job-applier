@@ -1,6 +1,5 @@
 """Two-table job collection/classification pipeline on managed Fargate workers."""
 
-import os
 from pathlib import Path
 
 from aws_cdk import CfnOutput, Duration, Fn, RemovalPolicy, Stack
@@ -8,7 +7,6 @@ from aws_cdk import aws_applicationautoscaling as autoscaling
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_ecr_assets as assets
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
@@ -26,6 +24,7 @@ from backend.jobs.collection_config import (
     load_collection_config,
     s3_location,
 )
+from infra.worker_images import WorkerImages
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -222,21 +221,11 @@ class JobPipelineStack(Stack):
             retention=logs.RetentionDays.ONE_MONTH,
             removal_policy=RemovalPolicy.DESTROY,
         )
-        build_ca = os.environ.get("PIPELINE_BUILD_CA")
-        build_secrets = None
-        if build_ca:
-            if not Path(build_ca).is_file():
-                raise ValueError("PIPELINE_BUILD_CA must point to a trusted PEM CA bundle")
-            build_secrets = {"build_ca": assets.DockerBuildSecret.from_src(build_ca)}
+        images = WorkerImages(self, "WorkerImages")
 
         def task_image(role):
-            return ecs.ContainerImage.from_asset(
-                str(ROOT),
-                file=f"containers/Dockerfile.{role}",
-                build_secrets=build_secrets,
-                platform=assets.Platform.LINUX_AMD64,
-                exclude=[".git", ".venv", "node_modules", "cdk.out", "data", ".ruff_cache"],
-            )
+            name = {"seed": "seed", "scrape": "scraper", "classify": "classifier"}[role]
+            return images.image(name, f"containers/Dockerfile.{role}")
 
         common_environment = {
             "JOBS_TABLE": self.jobs.table_name,

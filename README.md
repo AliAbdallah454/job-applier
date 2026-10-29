@@ -55,8 +55,12 @@ docker build --platform linux/amd64 -f containers/Dockerfile.classify -t job-app
 docker build --platform linux/amd64 -f containers/Dockerfile.documents -t job-applier-documents:test .
 ```
 
-CDK builds and publishes the images needed by the selected stack during deployment. See the pipeline guide
-for local container checks and AWS setup.
+CDK builds and publishes the images needed by the selected stack during deployment.
+Each worker has its own private repository: `jobpipeline/seed`, `jobpipeline/scraper`,
+`jobpipeline/classifier`, and `application/documents`. Names use the lowercase stack
+name. CDK stages assets in its bootstrap repository, then a deployment-time CodeBuild
+step copies them to the worker repositories before ECS uses them. See the
+[repository and deployment guide](infra/README.md#worker-image-repositories).
 
 Collection launch settings live in `config/collections/default.yaml`; the company
 directory is `infra/board_sources/job-board-directory.csv`. Edit the YAML's

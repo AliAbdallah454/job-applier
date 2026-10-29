@@ -143,6 +143,11 @@ docker build --platform linux/amd64 -f containers/Dockerfile.documents -t job-ap
 Tests mock compilation, AWS and Bedrock. The image installs XeLaTeX; compilation
 outside Docker needs XeLaTeX, DejaVu Sans and Latin Modern Roman installed locally.
 
+The document worker image is published to `<lowercase-stack-name>/documents`
+(`application/documents` by default). CDK stages the image in its bootstrap
+repository, then a deployment-time CodeBuild project copies it before ECS updates.
+See [worker image repositories](../../infra/README.md#worker-image-repositories).
+
 The stack defaults to `us.amazon.nova-pro-v1:0`, two maximum workers,
 a 600-second deadline, and zero idle workers. Override during deployment:
 

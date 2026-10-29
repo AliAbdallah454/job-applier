@@ -1,20 +1,20 @@
 """User profile and document storage, deployed independently of job collection."""
 
 import re
-from pathlib import Path
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_applicationautoscaling as autoscaling
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_ecr_assets as assets
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
+
+from infra.worker_images import WorkerImages
 
 
 class ApplicationStack(Stack):
@@ -123,10 +123,8 @@ class ApplicationStack(Stack):
         )
         task.add_container(
             "Documents",
-            image=ecs.ContainerImage.from_asset(
-                str(Path(__file__).resolve().parents[1]),
-                file="containers/Dockerfile.documents",
-                platform=assets.Platform.LINUX_AMD64,
+            image=WorkerImages(self, "WorkerImages").image(
+                "documents", "containers/Dockerfile.documents"
             ),
             logging=ecs.LogDrivers.aws_logs(stream_prefix="documents", log_group=log_group),
             environment={

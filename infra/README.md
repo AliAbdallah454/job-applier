@@ -4,6 +4,62 @@ This CDK application defines the `JobPipeline` collection/classification stack
 and a separate `Application` profile/document generation stack. It does not deploy anything merely
 by installing dependencies, running tests or synthesizing the template.
 
+## Worker image repositories
+
+Worker images live in private ECR repositories named `<lowercase-stack-name>/<worker>`:
+
+| Stack | Repositories |
+|---|---|
+| `JobPipeline` | `jobpipeline/seed`, `jobpipeline/scraper`, `jobpipeline/classifier` |
+| `Application` | `application/documents` |
+
+A stack named `Application-Dev` uses `application-dev/documents`. Each repository
+holds immutable, hash-tagged image versions for one worker. Stack outputs expose
+`SeedRepositoryUri`, `ScraperRepositoryUri`, `ClassifierRepositoryUri` or
+`DocumentsRepositoryUri`. `ImageCopyProjectName` and `ImageCopyLogGroup` expose
+the deployment publisher and its logs.
+
+`cdk deploy` still handles publication automatically:
+
+```mermaid
+flowchart LR
+    Local[Local Docker build] --> Staging[CDK bootstrap ECR staging]
+    Staging --> Copy[CodeBuild image copy]
+    Copy --> Repo[Stack / worker ECR repository]
+    Repo --> ECS[ECS task definition and workers]
+```
+
+CDK uploads the image asset first. One CodeBuild project per stack copies image
+versions into the stack-owned repositories; an asynchronous CloudFormation custom
+resource waits for each copy to succeed before ECS can use it. Existing tags are
+reused. The project runs only during publication and adds deployment-time CodeBuild,
+Lambda and waiter costs. It does not rebuild the image or run collection/generation.
+No new Python dependencies or manual Docker push commands are required.
+
+The CDK bootstrap repository remains staging; existing bootstrap images are not
+moved or deleted. ECS execution roles pull from their worker repository. Repositories
+use immutable tags, basic scan-on-push and default AES-256 encryption, and retain
+images when the owning stack is deleted. Tagged versions are not automatically
+expired, preserving images needed by running tasks and rollbacks. If recreating a
+deleted stack with the same name, import its retained repositories or choose a new
+stack name. Do not delete the CDK bootstrap repository.
+
+Inspect a failing publication in **CodeBuild → Build history** or the stack's
+`ImageCopyLogGroup` output. A failed copy fails deployment instead of updating
+ECS to an unavailable image. Run the appropriate stack explicitly:
+
+```sh
+cdk diff Application
+cdk deploy Application
+
+cdk diff JobPipeline
+cdk deploy JobPipeline
+```
+
+Deploying `Application` does not deploy or resume the `JobPipeline` services.
+Changes only to repository/image wiring do not replace the existing DynamoDB tables,
+S3 buckets, queues or ECS clusters. Review the diff before deployment.
+
 ## Application stack: profiles and document generation
 
 `infra/application_stack.py` creates:
@@ -158,7 +214,8 @@ repository version; use `npx cdk` to select that version if your global CLI diff
 Use the same account/profile and region for deployment and all helper commands.
 
 Bootstrapping is required once per account/region and creates CDK's asset bucket
-and ECR repository. Deployment builds and uploads all three Docker images automatically.
+and staging ECR repository. Deployment builds the three job-worker images and
+copies each into its named worker repository automatically.
 The stack creates two new tables with generated names; it does not adopt or
 migrate earlier manually created tables. Resource names, queue URLs and helper
 settings are CloudFormation outputs.
