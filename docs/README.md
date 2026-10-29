@@ -8,6 +8,7 @@ For a new contributor or LLM session, start with [AGENTS.md](../AGENTS.md) and [
 | [Direct image publishing plan](plans/image-publishing.md) | Separate infrastructure provisioning from CI/CD publishing | Repositories and direct-push contract implemented; release manifest and CI workflow not yet |
 | [Infrastructure guide](../infra/README.md) | Stack outputs and current deployment/operations | Repositories, push workflow and image tags |
 | [CI/CD](ci-cd.md) | GitHub Actions deploy, image push and one-time AWS setup | Written, not yet run |
+| [Skipped work](skipped-work.md) | Deliberately unimplemented items, including scheduled collection | Living list |
 | [Documents guide](../backend/documents/README.md) | CV/letter generation, templates, retries and diagnostics | Current implementation |
 | [Fetcher guide](fetchers.md) | Employer-board adapter behavior and limitations | Feature reference |
 | [Frontend guide](../frontend/README.md) | Run the local jobs dashboard | Current implementation |

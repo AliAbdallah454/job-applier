@@ -1,7 +1,6 @@
 """CloudFormation contract tests; no AWS account or Docker daemon needed."""
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -189,25 +188,21 @@ class StackTests(unittest.TestCase):
             self.assertEqual(queue["VisibilityTimeout"], 600)
             self.assertEqual(queue["RedrivePolicy"]["maxReceiveCount"], 5)
 
-    def test_schedule_opt_in_and_separate_task_roles(self):
-        self.template.has_resource_properties("AWS::Events::Rule", {"State": "DISABLED"})
+    def test_no_scheduled_collection_and_separate_task_roles(self):
+        self.template.resource_count_is("AWS::Events::Rule", 0)
         roles = {
             json.dumps(task["Properties"]["TaskRoleArn"], sort_keys=True)
             for task in self.template.find_resources("AWS::ECS::TaskDefinition").values()
         }
         self.assertEqual(len(roles), 3)
 
-    def test_feeder_has_fixed_settings_and_only_it_can_read_board_source(self):
+    def test_only_feeder_can_read_job_source_bucket(self):
         tasks = self.template.find_resources("AWS::ECS::TaskDefinition")
         seed = next(task for name, task in tasks.items() if name.startswith("SeedTask"))
         container = seed["Properties"]["ContainerDefinitions"][0]
-        environment = {binding["Name"]: binding["Value"] for binding in container["Environment"]}
-        self.assertIn("job-board-directory.csv", json.dumps(environment["BOARDS_S3_URI"]))
-        self.assertNotIn("COLLECTION_CONFIG_URI", environment)
-        self.assertEqual(environment["MAX_BOARDS"], "all")
-        self.assertEqual(environment["MAX_JOBS_PER_BOARD"], "all")
+        environment = {binding["Name"] for binding in container["Environment"]}
+        self.assertNotIn("BOARDS_S3_URI", environment)
         self.assertNotIn("Secrets", container)
-        self.template.has_output("BoardSourceUri", {"Value": Match.any_value()})
 
         for name, policy in self.template.find_resources("AWS::IAM::Policy").items():
             document = json.dumps(policy["Properties"]["PolicyDocument"])
@@ -218,40 +213,16 @@ class StackTests(unittest.TestCase):
             elif "ScraperTaskTaskRole" in name or "ClassifierTaskTaskRole" in name:
                 self.assertNotIn("s3:", document)
 
-    def test_daily_task_captures_custom_local_yaml_settings(self):
-        with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / "collection.yaml"
-            config.write_text(
-                "boards_s3_uri: s3://company-boards/boards.csv\n"
-                "platforms: [lever]\nmax_boards: 3\nmax_jobs_per_board: 50\n"
-            )
-            app = App(context={"collectionConfig": str(config), "schedule": "true"})
-            template = Template.from_stack(JobPipelineStack(app, "CustomCollection"))
-
-        tasks = template.find_resources("AWS::ECS::TaskDefinition")
-        seed = next(task for name, task in tasks.items() if name.startswith("SeedTask"))
-        environment = {
-            binding["Name"]: binding["Value"]
-            for binding in seed["Properties"]["ContainerDefinitions"][0]["Environment"]
-        }
-        self.assertEqual(environment["BOARDS_S3_URI"], "s3://company-boards/boards.csv")
-        self.assertEqual(environment["COLLECTION_PLATFORMS"], "lever")
-        self.assertEqual(environment["MAX_BOARDS"], "3")
-        self.assertEqual(environment["MAX_JOBS_PER_BOARD"], "50")
-        template.has_resource_properties("AWS::Events::Rule", {"State": "ENABLED"})
-
-    def test_parallelism_and_schedule_context(self):
+    def test_parallelism_context(self):
         app = App(
             context={
                 "maxScrapers": "8",
                 "maxClassifiers": "3",
                 "scrapeTimeoutSeconds": "30",
-                "schedule": "true",
             }
         )
         template = Template.from_stack(JobPipelineStack(app, "ConfiguredPipeline"))
         template.resource_count_is("AWS::SecretsManager::Secret", 1)
-        template.has_resource_properties("AWS::Events::Rule", {"State": "ENABLED"})
         template.has_resource_properties(
             "AWS::ECS::TaskDefinition",
             {

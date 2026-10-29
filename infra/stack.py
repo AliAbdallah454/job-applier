@@ -9,8 +9,6 @@ from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
-from aws_cdk import aws_events as events
-from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_lambda_event_sources as sources
 from aws_cdk import aws_logs as logs
@@ -19,12 +17,6 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
-
-from backend.jobs.collection_config import (
-    collection_environment,
-    load_collection_config,
-    s3_location,
-)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,16 +37,7 @@ class JobPipelineStack(Stack):
 
         max_classifiers = positive_context(self, "maxClassifiers", 8)
         scrape_timeout = positive_context(self, "scrapeTimeoutSeconds", 900)
-        config_path = Path(
-            self.node.try_get_context("collectionConfig") or "config/collections/default.yaml"
-        )
-        collection = load_collection_config(str(ROOT / config_path))
         model = self.node.try_get_context("jevModel") or "jev-latest"
-        schedule = str(self.node.try_get_context("schedule") or "false").lower()
-
-        if schedule not in {"true", "false"}:
-            raise ValueError("schedule must be true or false")
-
         self.job_source_bucket = s3.Bucket(
             self,
             "JobSourceBucket",
@@ -357,58 +340,14 @@ class JobPipelineStack(Stack):
             {
                 "QUEUE_URL": scrape_queue.queue_url,
                 "CLASSIFY_QUEUE_URL": classify_queue.queue_url,
-                **collection_environment(collection, self.job_source_bucket.bucket_name),
             },
         )
-        source_bucket, source_key = s3_location(collection.boards_s3_uri)
-        if source_bucket == "YOUR_JOB_SOURCE_BUCKET":
-            self.job_source_bucket.grant_read(seed_task.task_role, source_key)
-        else:
-            s3.Bucket.from_bucket_name(self, "BoardSourceBucket", source_bucket).grant_read(
-                seed_task.task_role, source_key
-            )
+        self.job_source_bucket.grant_read(seed_task.task_role)
         scrape_queue.grant_send_messages(seed_task.task_role)
         classify_queue.grant_send_messages(seed_task.task_role)
         self.jobs.grant(seed_task.task_role, "dynamodb:Scan")
-        schedule_dlq = sqs.Queue(
-            self,
-            "ScheduleDLQ",
-            retention_period=Duration.days(14),
-            encryption=sqs.QueueEncryption.SQS_MANAGED,
-            enforce_ssl=True,
-        )
-        schedule_dlq.metric_approximate_number_of_messages_visible().create_alarm(
-            self,
-            "ScheduleDeadLetters",
-            threshold=1,
-            evaluation_periods=1,
-            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
-        )
-        rule = events.Rule(
-            self,
-            "DailyCollection",
-            schedule=events.Schedule.rate(Duration.days(1)),
-            enabled=schedule == "true",
-        )
-        rule.add_target(
-            targets.EcsTask(
-                cluster=cluster,
-                task_definition=seed_task,
-                task_count=1,
-                launch_type=ecs.LaunchType.FARGATE,
-                assign_public_ip=True,
-                subnet_selection=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-                security_groups=[security_group],
-                platform_version=ecs.FargatePlatformVersion.VERSION1_4,
-                dead_letter_queue=schedule_dlq,
-                retry_attempts=2,
-            )
-        )
         outputs = {
             "JobSourceBucketName": self.job_source_bucket.bucket_name,
-            "BoardSourceUri": collection_environment(
-                collection, self.job_source_bucket.bucket_name
-            )["BOARDS_S3_URI"],
             "JobsTable": self.jobs.table_name,
             "ClassificationsTable": self.results.table_name,
             "TypesafeSecretArn": key.secret_arn,
@@ -423,10 +362,8 @@ class JobPipelineStack(Stack):
             "ScrapeDLQUrl": scrape_dlq.queue_url,
             "ClassifyDLQUrl": classify_dlq.queue_url,
             "RoutingDLQUrl": routing_dlq.queue_url,
-            "ScheduleDLQUrl": schedule_dlq.queue_url,
             "WorkerLogGroup": log_group.log_group_name,
             "JevModelParameter": parameters["JevModel"].parameter_name,
-            "ScheduleRule": rule.rule_name,
         }
         for name, value in outputs.items():
             CfnOutput(self, name, value=value)

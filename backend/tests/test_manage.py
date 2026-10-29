@@ -70,7 +70,7 @@ class ManageTests(unittest.TestCase):
 
     def test_launch_passes_collection_values_without_a_yaml_uri(self):
         self.session.client.return_value.run_task.return_value = {"tasks": [{"taskArn": "run"}]}
-        config = CollectionConfig(boards_s3_uri="s3://sources/boards.csv")
+        config = CollectionConfig(boards_key="boards.csv")
         launch(self.session, self.outputs, mode="scrape", config=config)
         override = self.session.client.return_value.run_task.call_args.kwargs["overrides"][
             "containerOverrides"
@@ -87,7 +87,7 @@ class ManageTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "collection.yaml"
-            path.write_text("region: us-east-1\nboards_s3_uri: s3://sources/boards.csv\n")
+            path.write_text("region: us-east-1\nboards_key: boards.csv\n")
             with (
                 patch.object(sys, "argv", ["manage", "collect", "--config", str(path)]),
                 patch("infra.manage.boto3.Session", return_value=self.session) as session,
@@ -97,7 +97,7 @@ class ManageTests(unittest.TestCase):
             ):
                 main()
         session.assert_called_once_with(profile_name=None, region_name="us-east-1")
-        self.assertEqual(run.call_args.kwargs["config"].boards_s3_uri, "s3://sources/boards.csv")
+        self.assertEqual(run.call_args.kwargs["config"].boards_key, "boards.csv")
 
     def test_secure_key_prompt_sends_value_only_to_secrets_manager(self):
         output = io.StringIO()

@@ -1,5 +1,6 @@
 region: us-east-1
-boards_s3_uri: s3://jobpipeline-jobsourcebucket8f3111ff-zq099yvqamjh/job-board-directory.csv
+# Object key in the stack's job-source bucket (the bucket comes from the stack outputs).
+boards_key: job-board-directory.csv
 
 platforms:
   - greenhouse

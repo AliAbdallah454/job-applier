@@ -48,7 +48,7 @@
 ## Caveats
 
 - CI deploys with default CDK context. Any `-c` overrides you use locally (`maxScrapers`,
-  `schedule`, `documentModelId`, ...) must live in `cdk.json` or CI resets them.
+  `documentModelId`, ...) must live in `cdk.json` or CI resets them.
 - A deploy re-applies the template, so it can undo manual changes such as suspended autoscaling.
 - Task definitions reference the new SHA tag before the images finish pushing. Services start
   at zero tasks, so this is harmless unless the queue scales workers up in that window; a

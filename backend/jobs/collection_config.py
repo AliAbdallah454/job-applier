@@ -2,11 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Annotated
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.jobs.collector import load_boards_text
 from backend.jobs.job_fetchers import FETCHERS
@@ -29,15 +28,12 @@ def s3_location(uri: str) -> tuple[str, str]:
     return parsed.netloc, parsed.path.lstrip("/")
 
 
-def validate_s3_uri(uri: str) -> str:
-    s3_location(uri)
-    return uri
-
-
 class CollectionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    boards_s3_uri: Annotated[str, AfterValidator(validate_s3_uri)]
+    # Object key of the company directory in the stack's job-source bucket; the bucket
+    # itself comes from the stack outputs when a run is launched.
+    boards_key: str = Field(min_length=1)
     region: str | None = Field(default=None, min_length=1)
     platforms: list[str] | None = Field(default=None, min_length=1)
     max_boards: int | None = Field(default=None, gt=0)
@@ -50,12 +46,14 @@ class CollectionConfig(BaseModel):
             raise ValueError(f"Platforms must be chosen from: {', '.join(FETCHERS)}")
         return platforms
 
-    @field_validator("boards_s3_uri")
+    @field_validator("boards_key")
     @classmethod
-    def supported_directory(cls, uri):
-        if Path(s3_location(uri)[1]).suffix.lower() not in {".csv", ".json"}:
+    def supported_directory(cls, key):
+        if "://" in key or key.startswith("/"):
+            raise ValueError("boards_key is an object key in the job-source bucket, not a URI")
+        if Path(key).suffix.lower() not in {".csv", ".json"}:
             raise ValueError("Company directory must be a CSV or JSON file")
-        return uri
+        return key
 
 
 def read_s3_text(s3, uri: str) -> str:
@@ -75,11 +73,8 @@ def load_collection_config(location: str) -> CollectionConfig:
 
 
 def collection_environment(config: CollectionConfig, source_bucket: str) -> dict[str, str]:
-    bucket, key = s3_location(config.boards_s3_uri)
-    if bucket == "YOUR_JOB_SOURCE_BUCKET":
-        bucket = source_bucket
     return {
-        "BOARDS_S3_URI": f"s3://{bucket}/{key}",
+        "BOARDS_S3_URI": f"s3://{source_bucket}/{config.boards_key}",
         "COLLECTION_PLATFORMS": ",".join(config.platforms or []),
         "MAX_BOARDS": str(config.max_boards) if config.max_boards is not None else "all",
         "MAX_JOBS_PER_BOARD": str(config.max_jobs_per_board)

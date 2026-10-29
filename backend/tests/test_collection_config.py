@@ -43,7 +43,6 @@ class CollectionConfigTests(unittest.TestCase):
         self.queue = self.sqs.create_queue(QueueName="boards")["QueueUrl"]
         os.environ["QUEUE_URL"] = self.queue
         os.environ["BOARDS_S3_URI"] = "s3://job-sources/boards.csv"
-        self.boards_uri = "s3://job-sources/boards.csv"
         directory = "platform,token\n" + "".join(f"greenhouse,company{i}\n" for i in range(105))
         self.put("boards.csv", directory + "lever,example\ngreenhouse,company0\n")
         self.write_config()
@@ -52,7 +51,7 @@ class CollectionConfigTests(unittest.TestCase):
         self.s3.put_object(Bucket="job-sources", Key=key, Body=body)
 
     def write_config(self, **settings):
-        config = CollectionConfig(boards_s3_uri=self.boards_uri, **settings)
+        config = CollectionConfig(boards_key="boards.csv", **settings)
         os.environ.update(collection_environment(config, "job-sources"))
 
     def run_seed(self, *arguments):
@@ -114,9 +113,7 @@ class CollectionConfigTests(unittest.TestCase):
     def test_local_yaml_is_compiled_to_settings_without_s3_yaml(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "run.yaml"
-            path.write_text(
-                "boards_s3_uri: s3://YOUR_JOB_SOURCE_BUCKET/boards.csv\nmax_boards: 2\n"
-            )
+            path.write_text("boards_key: boards.csv\nmax_boards: 2\n")
             config = load_collection_config(str(path))
         os.environ.update(collection_environment(config, "job-sources"))
         self.run_seed()
@@ -133,11 +130,14 @@ class CollectionConfigTests(unittest.TestCase):
             {"platforms": []},
             {"max_jobs_per_board": "20"},
             {"unknown_setting": 1},
-            {"boards_s3_uri": "https://example.com/boards.csv"},
-            {"boards_s3_uri": "s3://job-sources/boards.txt"},
+            {"boards_key": "https://example.com/boards.csv"},
+            {"boards_key": "s3://job-sources/boards.csv"},
+            {"boards_key": "/boards.csv"},
+            {"boards_key": "boards.txt"},
+            {"boards_key": ""},
         ]:
             with self.subTest(settings=settings), self.assertRaises(ValidationError):
-                CollectionConfig.model_validate({"boards_s3_uri": self.boards_uri, **settings})
+                CollectionConfig.model_validate({"boards_key": "boards.csv", **settings})
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "unsafe.yaml"
             path.write_text("!!python/object/apply:os.system ['echo unsafe']")

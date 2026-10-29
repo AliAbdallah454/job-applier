@@ -67,15 +67,16 @@ name. Push images to them, then deploy with `-c imageTag=<tag>`. See the
 
 Collection launch settings live in `config/collections/default.yaml`; the company
 directory is `infra/board_sources/job-board-directory.csv`. Edit the YAML's
-`boards_s3_uri` to point to your uploaded CSV, then launch a manual run:
+`boards_key` to the object key of your uploaded CSV in the stack's job-source bucket
+(the bucket name comes from the stack outputs), then launch a manual run:
 
 ```sh
 uv run python -m infra.manage collect --config config/collections/default.yaml
 ```
 
-The YAML stays local: `manage.py` passes its settings to ECS for manual runs, and
-CDK captures the same settings in the daily feeder task definition during deployment.
-Upload only the CSV to S3 before enabling the schedule. See [collection setup](infra/README.md#board-sources-and-collection-configuration).
+The YAML stays local: `manage.py` passes its settings to ECS for each manual run. Upload the
+CSV to the stack's job-source bucket first. There is no automatic daily collection yet; see
+[skipped work](docs/skipped-work.md).
 
 ## Product direction
 

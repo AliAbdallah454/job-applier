@@ -43,7 +43,7 @@ Two independently deployable CDK stacks (`infra/stack.py` = `JobPipeline`, `infr
 
 CI/CD is `.github/workflows/ci-cd.yml` (see `docs/ci-cd.md`): on push to main it deploys both stacks with `-c imageTag=<sha>`, then builds and pushes all four images; the workflow matrix is the Dockerfile↔repository mapping. The IAM role template is `infra/ci/github-actions-role.yaml`.
 
-Collection settings live in `config/collections/default.yaml` (stays local; passed to ECS by `manage.py` and baked into the daily feeder task definition); board list is `infra/board_sources/job-board-directory.csv` uploaded to S3.
+Collection settings live in `config/collections/default.yaml` (local only: `manage.py collect --config` passes it to ECS as overrides; CDK does not read it and there is no scheduled collection, see `docs/skipped-work.md`); board list is `infra/board_sources/job-board-directory.csv` uploaded to S3.
 
 ## Notes
 
