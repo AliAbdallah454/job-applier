@@ -18,7 +18,6 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION }}
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -49,6 +48,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
     permissions:
       id-token: write
       contents: read
@@ -75,6 +75,7 @@ jobs:
   push-images:
     needs: deploy-infra
     runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
     permissions:
       id-token: write
       contents: read

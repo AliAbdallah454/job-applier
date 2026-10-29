@@ -39,11 +39,14 @@
      --template-file infra/ci/github-actions-role.yaml --capabilities CAPABILITY_NAMED_IAM
    ```
    Add `--parameter-overrides CreateOidcProvider=false` if the account already has a GitHub
-   OIDC provider, and `GitHubRepository=owner/name` if the repository differs.
-3. Copy the `DeployRoleArn` output. In GitHub → Settings → Secrets and variables → Actions →
-   **Variables**, add `AWS_DEPLOY_ROLE_ARN` and `AWS_REGION` (for example `us-east-1`).
-   No access keys are stored.
-4. Optional: protect `main` and require the `test` check.
+   OIDC provider, and `RepositorySubject=owner@ID/repo@ID` if the repository differs. GitHub's OIDC subject includes numeric owner and repo IDs; if the role is refused, read the real subject from the failed `AssumeRoleWithWebIdentity` event in CloudTrail (`userName` field).
+3. Copy the `DeployRoleArn` output. In GitHub → Settings → Environments, create the
+   environment `ci_cd_deploy_env` and add two **environment variables**: `AWS_DEPLOY_ROLE_ARN`
+   and `AWS_REGION` (for example `us-east-1`). No access keys are stored. The deploy and push
+   jobs declare this environment, which is how they see these values and how the role knows
+   to trust them (OIDC subject `repo:<owner>@<id>/<repo>@<id>:environment:ci_cd_deploy_env`).
+4. Optional: on the environment, restrict deployment branches to `main` and/or add required
+   reviewers; require the `test` check on `main`.
 
 ## Caveats
 
