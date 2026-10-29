@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, model_validator
 
-from backend.jobs.classification.models import ContractType, JobCategory, Seniority
+from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 CareerDate = Annotated[str, StringConstraints(pattern=r"^\d{4}(-(0[1-9]|1[0-2]))?$")]
