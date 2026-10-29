@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Applier — Job explorer</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Job Applier home"><span class="brand-icon">j.</span> job applier</a>
+    <span class="catalogue-label"><span class="dot"></span> Job explorer</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">A LITTLE CLOSER TO WHAT’S NEXT</p><h1>Find your next role<span>.</span></h1>
+      <p class="subtitle">Explore opportunities that fit the way you want to work.</p></div>
+      <span id="demo-badge" class="demo-badge" hidden>Demo · example jobs</span>
+    </section>
+
+    <form id="filters" class="filter-panel">
+      <div class="filter-grid">
+        <label class="search-field">Search jobs<input id="search" name="q" placeholder="Role, company, location or skill" autocomplete="off"></label>
+        <label>Technical relevance<select id="tech" name="tech"><option value="tech">Tech jobs</option><option value="non_tech">Non-tech jobs</option><option value="unknown">Unspecified</option></select></label>
+        <label>Category<select id="category" name="category"><option value="">All categories</option></select></label>
+        <label>Contract type<select id="contract" name="contract"><option value="">All contracts</option></select></label>
+      </div>
+      <div class="filter-bottom">
+        <fieldset><legend>Experience level</legend><div class="levels">
+          <label class="level"><input type="checkbox" name="seniority" value="entry" checked><span>Entry</span></label>
+          <label class="level"><input type="checkbox" name="seniority" value="junior" checked><span>Junior</span></label>
+          <label class="level"><input type="checkbox" name="seniority" value="mid"><span>Mid</span></label>
+          <label class="level"><input type="checkbox" name="seniority" value="senior"><span>Senior</span></label>
+          <label class="level"><input type="checkbox" name="seniority" value="unknown"><span>Unspecified</span></label>
+        </div></fieldset>
+        <div class="filter-actions"><button type="button" id="reset" class="text-button">Reset filters</button><button type="submit" class="primary" id="apply">Find jobs <span aria-hidden="true">↗</span></button></div>
+      </div>
+    </form>
+
+    <div class="results-heading"><h2>Your opportunities <span id="count">0 loaded</span></h2><span class="hint">Select a job to explore it</span></div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <div class="workspace">
+      <section aria-label="Matching jobs" class="listing">
+        <div id="jobs" class="job-list"></div>
+        <div id="empty" class="empty" hidden><span aria-hidden="true">⌕</span><h3>No matching jobs loaded</h3><p id="empty-message">Try another category or broaden your experience levels.</p></div>
+        <button id="load-more" class="load-more" hidden>Load more opportunities <span aria-hidden="true">↓</span></button>
+      </section>
+      <aside id="detail" class="detail" aria-label="Job details"><div class="detail-placeholder"><span aria-hidden="true">↗</span><h3>A new chapter starts here.</h3><p>Select an opportunity to see the full description and original posting.</p></div></aside>
+    </div>
+    <footer>Fresh perspectives. Better possibilities.<span>Job Applier</span></footer>
+  </main>
+</body>
+</html>
