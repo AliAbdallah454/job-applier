@@ -11,7 +11,7 @@ import boto3
 from backend.jobs.collector import BoardConfig
 from backend.jobs.job_fetchers import create_fetcher
 from backend.jobs.storage.jobs import DynamoJobStore
-from backend.jobs.workers.runtime import poll, shutdown_event
+from backend.utils.runtime import poll, shutdown_event
 
 LOG = logging.getLogger(__name__)
 DEFAULT_SCRAPE_TIMEOUT_SECONDS = 900

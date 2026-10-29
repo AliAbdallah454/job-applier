@@ -9,7 +9,7 @@ from typesafe_sdk import RetryPolicy, TypeSafeClient
 from backend.jobs.classification.typesafe import JevClassifier
 from backend.jobs.storage.classifications import ClassificationStore
 from backend.jobs.storage.jobs import DynamoJobStore
-from backend.jobs.workers.runtime import poll, shutdown_event
+from backend.utils.runtime import poll, shutdown_event
 
 
 def process_classify(body, jobs, store, classifier, model):

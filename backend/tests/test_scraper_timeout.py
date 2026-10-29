@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from backend.jobs.workers.runtime import handle_message
+from backend.utils.runtime import handle_message
 from backend.jobs.workers.scraper import process_scrape
 
 mode, acknowledgment = sys.argv[1:]

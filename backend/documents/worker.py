@@ -9,7 +9,7 @@ from botocore.config import Config
 from backend.documents.bedrock import BedrockGenerator
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
-from backend.jobs.workers.runtime import poll, shutdown_event
+from backend.utils.runtime import poll, shutdown_event
 
 
 def main():

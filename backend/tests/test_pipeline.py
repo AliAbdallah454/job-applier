@@ -18,10 +18,10 @@ from backend.jobs.models import JobPost
 from backend.jobs.storage.classifications import ClassificationBusy, ClassificationStore
 from backend.jobs.storage.jobs import DynamoJobStore
 from backend.jobs.workers.classifier import process_classify
-from backend.jobs.workers.runtime import handle_message
 from backend.jobs.workers.scraper import process_scrape
 from backend.jobs.workers.seed import backfill, enqueue
 from backend.jobs.workers.seed import main as seed_main
+from backend.utils.runtime import handle_message
 from infra.stream_router.handler import handler, needs_classification
 
 
