@@ -8,7 +8,7 @@ from backend.documents.errors import DocumentError
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged profile/job produce a new generation.
-PROMPT_VERSION = 2
+PROMPT_VERSION = 3
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 
 
@@ -36,7 +36,7 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_template: Text
-    prompt_version: Literal[1, 2] = PROMPT_VERSION
+    prompt_version: Literal[1, 2, 3] = PROMPT_VERSION
 
 
 class TailoredEntry(StrictModel):
@@ -53,13 +53,19 @@ class TailoredEntry(StrictModel):
 class GeneratedContent(StrictModel):
     """The model's output: which profile facts to show and the text for the CV and letter."""
 
+    # Not rendered: listing the keywords first steers the selection and wording that follow.
+    job_keywords: list[Text] = Field(
+        description="8-15 key technologies, methods and terms in the posting, most important first"
+    )
     headline: Text = Field(description="Professional identity aimed at this role, under 10 words")
     summary: Text = Field(description="2-3 sentences, 40-70 words, no pronouns or clichés")
     experiences: list[TailoredEntry] = Field(description="Relevant experiences, most recent first")
-    projects: list[TailoredEntry] = Field(description="1-3 relevant projects, most relevant first")
+    projects: list[TailoredEntry] = Field(
+        description="Projects matching a job keyword, at least 2 when available, up to 4"
+    )
     education_ids: list[Text] = Field(description="Education entry IDs, most recent first")
     skill_names: list[Text] = Field(
-        description="8-15 exact skill names from the facts, most relevant to the job first"
+        description="10-20 exact skill or technology names from the facts, job keywords first"
     )
     certification_ids: list[Text] = Field(description="IDs of relevant certifications only")
     letter_paragraphs: list[Text] = Field(
@@ -89,7 +95,16 @@ class GeneratedContent(StrictModel):
                 self.certification_ids,
                 [entry.id for entry in profile.certifications],
             ),
-            ("skill_names", self.skill_names, [skill.name for skill in profile.skills]),
+            (
+                "skill_names",
+                self.skill_names,
+                [skill.name for skill in profile.skills]
+                + [
+                    technology
+                    for entry in (*profile.experiences, *profile.projects)
+                    for technology in entry.technologies
+                ],
+            ),
         ):
             if len(selected) != len(set(selected)) or not set(selected) <= set(available):
                 raise DocumentError(

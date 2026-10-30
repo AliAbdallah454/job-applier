@@ -41,6 +41,7 @@ def request():
 
 def content():
     return GeneratedContent(
+        job_keywords=["Python", "APIs"],
         headline="Python developer",
         summary="Develops Python data tools.",
         experiences=[{"source_id": "experience-ml-001", "bullets": ["Built Python scripts."]}],
@@ -75,6 +76,10 @@ class RenderingTests(unittest.TestCase):
             generated = content().model_copy(update={field: value})
             with self.subTest(field=field), self.assertRaises(ValueError):
                 generated.validate_sources(request().profile)
+
+    def test_entry_technologies_count_as_skills(self):
+        generated = content().model_copy(update={"skill_names": ["Python", "FastAPI", "pytest"]})
+        generated.validate_sources(request().profile)
 
     def test_custom_template_is_used(self):
         custom = request().model_copy(

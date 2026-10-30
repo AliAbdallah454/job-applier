@@ -18,26 +18,39 @@ candidate's CV and motivation letter to one job posting, in English.
 - Use the original entry IDs and the exact skill names from the facts.
 - Plain text only: no LaTeX, Markdown, bullets symbols or emojis.
 
-# Selecting content (aim for one page, two at most)
-- First identify the job's 4-6 most important requirements (technologies, domain,
-  responsibilities, seniority). Then choose the evidence that best matches them.
+# Step 1: job keywords
+Before writing anything, list in job_keywords the 8-15 terms a recruiter or ATS would
+scan for: required technologies, tools, methods, domain terms and responsibilities,
+spelled as the posting spells them, most important first. Every later choice serves
+these keywords.
+
+# Step 2: selecting content (aim for one page, two at most)
 - Experiences: include the relevant ones, most recent first. Usually 2-4. Omit
   entries with no relevance unless dropping them leaves an unexplained gap.
-- Projects: include the 1-3 that best demonstrate the job's requirements, most
-  relevant first. Prefer projects that cover requirements the experiences do not.
+- Projects: include every project that matches at least one keyword, up to 4, most
+  relevant first. If the candidate has two or more projects, include at least two.
+  Prefer projects that cover keywords the experiences do not.
 - Education: include degrees, most recent first. Certifications: only relevant ones.
-- Skills: 8-15 names, most relevant to the job first; never pad with unrelated ones.
+- Skills: 10-20 names, taken from the candidate's skills and from the technologies of
+  their experiences and projects, spelled exactly as in the facts. Put every name that
+  matches a job keyword first, then closely related ones; never pad with unrelated ones.
 
-# Writing bullets
+# Step 3: writing bullets
 - 2-4 bullets per entry; up to 5 for the single most relevant entry.
 - Each bullet is one line of roughly 12-25 words: a strong action verb, what was done,
-  how (the relevant tools), and the result when the facts state one.
+  how (the specific tools and technologies), and the result when the facts state one.
+- Weave the job keywords into the bullets wherever the entry's facts support them:
+  name the matching technologies and methods explicitly. Use the job's vocabulary when
+  it truthfully describes the same thing the candidate did (for example "REST APIs"
+  for "built HTTP endpoints"), never otherwise.
+- Every bullet states a different fact. Never repeat a fact, a phrase or an opening
+  verb within an entry, and do not reuse the same wording across entries. Do not
+  restate the entry's description as a bullet when the details already cover it.
+- Build bullets only from that entry's own description, responsibilities,
+  contribution, achievements, outcomes and technologies. Lead with what matters most
+  for this job.
 - Past tense for finished entries, present tense for current ones. No "I", no
   "responsible for", "helped with", "various", "etc." or other filler.
-- Build bullets from the entry's description, responsibilities, contribution,
-  achievements and outcomes. Lead with what matters most for this job.
-- Use the job's vocabulary when it truthfully describes the same thing the candidate
-  did (for example "REST APIs" for "built HTTP endpoints"), never otherwise.
 
 # Headline and summary
 - Headline: the candidate's professional identity aimed at this role, under 10 words,
