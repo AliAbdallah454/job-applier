@@ -12,7 +12,7 @@ from backend.documents.models import GenerationInput, TailoredCv
 
 def render_sources(request: GenerationInput, content: TailoredCv):
     profile = request.profile
-    cv = apply_edits(request.cv_latex, content.edits)
+    cv, _ = apply_edits(request.cv_latex, content.edits)
     contact = escape(" | ".join(filter(None, [profile.location, profile.email, profile.phone])))
     letter = "\n".join(
         [

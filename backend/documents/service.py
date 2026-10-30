@@ -44,7 +44,6 @@ class DocumentService:
                 usage = saved["usage"]
             else:
                 content, usage = self.generate(request)
-                apply_edits(request.cv_latex, content.edits)  # Reject before checkpointing.
                 reference = self.store.put_file(
                     f"{prefix}/content.json",
                     encode({"content": content.model_dump(mode="json"), "usage": usage}),
@@ -83,11 +82,14 @@ class DocumentService:
                     artifacts[path.stem + "_pdf"] = self.store.put_file(
                         f"{prefix}/{path.stem}.pdf", pdf, "application/pdf"
                     )
-            # Edits are checked structurally, not fact-checked; this is the review list.
+            # Edits are checked structurally, not fact-checked; this is the review list,
+            # including skipped edits and why they were skipped.
+            _, report = apply_edits(request.cv_latex, content.edits)
+            skipped = sum(not edit["applied"] for edit in report)
+            if skipped:
+                LOG.warning("Skipped %s of %s invalid CV edits", skipped, len(report))
             artifacts["changes_json"] = self.store.put_file(
-                f"{prefix}/changes.json",
-                encode([edit.model_dump() for edit in content.edits]),
-                "application/json",
+                f"{prefix}/changes.json", encode(report), "application/json"
             )
 
             self.store.update_owned(

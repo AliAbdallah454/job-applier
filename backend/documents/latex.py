@@ -59,34 +59,37 @@ def balanced(text):
     return depth == 0
 
 
-def locate(source, find, body_start):
-    """Exact match first; otherwise tolerate whitespace differences. Must be unique."""
-    matches = [m.span() for m in re.finditer(re.escape(find), source)]
-    if not matches:
-        words = [re.escape(part) for part in WHITESPACE.split(find.strip()) if part]
-        pattern = r"\s+".join(words)
-        matches = [m.span() for m in re.finditer(pattern, source)] if words else []
+def locate(source, find, body_start, body_end):
+    """Find the snippet in the document body: exact match first, otherwise tolerating
+    whitespace differences. It must be unique there; the preamble is never matched."""
+    words = [re.escape(part) for part in WHITESPACE.split(find.strip()) if part]
+    matches = []
+    for pattern in (re.escape(find), r"\s+".join(words)) if words else ():
+        matches = [m.span() for m in re.compile(pattern).finditer(source, body_start, body_end)]
+        if matches:
+            break
     if len(matches) != 1:
-        found = "is not in the CV" if not matches else "matches several places"
+        found = "is not in the CV body" if not matches else "matches several places"
         raise DocumentError(f"CV edit {found}; it must match exactly one place")
-    start, end = matches[0]
-    if start < body_start:
-        raise DocumentError("CV edits may only change the document body, not the preamble")
-    return start, end
+    return matches[0]
 
 
 def apply_edits(source, edits):
-    """Check every edit, then apply them all; any invalid edit rejects the whole set."""
+    """Apply every valid edit and skip invalid ones, so one bad edit does not lose the rest.
+
+    Returns the edited source and one report per edit (in the given order) saying whether
+    it was applied and, if not, why.
+    """
     validate_cv(source)
     body_start = source.index("\\begin{document}") + len("\\begin{document}")
     body_end = source.rindex("\\end{document}")
-    spans = []
-    for number, edit in enumerate(edits, 1):
+    spans, reports = [], []
+    for edit in edits:
+        report = {**edit.model_dump(), "applied": False}
+        reports.append(report)
         try:
-            start, end = locate(source, edit.find, body_start)
+            start, end = locate(source, edit.find, body_start, body_end)
             original = source[start:end]
-            if end > body_end:
-                raise DocumentError("CV edits may only change the document body")
             added = set(COMMAND.findall(edit.replace)) - set(COMMAND.findall(original))
             if added:
                 raise DocumentError("CV edit adds LaTeX commands that the snippet did not use")
@@ -94,14 +97,15 @@ def apply_edits(source, edits):
                 raise DocumentError("CV edit has unbalanced braces")
             if unescaped(edit.replace, "%") > unescaped(original, "%"):
                 raise DocumentError("CV edit adds an unescaped % that would hide text")
+            # The earlier edit wins when two edits touch the same text.
+            if any(start < other_end and other_start < end for other_start, other_end, *_ in spans):
+                raise DocumentError("CV edit overlaps an earlier edit")
         except DocumentError as exc:
-            raise DocumentError(f"Edit {number}: {exc}") from None
+            report["error"] = str(exc)
+            continue
+        report["applied"] = True
         spans.append((start, end, edit.replace))
 
-    spans.sort()
-    for (_, previous_end, _), (start, _, _) in zip(spans, spans[1:], strict=False):
-        if start < previous_end:
-            raise DocumentError("CV edits overlap")
-    for start, end, replacement in reversed(spans):
+    for start, end, replacement in sorted(spans, reverse=True):
         source = source[:start] + replacement + source[end:]
-    return source
+    return source, reports

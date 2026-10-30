@@ -72,7 +72,8 @@ def edit(find, replace):
 
 class CvEditTests(unittest.TestCase):
     def test_edits_replace_only_their_snippet(self):
-        edited = apply_edits(CV, content().edits)
+        edited, report = apply_edits(CV, content().edits)
+        self.assertTrue(all(item["applied"] for item in report))
         self.assertIn(r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}", edited)
         self.assertNotIn("bounded retries", edited)
         self.assertIn(r"\textbf{Languages}{: SQL, Python, FastAPI}", edited)
@@ -89,20 +90,32 @@ class CvEditTests(unittest.TestCase):
         loose = edit(
             "\\resumeItem{Added bounded   retries\n for intermittent request failures}", ""
         )
-        self.assertNotIn("bounded retries", apply_edits(CV, [loose]))
+        self.assertNotIn("bounded retries", apply_edits(CV, [loose])[0])
 
-    def test_invalid_edits_are_rejected(self):
-        for name, edits in {
-            "missing": [edit("Not in the CV", "x")],
-            "ambiguous": [edit("Python", "Go")],
-            "preamble": [edit(r"\usepackage{latexsym}", "")],
-            "new command": [edit(BULLET, r"\resumeItem{x}\input{/etc/passwd}")],
-            "braces": [edit(BULLET, r"\resumeItem{x")],
-            "comment": [edit(BULLET, r"\resumeItem{100% done}")],
-            "overlap": [edit(BULLET, ""), edit("bounded retries", "retries")],
-        }.items():
-            with self.subTest(name), self.assertRaises(DocumentError):
-                apply_edits(CV, edits)
+    def test_invalid_edits_are_skipped_and_the_rest_applied(self):
+        good = edit(r"\resumeItem{Built a prediction endpoint for the classifier}", "")
+        for name, bad, reason in [
+            ("missing", edit("Not in the CV", "x"), "not in the CV body"),
+            ("ambiguous", edit("Python", "Go"), "several places"),
+            ("preamble", edit(r"\usepackage{latexsym}", ""), "not in the CV body"),
+            ("new command", edit(BULLET, r"\resumeItem{x}\input{/etc/passwd}"), "commands"),
+            ("braces", edit(BULLET, r"\resumeItem{x"), "braces"),
+            ("comment", edit(BULLET, r"\resumeItem{100% done}"), "%"),
+            ("overlap", edit("prediction endpoint", "API"), "overlaps"),
+        ]:
+            with self.subTest(name):
+                edited, report = apply_edits(CV, [good, bad])
+                self.assertNotIn("Built a prediction endpoint", edited)
+                self.assertEqual([item["applied"] for item in report], [True, False])
+                self.assertIn(reason, report[1]["error"])
+                if name != "overlap":
+                    self.assertEqual(edited, CV.replace(good.find, ""))
+
+    def test_snippet_also_in_the_preamble_matches_the_body_only(self):
+        cv = CV.replace(r"\begin{document}", "% Example Analytics Company\n\\begin{document}")
+        edited, report = apply_edits(cv, [edit("Example Analytics Company", "Example Co")])
+        self.assertTrue(report[0]["applied"])
+        self.assertIn("% Example Analytics Company", edited)
 
     def test_engine_follows_the_cv(self):
         self.assertEqual(engine(CV), "xelatex")
@@ -227,7 +240,10 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(result["review_required"])
         self.assertEqual(len(result["artifacts"]), 5)
         changes = json.loads(self.store.read_file(result["artifacts"]["changes_json"]))
-        self.assertEqual(changes[1], {"find": BULLET, "replace": "", "reason": "Not relevant"})
+        self.assertEqual(
+            changes[1],
+            {"find": BULLET, "replace": "", "reason": "Not relevant", "applied": True},
+        )
         self.assertIn("version_id", result["artifacts"]["cv_pdf"])
         self.assertTrue(self.store.read_file(result["artifacts"]["cv_pdf"]).startswith(b"%PDF-"))
         self.assertNotIn("lock_token", result)
@@ -369,20 +385,20 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(len(generated.edits), 3)
         self.assertEqual(usage["totalTokens"], 80)
 
-    def test_invalid_model_sources_have_actionable_private_safe_diagnostics(self):
+    def test_invalid_model_edit_is_skipped_and_reported_for_review(self):
         generated = content()
         generated.edits[0].find = "Private text not in the CV"
         self.generate.return_value = generated, {}
         message = self.submit()
-        with self.assertLogs("backend.documents.service", level="ERROR") as logs:
-            with self.assertRaises(DocumentError):
-                self.service.process(message)
+        with self.assertLogs("backend.documents.service", level="WARNING") as logs:
+            self.assertEqual(self.service.process(message), "ready")
         record = self.store.get(**message)
-        self.assertEqual(record["failure_stage"], "generating_content")
-        self.assertIn("Edit 1: CV edit is not in the CV", record["error_detail"])
-        self.assertNotIn("Private text not in the CV", str(record))
-        self.assertIn("stage=generating_content", str(logs.output))
+        report = json.loads(self.store.read_file(record["artifacts"]["changes_json"]))
+        self.assertEqual([item["applied"] for item in report], [False, True, True])
+        self.assertIn("not in the CV body", report[0]["error"])
+        self.assertIn("Skipped 1 of 3", str(logs.output))
         self.assertNotIn("Private text not in the CV", str(logs.output))
+        self.assertNotIn("Private text not in the CV", str(record))
 
     def test_truncated_model_response_reports_stop_reason(self):
         client = Mock()

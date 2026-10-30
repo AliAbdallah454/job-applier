@@ -3,10 +3,9 @@
 import json
 
 from backend.documents.errors import DocumentError
-from backend.documents.latex import apply_edits
 from backend.documents.models import GenerationInput, TailoredCv
 
-SYSTEM = """You are an experienced technical recruiter and CV writer. You tailor the
+SYSTEM = r"""You are an experienced technical recruiter and CV writer. You tailor the
 candidate's existing LaTeX CV to one job posting by proposing precise edits to its
 source, and you write a motivation letter, in English.
 
@@ -52,9 +51,10 @@ posting spells them, most important first. Every edit serves these keywords.
 
 # Step 3: writing each edit
 - find: copy a snippet from the document body (after \begin{document}) EXACTLY as it
-  appears, character for character. It must occur only once in the file. Keep it as
-  short as possible: usually one bullet or one skills line. To reorder items, take the
-  block that contains exactly those items.
+  appears, character for character. It must occur only once in the body, so use a
+  whole bullet or a whole skills line, never a bare word, phrase or single \textbf{...}
+  that may appear elsewhere. To reorder items, take the block that contains exactly
+  those items.
 - replace: the new LaTeX for that snippet. Use only the LaTeX commands that already
   appear in find, written the same way; change the text inside them. To add a bullet,
   find an existing bullet of the same entry and replace it with itself followed by the
@@ -175,5 +175,4 @@ class BedrockGenerator:
             )
 
         content = TailoredCv.model_validate(outputs[0]["input"])
-        apply_edits(request.cv_latex, content.edits)
         return content, response.get("usage", {})
