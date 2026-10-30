@@ -89,16 +89,22 @@ export function useSaveProfile() {
   });
 }
 
+export function isActive(status: Status) {
+  return status === "queued" || status === "processing";
+}
+
 export function useGenerations() {
   return useQuery({
     queryKey: ["generations"],
     queryFn: () => unwrap(api.GET("/api/generations")),
+    refetchInterval: (query) =>
+      query.state.data?.some((item) => isActive(item.status)) ? 4000 : false,
   });
 }
 
 /** Failed runs are polled slowly because SQS can redeliver them to a worker on its own. */
 export function pollInterval(status: Status | undefined): number | false {
-  if (status === "queued" || status === "processing") return 4000;
+  if (status && isActive(status)) return 4000;
   return status === "failed" ? 30000 : false;
 }
 

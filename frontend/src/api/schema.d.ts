@@ -362,14 +362,20 @@ export interface components {
         };
         /** Generation */
         Generation: {
+            /** Company */
+            company?: string | null;
             /** Created At */
             created_at: string;
+            /** Files */
+            files: string[];
             /** Generation Id */
             generation_id: string;
             /** Job Id */
             job_id: string;
             /** Job Title */
             job_title: string;
+            /** Job Url */
+            job_url?: string | null;
             /** Model Id */
             model_id: string;
             /** Review Required */
@@ -386,6 +392,8 @@ export interface components {
         GenerationDetail: {
             /** Changes */
             changes: components["schemas"]["Change"][];
+            /** Company */
+            company?: string | null;
             /** Compilation Log */
             compilation_log?: string | null;
             /** Created At */
@@ -404,6 +412,8 @@ export interface components {
             job_id: string;
             /** Job Title */
             job_title: string;
+            /** Job Url */
+            job_url?: string | null;
             /** Keywords */
             keywords: string[];
             /** Model Id */

@@ -67,6 +67,11 @@ def decode_cursor(cursor, filters):
         raise ValueError("Invalid pagination cursor; refresh the search") from exc
 
 
+def posting_of(item):
+    """Older items keep the posting under `job`."""
+    return item.get("job", item) if "title" not in item else item
+
+
 class JobCatalogue:
     def __init__(self, dynamodb, jobs_table, classifications_table):
         self.db = dynamodb
@@ -131,10 +136,25 @@ class JobCatalogue:
         job = self.db.Table(self.jobs_table).get_item(Key={"job_id": job_id}, ConsistentRead=True)
         return self._match(result, job.get("Item"))
 
+    def links(self, job_ids):
+        """Company and web link per job, ignoring classification so old CVs keep their link."""
+        job_ids = list(dict.fromkeys(job_ids))
+        links = {}
+        for start in range(0, len(job_ids), 100):  # The BatchGetItem limit.
+            for job_id, item in self._postings(job_ids[start : start + 100]).items():
+                posting = posting_of(item)
+                url = posting.get("application_url") or posting.get("posting_url")
+                links[job_id] = {
+                    "company": posting.get("company"),
+                    # Scraped text ends up in an href, so only allow web links.
+                    "job_url": url if str(url).startswith(("https://", "http://")) else None,
+                }
+        return links
+
     def _match(self, result, job):
         if not job:
             return None
-        posting = job.get("job", job) if "title" not in job else job
+        posting = posting_of(job)
         try:
             state = classification_input(posting)
             if result.get("input_hash") != input_hash(state):

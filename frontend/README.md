@@ -56,14 +56,22 @@ sending a CV.
 | `GET /api/jobs`, `GET /api/jobs/{id}` | Filters: `tech`, `seniority`, `category`, `contract`, `q`, `cursor` |
 | `GET`/`PUT /api/profile` | `PUT` must carry the loaded `version`, or it returns 409 |
 | `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
-| `GET`/`POST /api/generations` | History (`job_id`, `status`) and start a run |
+| `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
-| `GET /api/generations/{id}/files/{name}` | PDF, source or log; add `?download=true` to save |
+| `GET /api/generations/{id}/files/{name}` | PDF, source or log; add `?download=true` to save it under a name from the job title |
 
 Search filters one scanned page at a time, so a page can be empty while more remain; the
 app keeps loading automatically, up to ten empty pages in a row. The count is loaded
-matches, not a total. History reads all of your generations and sorts them in the API.
+matches, not a total. History reads all of your generations and sorts them in the API. The
+Tailored CVs page offers the CV, the motivation letter and the job posting on each row, so
+nothing needs opening first. The job link and company are read from the Jobs table when
+listing, so a removed job has neither.
+
+Scrapers flatten most descriptions to one line (`html_to_text`), and storing the original
+layout would change every classification hash. So `src/pages/jobText.ts` rebuilds headings,
+paragraphs and lists when displaying a job. It only regroups the words, and it is a best guess:
+a list with no punctuation can split in the wrong place.
 
 Your AWS identity needs CloudFormation `DescribeStacks`, DynamoDB read and write on the
 tables, S3 read, write, list and delete under `users/*`, and `sqs:SendMessage` on the

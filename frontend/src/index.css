@@ -45,8 +45,19 @@ body {
   outline-offset: 2px;
 }
 
+::selection {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+* {
+  scrollbar-color: var(--rule) transparent;
+  scrollbar-width: thin;
+}
+
 /* The one signature move: ink floods the control from the left. */
-.flood {
+.flood,
+.fill {
   background-image: linear-gradient(var(--ink), var(--ink));
   background-repeat: no-repeat;
   background-size: 0% 100%;
@@ -54,9 +65,28 @@ body {
     background-size 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
     color 160ms;
 }
-.flood:hover:not(:disabled) {
+.flood:hover:not(:disabled),
+.fill[aria-current="true"] {
   background-size: 100% 100%;
   color: var(--paper);
+}
+
+/* Navigation and tabs: the same move, as a thin underline. */
+.line {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0 1px;
+  padding-bottom: 2px;
+  transition:
+    background-size 220ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    color 160ms;
+}
+.line:hover,
+.line[aria-current="page"],
+.line[aria-pressed="true"],
+.line[aria-selected="true"] {
+  background-size: 100% 1px;
 }
 
 @keyframes rise {
@@ -81,16 +111,43 @@ body {
   animation: travel 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 }
 
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+.pulse {
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.shimmer {
+  animation: shimmer 1.6s linear infinite;
+  background: linear-gradient(90deg, var(--wash) 30%, var(--rule) 50%, var(--wash) 70%) 0 0 / 200%
+    100%;
+}
+
 dialog::backdrop {
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .rise,
-  .travel {
+  .travel,
+  .pulse,
+  .shimmer {
     animation: none;
   }
-  .flood {
+  .flood,
+  .fill,
+  .line {
     transition: none;
   }
 }

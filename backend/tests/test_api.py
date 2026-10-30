@@ -259,6 +259,53 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(source.headers["content-type"].startswith("text/plain"))
         self.assertEqual(self.client.get(f"{base}/input").status_code, 404)
 
+    def test_downloads_are_named_after_the_job(self):
+        generation_id = self.tailor().json()["generation_id"]
+        self.process(generation_id)
+        base = f"/api/generations/{generation_id}/files"
+        pdf = self.client.get(f"{base}/cv_pdf?download=true")
+        self.assertIn('filename="engineer-job-1-cv.pdf"', pdf.headers["content-disposition"])
+        self.db.Table("generations").update_item(
+            Key={"user_id": "ali", "generation_id": generation_id},
+            UpdateExpression="SET job_title = :title",
+            ExpressionAttributeValues={":title": 'Ingénieur "\r\n'},
+        )
+        quoted = self.client.get(f"{base}/cv_pdf?download=true")
+        self.assertIn('filename="ing-nieur-cv.pdf"', quoted.headers["content-disposition"])
+
+    def test_history_lists_downloads_and_the_job_link(self):
+        generation_id = self.tailor().json()["generation_id"]
+        self.db.Table("jobs").update_item(
+            Key={"job_id": "job-1"},
+            UpdateExpression="SET posting_url = :url",
+            ExpressionAttributeValues={":url": "https://example.com/job"},
+        )
+        waiting = self.client.get("/api/generations").json()[0]
+        self.assertEqual(waiting["files"], [])
+        self.assertEqual(waiting["company"], "Example")
+        self.assertEqual(waiting["job_url"], "https://example.com/job")
+
+        self.process(generation_id)
+        ready = self.client.get("/api/generations").json()[0]
+        self.assertIn("cv_pdf", ready["files"])
+        self.assertIn("motivation_letter_pdf", ready["files"])
+        detail = self.client.get(f"/api/generations/{generation_id}").json()
+        self.assertEqual(detail["job_url"], "https://example.com/job")
+
+    def test_history_survives_a_removed_job_and_refuses_non_web_links(self):
+        generation_id = self.tailor().json()["generation_id"]
+        self.db.Table("jobs").update_item(
+            Key={"job_id": "job-1"},
+            UpdateExpression="SET application_url = :url",
+            ExpressionAttributeValues={":url": "javascript:alert(1)"},
+        )
+        self.assertIsNone(self.client.get("/api/generations").json()[0]["job_url"])
+        self.db.Table("jobs").delete_item(Key={"job_id": "job-1"})
+        listed = self.client.get("/api/generations").json()[0]
+        self.assertEqual(listed["generation_id"], generation_id)
+        self.assertIsNone(listed["job_url"])
+        self.assertIsNone(listed["company"])
+
     def test_failed_compile_shows_the_log_and_retry_requeues(self):
         generation_id = self.tailor().json()["generation_id"]
         self.messages()

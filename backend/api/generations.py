@@ -1,6 +1,7 @@
 """Start tailoring runs and read their status, review list and files."""
 
 import json
+import re
 import time
 from pathlib import PurePosixPath
 from typing import Annotated, Literal
@@ -9,6 +10,7 @@ from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, ValidationError
 
+from backend.api.catalogue import posting_of
 from backend.api.cvs import read_cv
 from backend.api.deps import AppContext, CurrentUser
 from backend.api.profile import load_profile
@@ -49,11 +51,14 @@ class Generation(BaseModel):
     generation_id: str
     job_id: str
     job_title: str
+    company: str | None = None
+    job_url: str | None = None
     model_id: str
     status: Status
     created_at: str
     updated_at: str
     review_required: bool
+    files: list[str]
 
 
 class GenerationDetail(Generation):
@@ -64,12 +69,7 @@ class GenerationDetail(Generation):
     keywords: list[str]
     changes: list[Change]
     explanations: list[Explanation]
-    files: list[str]
     compilation_log: str | None = None
-
-
-def summary(record):
-    return Generation.model_validate(record).model_dump()
 
 
 def retryable(record):
@@ -80,6 +80,26 @@ def retryable(record):
 def downloads(record):
     ready = record.get("artifacts", {}) if record["status"] == "ready" else {}
     return {**ready, **record.get("failure_artifacts", {})}
+
+
+def summaries(context, records):
+    links = context.catalogue.links(record["job_id"] for record in records)
+    return [
+        Generation.model_validate(
+            {**record, **links.get(record["job_id"], {}), "files": sorted(downloads(record))}
+        ).model_dump()
+        for record in records
+    ]
+
+
+def summary(context, record):
+    return summaries(context, [record])[0]
+
+
+def download_name(record, path):
+    """Every generation's file is cv.pdf, so name downloads after the job to tell them apart."""
+    title = re.sub(r"[^a-z0-9]+", "-", record["job_title"].lower()).strip("-")[:60]
+    return f"{title}-{path.name}" if title else path.name
 
 
 def read_json(context, reference):
@@ -99,14 +119,13 @@ def detail(context, record):
     if "compilation_log" in files:
         log = context.generations.read_file(files["compilation_log"]).decode("utf-8", "replace")
     return GenerationDetail(
-        **summary(record),
+        **summary(context, record),
         retryable=retryable(record),
         failure_stage=record.get("failure_stage"),
         error_detail=record.get("error_detail"),
         keywords=keywords,
         changes=changes,
         explanations=explanations,
-        files=sorted(files),
         compilation_log=log,
     )
 
@@ -122,7 +141,7 @@ def load_job(context, job_id):
     item = context.jobs.get_item(Key={"job_id": job_id}, ConsistentRead=True).get("Item")
     if item is None:
         raise HTTPException(404, "Job not found")
-    posting = item.get("job", item) if "title" not in item else item
+    posting = posting_of(item)
     fields = {key: posting[key] for key in ("title", "description", "company") if key in posting}
     try:
         return Job(job_id=job_id, **fields)
@@ -157,7 +176,7 @@ def create_generation(
         model_id=body.model_id or models[0],
         cv_latex=read_cv(context, user, body.cv_id),
     )
-    return summary(submit(context, request))
+    return summary(context, submit(context, request))
 
 
 @router.get("")
@@ -182,8 +201,8 @@ def list_generations(
         if "LastEvaluatedKey" not in page:
             break
         arguments["ExclusiveStartKey"] = page["LastEvaluatedKey"]
-    matches = [summary(item) for item in records if status in (None, item["status"])]
-    return sorted(matches, key=lambda item: item["created_at"], reverse=True)
+    matches = [item for item in records if status in (None, item["status"])]
+    return sorted(summaries(context, matches), key=lambda item: item["created_at"], reverse=True)
 
 
 @router.get("/{generation_id}")
@@ -200,7 +219,7 @@ def retry_generation(generation_id: str, context: AppContext, user: CurrentUser)
     context.generations.enqueue(
         context.client("sqs"), settings.document_queue_url, user, generation_id
     )
-    return summary(record)
+    return summary(context, record)
 
 
 @router.post("/{generation_id}/regenerate", status_code=201)
@@ -216,7 +235,7 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
             "prompt_version": PROMPT_VERSION,
         }
     )
-    return summary(submit(context, request, force=True))
+    return summary(context, submit(context, request, force=True))
 
 
 @router.get("/{generation_id}/files/{name}")
@@ -228,16 +247,19 @@ def get_file(
     download: bool = False,
 ) -> Response:
     """Served by the API so the browser never needs a signed S3 link that can expire."""
-    reference = downloads(load(context, user, generation_id)).get(name)
+    record = load(context, user, generation_id)
+    reference = downloads(record).get(name)
     if reference is None:
         raise HTTPException(404, "File not found")
     path = PurePosixPath(reference["key"])
-    disposition = "attachment" if download else "inline"
+    disposition = f'attachment; filename="{download_name(record, path)}"'
+    if not download:
+        disposition = f'inline; filename="{path.name}"'
     return Response(
         context.generations.read_file(reference),
         media_type=CONTENT_TYPES.get(path.suffix, "application/octet-stream"),
         headers={
-            "Content-Disposition": f'{disposition}; filename="{path.name}"',
+            "Content-Disposition": disposition,
             "X-Content-Type-Options": "nosniff",
             "Cache-Control": "private, max-age=3600",
         },

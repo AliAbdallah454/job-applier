@@ -4,7 +4,17 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { fileUrl, type GenerationDetail } from "../api/client";
 import { useGeneration, useRegenerate, useRetry } from "../api/queries";
 import { EditDiff } from "../components/EditDiff";
-import { Button, Empty, ErrorNote, Eyebrow, formatDate, label, StatusTag } from "../components/ui";
+import { GenerationLinks } from "../components/GenerationLinks";
+import {
+  Button,
+  Empty,
+  ErrorNote,
+  Eyebrow,
+  formatDate,
+  label,
+  StatusTag,
+  TAB,
+} from "../components/ui";
 
 const STEPS = ["queued", "processing", "ready"] as const;
 const WAITING: Record<string, string> = {
@@ -12,9 +22,7 @@ const WAITING: Record<string, string> = {
   processing: "A worker is tailoring your CV and compiling the PDFs.",
 };
 const FILES = [
-  ["cv_pdf", "CV .pdf"],
   ["cv_tex", "CV .tex"],
-  ["motivation_letter_pdf", "Letter .pdf"],
   ["motivation_letter_tex", "Letter .tex"],
   ["changes_json", "Changes .json"],
 ];
@@ -42,19 +50,28 @@ export function GenerationPage() {
   if (!data) return <Empty>Loading…</Empty>;
 
   return (
-    <div className="flex flex-1 flex-col">
+    // A ready review scrolls its two sides apart, so the PDF stays beside the changes.
+    <div
+      className={`flex flex-1 flex-col ${
+        data.status === "ready" ? "lg:h-[calc(100dvh-53px)] lg:flex-none" : ""
+      }`}
+    >
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-rule p-4 sm:px-6">
         <div className="min-w-0">
           <Eyebrow>
             <Link to="/generations" className="hover:text-ink">
-              Generations
+              Tailored CVs
             </Link>{" "}
             / {formatDate(data.created_at)} / {data.model_id}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>
+          {data.company && <p className="text-muted">{data.company}</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <StatusTag status={data.status} />
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="mr-2">
+            <StatusTag status={data.status} />
+          </span>
+          <GenerationLinks generation={data} />
           {data.retryable && (
             <Button disabled={retry.isPending} onClick={() => retry.mutate()}>
               {retry.isPending ? "Retrying…" : "Retry"}
@@ -141,7 +158,7 @@ function Failure({ generation }: { generation: GenerationDetail }) {
 function Review({ generation }: { generation: GenerationDetail }) {
   const [document, setDocument] = useState<"cv_pdf" | "motivation_letter_pdf">("cv_pdf");
   return (
-    <div className="grid flex-1 lg:grid-cols-2">
+    <div className="grid min-h-0 flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
       <section className="flex min-w-0 flex-col border-b border-rule lg:border-r lg:border-b-0">
         <div className="flex gap-5 px-4 pt-3 text-sm sm:px-6" role="tablist">
           {(
@@ -156,9 +173,7 @@ function Review({ generation }: { generation: GenerationDetail }) {
               type="button"
               aria-selected={document === name}
               onClick={() => setDocument(name)}
-              className={
-                document === name ? "font-semibold underline underline-offset-4" : "text-muted"
-              }
+              className={TAB}
             >
               {text}
             </button>
@@ -171,7 +186,7 @@ function Review({ generation }: { generation: GenerationDetail }) {
           className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
         />
       </section>
-      <section className="min-w-0 p-4 sm:p-6">
+      <section className="min-w-0 p-4 sm:p-6 lg:overflow-y-auto">
         <Eyebrow>Job keywords</Eyebrow>
         <ul className="mt-2 flex flex-wrap gap-1">
           {generation.keywords.map((keyword) => (
@@ -204,7 +219,8 @@ function Review({ generation }: { generation: GenerationDetail }) {
         {generation.changes.map((change, index) => (
           <EditDiff key={index} change={change} />
         ))}
-        <div className="mt-6 flex flex-wrap gap-x-4 gap-y-1 border-t border-ink pt-3 text-sm">
+        <Eyebrow>Sources</Eyebrow>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           {FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
             <a
               key={name}

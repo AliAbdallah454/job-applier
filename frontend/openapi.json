@@ -492,9 +492,27 @@
       },
       "Generation": {
         "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "files": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Files",
+            "type": "array"
           },
           "generation_id": {
             "title": "Generation Id",
@@ -507,6 +525,17 @@
           "job_title": {
             "title": "Job Title",
             "type": "string"
+          },
+          "job_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Url"
           },
           "model_id": {
             "title": "Model Id",
@@ -539,7 +568,8 @@
           "status",
           "created_at",
           "updated_at",
-          "review_required"
+          "review_required",
+          "files"
         ],
         "title": "Generation",
         "type": "object"
@@ -552,6 +582,17 @@
             },
             "title": "Changes",
             "type": "array"
+          },
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
           },
           "compilation_log": {
             "anyOf": [
@@ -616,6 +657,17 @@
             "title": "Job Title",
             "type": "string"
           },
+          "job_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Url"
+          },
           "keywords": {
             "items": {
               "type": "string"
@@ -659,11 +711,11 @@
           "created_at",
           "updated_at",
           "review_required",
+          "files",
           "retryable",
           "keywords",
           "changes",
-          "explanations",
-          "files"
+          "explanations"
         ],
         "title": "GenerationDetail",
         "type": "object"

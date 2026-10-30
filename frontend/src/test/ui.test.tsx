@@ -4,9 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { Job } from "../api/client";
+import type { Generation, Job } from "../api/client";
 import { EditDiff } from "../components/EditDiff";
 import { TailorDialog } from "../components/TailorDialog";
+import { History } from "../pages/History";
 import { Jobs } from "../pages/Jobs";
 
 const JOB: Job = {
@@ -26,6 +27,20 @@ const JOB: Job = {
   is_tech: true,
 };
 const CV = { cv_id: "a".repeat(32), filename: "cv.tex", size: 10, uploaded_at: "2026-01-01T00:00:00Z" };
+
+const GENERATION: Generation = {
+  generation_id: "g1",
+  job_id: "job-1",
+  job_title: "Junior Engineer",
+  company: "Example",
+  job_url: "https://example.com/job",
+  model_id: "model",
+  status: "ready",
+  created_at: "2026-01-01T00:00:00Z",
+  updated_at: "2026-01-01T00:00:00Z",
+  review_required: true,
+  files: ["cv_pdf", "motivation_letter_pdf"],
+};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -127,6 +142,44 @@ describe("TailorDialog", () => {
   });
 });
 
+describe("History", () => {
+  it("offers both downloads and the posting without opening a generation", async () => {
+    server({ "GET /api/generations": () => json([GENERATION]) });
+    mount(<History />);
+    const cv = await screen.findByRole("link", { name: "Download cv for Junior Engineer" });
+    expect(cv).toHaveAttribute("href", "/api/generations/g1/files/cv_pdf?download=true");
+    expect(
+      screen.getByRole("link", { name: "Download motivation letter for Junior Engineer" }),
+    ).toHaveAttribute("href", "/api/generations/g1/files/motivation_letter_pdf?download=true");
+    expect(screen.getByRole("link", { name: "Job posting for Junior Engineer" })).toHaveAttribute(
+      "href",
+      "https://example.com/job",
+    );
+  });
+
+  it("hides what does not exist yet", async () => {
+    const waiting = { ...GENERATION, status: "processing", files: [], job_url: null };
+    server({ "GET /api/generations": () => json([waiting]) });
+    mount(<History />);
+    await screen.findByText("Junior Engineer");
+    expect(screen.queryByRole("link", { name: /Download/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Job posting/ })).not.toBeInTheDocument();
+  });
+
+  it("filters by status and by company", async () => {
+    const failed = { ...GENERATION, generation_id: "g2", job_title: "Data", status: "failed" };
+    server({ "GET /api/generations": () => json([GENERATION, { ...failed, company: "Other" }]) });
+    mount(<History />);
+    await screen.findByText("Data");
+    await userEvent.click(screen.getByRole("button", { name: /Failed/ }));
+    expect(screen.queryByText("Junior Engineer")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /All/ }));
+    await userEvent.type(screen.getByLabelText("Filter by job or company"), "other");
+    expect(screen.queryByText("Junior Engineer")).not.toBeInTheDocument();
+    expect(screen.getByText("Data")).toBeInTheDocument();
+  });
+});
+
 describe("Jobs", () => {
   const base = {
     "GET /api/options": () =>
@@ -145,6 +198,19 @@ describe("Jobs", () => {
     mount(<Jobs />);
     expect(await screen.findByRole("heading", { name: "Junior Engineer" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tailor my CV" })).toBeInTheDocument();
+  });
+
+  it("offers the downloads of an earlier tailored CV but not a second posting link", async () => {
+    server({
+      ...base,
+      "GET /api/jobs": () => json({ jobs: [JOB], next_cursor: null }),
+      "GET /api/generations": () => json([GENERATION]),
+    });
+    mount(<Jobs />);
+    expect(
+      await screen.findByRole("link", { name: "Download cv for Junior Engineer" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /posting/i })).toHaveLength(1);
   });
 
   it("continues through empty filtered pages without a click", async () => {
