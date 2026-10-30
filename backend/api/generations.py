@@ -28,6 +28,7 @@ CONTENT_TYPES = {
 class GenerationRequest(BaseModel):
     job_id: str
     cv_id: str
+    model_id: str | None = None  # The first configured model when left out.
 
 
 class Change(BaseModel):
@@ -48,6 +49,7 @@ class Generation(BaseModel):
     generation_id: str
     job_id: str
     job_title: str
+    model_id: str
     status: Status
     created_at: str
     updated_at: str
@@ -128,6 +130,10 @@ def load_job(context, job_id):
         raise HTTPException(422, "This job has no usable title or description") from None
 
 
+def model_ids(context):
+    return [model["id"] for model in context.settings.document_models]
+
+
 def submit(context, request, *, force=False):
     settings = context.settings
     return context.generations.submit(
@@ -142,10 +148,13 @@ def create_generation(
     profile = load_profile(context, user)
     if profile is None:
         raise HTTPException(409, "Fill in your profile before tailoring a CV")
+    models = model_ids(context)
+    if body.model_id and body.model_id not in models:
+        raise HTTPException(422, "Unknown model")
     request = GenerationInput(
         profile=profile,
         job=load_job(context, body.job_id),
-        model_id=context.settings.document_model_id,
+        model_id=body.model_id or models[0],
         cv_latex=read_cv(context, user, body.cv_id),
     )
     return summary(submit(context, request))
@@ -199,9 +208,11 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
     """A new revision from the same frozen CV, profile and job."""
     record = load(context, user, generation_id)
     frozen = GenerationInput.model_validate_json(context.generations.read_file(record["input"]))
+    models = model_ids(context)
     request = frozen.model_copy(
         update={
-            "model_id": context.settings.document_model_id,
+            # The same model again, unless it has since been removed from the config.
+            "model_id": frozen.model_id if frozen.model_id in models else models[0],
             "prompt_version": PROMPT_VERSION,
         }
     )

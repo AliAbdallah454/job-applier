@@ -49,7 +49,7 @@ export function GenerationPage() {
             <Link to="/generations" className="hover:text-ink">
               Generations
             </Link>{" "}
-            / {formatDate(data.created_at)}
+            / {formatDate(data.created_at)} / {data.model_id}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>
         </div>

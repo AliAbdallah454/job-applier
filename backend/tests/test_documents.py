@@ -219,7 +219,7 @@ class GenerationTests(unittest.TestCase):
         self.generate = Mock(return_value=(content(), {"inputTokens": 50, "outputTokens": 30}))
         self.compiler = Mock(return_value=b"%PDF-test")
         self.service = DocumentService(
-            self.store, self.generate, self.request.model_id, compile_document=self.compiler
+            self.store, self.generate, [self.request.model_id], compile_document=self.compiler
         )
 
     def submit(self, **kwargs):
@@ -409,7 +409,7 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn("private model text", str(logs.output))
 
     def test_worker_rejects_model_outside_deployed_configuration(self):
-        self.service.model_id = "another-model"
+        self.service.model_ids = ["another-model"]
         with self.assertRaises(ValueError):
             self.service.process(self.submit())
         self.generate.assert_not_called()
@@ -450,6 +450,21 @@ class GenerationTests(unittest.TestCase):
             self.service.process(message)
         self.assertIn("stop_reason=max_tokens", self.store.get(**message)["error_detail"])
 
+    def test_generation_uses_the_model_in_its_snapshot(self):
+        client = Mock()
+        client.converse.return_value = {"stopReason": "max_tokens"}
+        self.request.model_id = "us.anthropic.claude-sonnet-4-6"
+        with self.assertRaises(DocumentError):
+            BedrockGenerator(client)(self.request)
+        arguments = client.converse.call_args.kwargs
+        self.assertEqual(arguments["modelId"], "us.anthropic.claude-sonnet-4-6")
+        self.assertEqual(arguments["inferenceConfig"]["maxTokens"], 16000)
+
+    def test_worker_accepts_any_configured_model(self):
+        self.service.model_ids = ["us.anthropic.claude-sonnet-4-6"]
+        self.request.model_id = "us.anthropic.claude-sonnet-4-6"
+        self.assertEqual(self.service.process(self.submit()), "ready")
+
     def test_bedrock_sends_cv_but_not_profile_contact_details(self):
         client = Mock()
         client.converse.return_value = {
@@ -482,7 +497,7 @@ class GenerationTests(unittest.TestCase):
             "DocumentGenerationsTable": self.store.table.name,
             "DocumentsBucketName": self.store.bucket,
             "DocumentQueueUrl": self.queue,
-            "DocumentModelId": self.request.model_id,
+            "DocumentModels": json.dumps([{"id": self.request.model_id, "label": "Nova"}]),
             "ProfilesTable": "profiles",
             "JobsTable": "jobs",
         }
@@ -559,7 +574,7 @@ class GenerationTests(unittest.TestCase):
             "GENERATIONS_TABLE": self.store.table.name,
             "DOCUMENTS_BUCKET": self.store.bucket,
             "QUEUE_URL": self.queue,
-            "DOCUMENT_MODEL_ID": self.request.model_id,
+            "DOCUMENT_MODEL_IDS": self.request.model_id,
         }
         with (
             patch.dict("os.environ", environment),

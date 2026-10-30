@@ -12,10 +12,16 @@ from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 router = APIRouter(prefix="/api", tags=["jobs"])
 
 
+class ModelOption(BaseModel):
+    id: str
+    label: str
+
+
 class Options(BaseModel):
     categories: list[str]
     contract_types: list[str]
     seniorities: list[str]
+    models: list[ModelOption]
     user_id: str
     demo: bool
 
@@ -48,6 +54,7 @@ def options(context: AppContext, user: CurrentUser) -> Options:
         categories=list(get_args(JobCategory)),
         contract_types=list(get_args(ContractType)),
         seniorities=list(get_args(Seniority)),
+        models=context.settings.document_models,
         user_id=user,
         demo=context.settings.demo,
     )

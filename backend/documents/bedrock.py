@@ -112,9 +112,8 @@ def tool_schema(model_id):
 
 
 class BedrockGenerator:
-    def __init__(self, client, *, max_tokens=6000):
+    def __init__(self, client):
         self.client = client
-        self.max_tokens = max_tokens
 
     def __call__(self, request: GenerationInput, previous=None):
         # Profile contact details are not model inputs (the letter header is rendered locally).
@@ -138,7 +137,7 @@ class BedrockGenerator:
                     "content": [{"text": json.dumps(prompt, ensure_ascii=False)}],
                 }
             ],
-            inferenceConfig={"maxTokens": self.max_tokens},
+            inferenceConfig={"maxTokens": 6000 if "amazon.nova-" in request.model_id else 16000},
             toolConfig={
                 "tools": [
                     {

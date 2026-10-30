@@ -29,7 +29,10 @@ def main():
         ),
     )
     service = DocumentService(
-        store, BedrockGenerator(client), os.environ["DOCUMENT_MODEL_ID"], timeout=timeout
+        store,
+        BedrockGenerator(client),
+        os.environ["DOCUMENT_MODEL_IDS"].split(","),
+        timeout=timeout,
     )
 
     def process(message):

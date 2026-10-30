@@ -370,6 +370,8 @@ export interface components {
             job_id: string;
             /** Job Title */
             job_title: string;
+            /** Model Id */
+            model_id: string;
             /** Review Required */
             review_required: boolean;
             /**
@@ -404,6 +406,8 @@ export interface components {
             job_title: string;
             /** Keywords */
             keywords: string[];
+            /** Model Id */
+            model_id: string;
             /** Retryable */
             retryable: boolean;
             /** Review Required */
@@ -422,6 +426,8 @@ export interface components {
             cv_id: string;
             /** Job Id */
             job_id: string;
+            /** Model Id */
+            model_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -502,6 +508,13 @@ export interface components {
              */
             url: string;
         };
+        /** ModelOption */
+        ModelOption: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+        };
         /** Options */
         Options: {
             /** Categories */
@@ -510,6 +523,8 @@ export interface components {
             contract_types: string[];
             /** Demo */
             demo: boolean;
+            /** Models */
+            models: components["schemas"]["ModelOption"][];
             /** Seniorities */
             seniorities: string[];
             /** User Id */

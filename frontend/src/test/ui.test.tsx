@@ -84,6 +84,29 @@ describe("TailorDialog", () => {
     expect(JSON.parse(post!.body)).toEqual({ job_id: "job-1", cv_id: CV.cv_id });
   });
 
+  it("sends the chosen model, defaulting to the first", async () => {
+    const calls = server({
+      "GET /api/cvs": () => json([CV]),
+      "GET /api/options": () =>
+        json({
+          models: [
+            { id: "nova", label: "Nova" },
+            { id: "sonnet", label: "Sonnet" },
+          ],
+        }),
+      "POST /api/generations": () => json({ generation_id: "g1", status: "queued" }, 201),
+    });
+    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    const picker = await screen.findByRole("combobox", { name: "Which model?", hidden: true });
+    expect(picker).toHaveValue("nova");
+    await screen.findByText("cv.tex");
+    await userEvent.selectOptions(picker, "sonnet");
+    await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
+    await screen.findByText("Status page");
+    const post = calls.find((call) => call.method === "POST");
+    expect(JSON.parse(post!.body).model_id).toBe("sonnet");
+  });
+
   it("links to the profile when the API says one is missing", async () => {
     server({
       "GET /api/cvs": () => json([CV]),

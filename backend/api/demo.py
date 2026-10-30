@@ -165,7 +165,10 @@ def run_worker(context):
         settings.documents_bucket,
     )
     service = DocumentService(
-        store, fake_generate, settings.document_model_id, compile_document=fake_compile
+        store,
+        fake_generate,
+        [model["id"] for model in settings.document_models],
+        compile_document=fake_compile,
     )
     while True:
         response = sqs.receive_message(
@@ -282,7 +285,10 @@ def start_demo(user_id):
             generations_table="generations",
             documents_bucket="documents",
             document_queue_url=queue_url,
-            document_model_id="demo-model",
+            document_models=[
+                {"id": "demo-fast", "label": "Demo fast model"},
+                {"id": "demo-strong", "label": "Demo strong model"},
+            ],
             demo=True,
         ),
         region=REGION,

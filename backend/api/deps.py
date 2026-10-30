@@ -1,5 +1,6 @@
 """Settings, AWS clients and the current user, shared by every route."""
 
+import json
 import threading
 from dataclasses import dataclass
 from typing import Annotated
@@ -21,7 +22,7 @@ class Settings:
     generations_table: str
     documents_bucket: str
     document_queue_url: str
-    document_model_id: str
+    document_models: list[dict]
     demo: bool = False
 
 
@@ -38,7 +39,7 @@ def resolve_settings(
         generations_table=application["DocumentGenerationsTable"],
         documents_bucket=application["DocumentsBucketName"],
         document_queue_url=application["DocumentQueueUrl"],
-        document_model_id=application["DocumentModelId"],
+        document_models=json.loads(application["DocumentModels"]),
     )
 
 

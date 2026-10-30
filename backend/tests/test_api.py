@@ -52,7 +52,10 @@ class ApiTests(unittest.TestCase):
             generations_table="generations",
             documents_bucket="documents",
             document_queue_url=self.queue,
-            document_model_id="test-model",
+            document_models=[
+                {"id": "test-model", "label": "Test model"},
+                {"id": "other-model", "label": "Other model"},
+            ],
         )
         self.context = Context(self.settings, region="us-east-1")
         self.client = TestClient(create_app(self.context), base_url="http://localhost")
@@ -91,7 +94,7 @@ class ApiTests(unittest.TestCase):
         service = DocumentService(
             store,
             fake_generate_now,
-            "test-model",
+            ["test-model", "other-model"],
             compile_document=compile_document or (lambda path: example_pdf("x", [])),
         )
         return service.process({"user_id": "ali", "generation_id": generation_id})
@@ -208,6 +211,22 @@ class ApiTests(unittest.TestCase):
             ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
         )
         self.assertFalse(body["retryable"])
+
+    def test_tailoring_uses_the_chosen_model_and_rejects_unknown_ones(self):
+        self.assertEqual(
+            [model["id"] for model in self.client.get("/api/options").json()["models"]],
+            ["test-model", "other-model"],
+        )
+        self.assertEqual(self.tailor().json()["model_id"], "test-model")
+        cv_id = self.client.get("/api/cvs").json()[0]["cv_id"]
+        request = {"job_id": "job-1", "cv_id": cv_id, "model_id": "other-model"}
+        chosen = self.client.post("/api/generations", json=request).json()
+        self.assertEqual(chosen["model_id"], "other-model")
+        self.assertEqual(self.process(chosen["generation_id"]), "ready")
+        again = self.client.post(f"/api/generations/{chosen['generation_id']}/regenerate").json()
+        self.assertEqual(again["model_id"], "other-model")
+        unknown = self.client.post("/api/generations", json={**request, "model_id": "gpt"})
+        self.assertEqual(unknown.status_code, 422)
 
     def test_generation_from_before_the_rewrite_still_loads(self):
         generation_id = self.tailor().json()["generation_id"]

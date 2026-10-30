@@ -141,7 +141,14 @@ class ApplicationStackTests(unittest.TestCase):
         self.assertEqual(container["User"], "10001:10001")
         environment = {item["Name"]: item["Value"] for item in container["Environment"]}
         self.assertEqual(environment["DOCUMENT_TIMEOUT_SECONDS"], "1200")
-        self.assertEqual(environment["DOCUMENT_MODEL_ID"], "us.amazon.nova-pro-v1:0")
+        self.assertEqual(
+            environment["DOCUMENT_MODEL_IDS"].split(","),
+            [
+                "us.anthropic.claude-sonnet-4-6",
+                "us.anthropic.claude-opus-4-6-v1",
+                "us.amazon.nova-pro-v1:0",
+            ],
+        )
 
     def test_worker_permissions_do_not_include_profile_or_jobs_tables(self):
         resources = self.template.to_json()["Resources"]
@@ -162,10 +169,20 @@ class ApplicationStackTests(unittest.TestCase):
             for statement in statements
             if "bedrock:InvokeModel" in statement.get("Action", [])
         ]
-        self.assertEqual(len(invoke), 2)
-        foundation = next(statement for statement in invoke if "Condition" in statement)
-        self.assertIn("bedrock:InferenceProfileArn", foundation["Condition"]["StringEquals"])
-        self.assertIn("foundation-model/amazon.nova-pro-v1:0", str(foundation["Resource"]))
+        self.assertEqual(len(invoke), 6)
+        foundations = [statement for statement in invoke if "Condition" in statement]
+        self.assertTrue(
+            all(
+                "bedrock:InferenceProfileArn" in statement["Condition"]["StringEquals"]
+                for statement in foundations
+            )
+        )
+        for model in [
+            "amazon.nova-pro-v1:0",
+            "anthropic.claude-sonnet-4-6",
+            "anthropic.claude-opus-4-6-v1",
+        ]:
+            self.assertIn(f"foundation-model/{model}", str(foundations))
 
     def test_document_repository_is_separate_from_pipeline_images(self):
         self.template.resource_count_is("AWS::ECR::Repository", 1)
@@ -186,7 +203,7 @@ class ApplicationStackTests(unittest.TestCase):
             "DocumentGenerationsTable",
             "DocumentQueueUrl",
             "DocumentDLQUrl",
-            "DocumentModelId",
+            "DocumentModels",
             "DocumentClusterName",
             "DocumentWorkerService",
             "DocumentWorkerLogGroup",
@@ -201,7 +218,9 @@ class ApplicationStackTests(unittest.TestCase):
                     context={
                         "maxDocumentWorkers": 3,
                         "documentTimeoutSeconds": 900,
-                        "documentModelId": "anthropic.claude-sonnet-4-6",
+                        "documentModels": [
+                            {"id": "anthropic.claude-sonnet-4-6", "label": "Sonnet"}
+                        ],
                     }
                 ),
                 "ConfiguredApplication",
@@ -230,7 +249,7 @@ class ApplicationStackTests(unittest.TestCase):
         for context in [
             {"maxDocumentWorkers": 0},
             {"documentTimeoutSeconds": 1},
-            {"documentModelId": "*"},
+            {"documentModels": [{"id": "*", "label": "Everything"}]},
         ]:
             with self.subTest(context=context), self.assertRaises(ValueError):
                 ApplicationStack(App(context=context), "InvalidApplication")

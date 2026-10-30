@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, type Job } from "../api/client";
-import { useCvs, useStartGeneration, useUploadCv } from "../api/queries";
+import { useCvs, useOptions, useStartGeneration, useUploadCv } from "../api/queries";
 import { Button, ErrorNote, Eyebrow, formatDate } from "./ui";
 
 export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }) {
@@ -11,8 +11,11 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
   const cvs = useCvs();
   const upload = useUploadCv();
   const start = useStartGeneration();
+  const models = useOptions().data?.models ?? [];
   const [picked, setPicked] = useState<string | null>(null);
+  const [pickedModel, setPickedModel] = useState<string | null>(null);
   const selected = picked ?? cvs.data?.[0]?.cv_id ?? null;
+  const model = pickedModel ?? models[0]?.id;
 
   useEffect(() => {
     const element = dialog.current;
@@ -71,6 +74,23 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
         </label>
       </fieldset>
 
+      {models.length > 0 && (
+        <label className="mt-5 block text-sm font-medium">
+          Which model?
+          <select
+            className="mt-2 block w-full border border-rule bg-paper p-2 font-normal"
+            value={model}
+            onChange={(event) => setPickedModel(event.target.value)}
+          >
+            {models.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <div className="mt-4 flex flex-col gap-2">
         <ErrorNote error={cvs.error ?? upload.error ?? start.error} />
         {needsProfile && (
@@ -88,7 +108,7 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
           onClick={() =>
             selected &&
             start.mutate(
-              { job_id: job.job_id, cv_id: selected },
+              { job_id: job.job_id, cv_id: selected, model_id: model },
               { onSuccess: (generation) => navigate(`/generations/${generation.generation_id}`) },
             )
           }

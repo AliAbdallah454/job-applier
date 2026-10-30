@@ -18,10 +18,10 @@ MAX_ATTEMPTS = 3
 
 
 class DocumentService:
-    def __init__(self, store, generate, model_id, *, timeout=600, compile_document=compile_pdf):
+    def __init__(self, store, generate, model_ids, *, timeout=1200, compile_document=compile_pdf):
         self.store = store
         self.generate = generate
-        self.model_id = model_id
+        self.model_ids = model_ids
         self.timeout = timeout
         self.compile_document = compile_document
 
@@ -61,7 +61,8 @@ class DocumentService:
         failure_artifacts = {}
         try:
             request = GenerationInput.model_validate_json(self.store.read_file(record["input"]))
-            if request.profile.user_id != record["user_id"] or request.model_id != self.model_id:
+            allowed = request.model_id in self.model_ids
+            if request.profile.user_id != record["user_id"] or not allowed:
                 raise DocumentError("Snapshot user or model does not match this worker")
 
             prefix = f"{record['prefix']}/attempts/{token}"

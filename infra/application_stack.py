@@ -1,6 +1,8 @@
 """User profile and document storage, deployed independently of job collection."""
 
+import json
 import re
+from pathlib import Path
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_applicationautoscaling as autoscaling
@@ -14,6 +16,8 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
+
+MODELS_FILE = Path(__file__).resolve().parents[1] / "config/document_models.json"
 
 
 class ApplicationStack(Stack):
@@ -70,12 +74,16 @@ class ApplicationStack(Stack):
         timeout = int(1200 if raw_timeout is None else raw_timeout)
         if maximum < 1 or not 60 <= timeout <= 3600:
             raise ValueError("maxDocumentWorkers must be positive; documentTimeoutSeconds: 60–3600")
-        model = self.node.try_get_context("documentModelId") or "us.amazon.nova-pro-v1:0"
-        if not re.fullmatch(
-            r"(?:(?:us|eu|apac)\.)?(?:anthropic\.[a-z0-9.:-]+|amazon\.nova-pro-v1:0)", model
+        models = self.node.try_get_context("documentModels") or json.loads(MODELS_FILE.read_text())
+        model_ids = [model["id"] for model in models]
+        if not model_ids or not all(
+            re.fullmatch(
+                r"(?:(?:us|eu|apac)\.)?(?:anthropic\.[a-z0-9.:-]+|amazon\.nova-pro-v1:0)", model
+            )
+            for model in model_ids
         ):
             raise ValueError(
-                "documentModelId must be a Claude or Nova Pro model ID or us/eu/apac profile ID"
+                "documentModels must be Claude or Nova Pro model IDs or us/eu/apac profile IDs"
             )
 
         dead_letters = sqs.Queue(
@@ -144,7 +152,7 @@ class ApplicationStack(Stack):
                 "GENERATIONS_TABLE": self.generations.table_name,
                 "DOCUMENTS_BUCKET": self.documents.bucket_name,
                 "QUEUE_URL": queue.queue_url,
-                "DOCUMENT_MODEL_ID": model,
+                "DOCUMENT_MODEL_IDS": ",".join(model_ids),
                 "DOCUMENT_TIMEOUT_SECONDS": str(timeout),
                 "AWS_DEFAULT_REGION": self.region,
             },
@@ -155,46 +163,47 @@ class ApplicationStack(Stack):
         self.documents.grant_read_write(task.task_role, "users/*")
         queue.grant_consume_messages(task.task_role)
 
-        if model.startswith(("us.", "eu.", "apac.")):
-            profile_arn = self.format_arn(
-                service="bedrock", resource="inference-profile", resource_name=model
-            )
-            task.add_to_task_role_policy(
-                iam.PolicyStatement(
-                    actions=["bedrock:InvokeModel", "bedrock:GetInferenceProfile"],
-                    resources=[profile_arn],
+        for model in model_ids:
+            if model.startswith(("us.", "eu.", "apac.")):
+                profile_arn = self.format_arn(
+                    service="bedrock", resource="inference-profile", resource_name=model
                 )
-            )
-            foundation = model.split(".", 1)[1]
-            task.add_to_task_role_policy(
-                iam.PolicyStatement(
-                    actions=["bedrock:InvokeModel"],
-                    resources=[
-                        self.format_arn(
-                            service="bedrock",
-                            region="*",
-                            account="",
-                            resource="foundation-model",
-                            resource_name=foundation,
-                        )
-                    ],
-                    conditions={"StringEquals": {"bedrock:InferenceProfileArn": profile_arn}},
+                task.add_to_task_role_policy(
+                    iam.PolicyStatement(
+                        actions=["bedrock:InvokeModel", "bedrock:GetInferenceProfile"],
+                        resources=[profile_arn],
+                    )
                 )
-            )
-        else:
-            task.add_to_task_role_policy(
-                iam.PolicyStatement(
-                    actions=["bedrock:InvokeModel"],
-                    resources=[
-                        self.format_arn(
-                            service="bedrock",
-                            account="",
-                            resource="foundation-model",
-                            resource_name=model,
-                        )
-                    ],
+                foundation = model.split(".", 1)[1]
+                task.add_to_task_role_policy(
+                    iam.PolicyStatement(
+                        actions=["bedrock:InvokeModel"],
+                        resources=[
+                            self.format_arn(
+                                service="bedrock",
+                                region="*",
+                                account="",
+                                resource="foundation-model",
+                                resource_name=foundation,
+                            )
+                        ],
+                        conditions={"StringEquals": {"bedrock:InferenceProfileArn": profile_arn}},
+                    )
                 )
-            )
+            else:
+                task.add_to_task_role_policy(
+                    iam.PolicyStatement(
+                        actions=["bedrock:InvokeModel"],
+                        resources=[
+                            self.format_arn(
+                                service="bedrock",
+                                account="",
+                                resource="foundation-model",
+                                resource_name=model,
+                            )
+                        ],
+                    )
+                )
 
         service = ecs.FargateService(
             self,
@@ -236,7 +245,7 @@ class ApplicationStack(Stack):
             "DocumentGenerationsTable": self.generations.table_name,
             "DocumentQueueUrl": queue.queue_url,
             "DocumentDLQUrl": dead_letters.queue_url,
-            "DocumentModelId": model,
+            "DocumentModels": json.dumps(models),
             "DocumentClusterName": cluster.cluster_name,
             "DocumentWorkerService": service.service_name,
             "DocumentWorkerLogGroup": log_group.log_group_name,

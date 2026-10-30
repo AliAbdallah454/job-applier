@@ -114,7 +114,7 @@ export function useGeneration(id: string) {
 export function useStartGeneration() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { job_id: string; cv_id: string }) =>
+    mutationFn: (body: { job_id: string; cv_id: string; model_id?: string }) =>
       unwrap(api.POST("/api/generations", { body })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
   });

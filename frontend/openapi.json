@@ -508,6 +508,10 @@
             "title": "Job Title",
             "type": "string"
           },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
           "review_required": {
             "title": "Review Required",
             "type": "boolean"
@@ -531,6 +535,7 @@
           "generation_id",
           "job_id",
           "job_title",
+          "model_id",
           "status",
           "created_at",
           "updated_at",
@@ -618,6 +623,10 @@
             "title": "Keywords",
             "type": "array"
           },
+          "model_id": {
+            "title": "Model Id",
+            "type": "string"
+          },
           "retryable": {
             "title": "Retryable",
             "type": "boolean"
@@ -645,6 +654,7 @@
           "generation_id",
           "job_id",
           "job_title",
+          "model_id",
           "status",
           "created_at",
           "updated_at",
@@ -667,6 +677,17 @@
           "job_id": {
             "title": "Job Id",
             "type": "string"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
           }
         },
         "required": [
@@ -1040,6 +1061,24 @@
         "title": "Link",
         "type": "object"
       },
+      "ModelOption": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "title": "ModelOption",
+        "type": "object"
+      },
       "Options": {
         "properties": {
           "categories": {
@@ -1060,6 +1099,13 @@
             "title": "Demo",
             "type": "boolean"
           },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
+            },
+            "title": "Models",
+            "type": "array"
+          },
           "seniorities": {
             "items": {
               "type": "string"
@@ -1076,6 +1122,7 @@
           "categories",
           "contract_types",
           "seniorities",
+          "models",
           "user_id",
           "demo"
         ],
