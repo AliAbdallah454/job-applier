@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 import { ApiError, type Status } from "../api/client";
+import { Mascot } from "./Silly";
 
 /** A link that reads as a secondary button. */
 export const ACTION =
@@ -35,7 +36,11 @@ export function Button({
 
 export function DownloadIcon() {
   return (
-    <svg aria-hidden viewBox="0 0 12 12" className="size-3 fill-none stroke-current stroke-[1.4]">
+    <svg
+      aria-hidden
+      viewBox="0 0 12 12"
+      className="hop-down size-3 fill-none stroke-current stroke-[1.4]"
+    >
       <path d="M6 1v7M3 5.5 6 8.5l3-3M1.5 11h9" />
     </svg>
   );
@@ -43,7 +48,11 @@ export function DownloadIcon() {
 
 export function LeaveIcon() {
   return (
-    <svg aria-hidden viewBox="0 0 12 12" className="size-3 fill-none stroke-current stroke-[1.4]">
+    <svg
+      aria-hidden
+      viewBox="0 0 12 12"
+      className="hop-out size-3 fill-none stroke-current stroke-[1.4]"
+    >
       <path d="M2.5 9.5 9.5 2.5M3.5 2.5h6v6" />
     </svg>
   );
@@ -87,7 +96,12 @@ export function StatusTag({ status }: { status: Status }) {
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-16 text-center text-sm text-muted">{children}</p>;
+  return (
+    <div className="flex flex-col items-center gap-4 py-16 text-center text-sm text-muted">
+      <Mascot mood="sleepy" size={56} />
+      <p>{children}</p>
+    </div>
+  );
 }
 
 export function Skeleton({ rows = 6 }: { rows?: number }) {

@@ -1,17 +1,18 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { fileUrl, type GenerationDetail } from "../api/client";
 import { useGeneration, useRegenerate, useRetry } from "../api/queries";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
+import { Celebration, Joke, Mascot, Snip } from "../components/Silly";
 import {
   Button,
-  Empty,
   ErrorNote,
   Eyebrow,
   formatDate,
   label,
+  Skeleton,
   StatusTag,
   TAB,
 } from "../components/ui";
@@ -39,6 +40,18 @@ export function GenerationPage() {
   const regenerate = useRegenerate(id);
   const navigate = useNavigate();
   const data = generation.data;
+  const status = data?.status;
+  const previous = useRef(status);
+  const [celebrating, setCelebrating] = useState(false);
+  const stopCelebrating = useCallback(() => setCelebrating(false), []);
+
+  useEffect(() => {
+    // Only for a run seen finishing here, not for reopening an old one.
+    if (status === "ready" && (previous.current === "queued" || previous.current === "processing")) {
+      setCelebrating(true);
+    }
+    previous.current = status;
+  }, [status]);
 
   if (generation.error) {
     return (
@@ -47,7 +60,7 @@ export function GenerationPage() {
       </div>
     );
   }
-  if (!data) return <Empty>Loading…</Empty>;
+  if (!data) return <Skeleton rows={3} />;
 
   return (
     // A ready review scrolls its two sides apart, so the PDF stays beside the changes.
@@ -94,6 +107,7 @@ export function GenerationPage() {
       <div className="px-4 sm:px-6">
         <ErrorNote error={retry.error ?? regenerate.error} />
       </div>
+      {celebrating && <Celebration onDone={stopCelebrating} />}
       {data.status === "ready" && <Review generation={data} />}
       {data.status === "failed" && <Failure generation={data} />}
       {(data.status === "queued" || data.status === "processing") && (
@@ -106,7 +120,10 @@ export function GenerationPage() {
 function Progress({ status }: { status: "queued" | "processing" }) {
   const current = STEPS.indexOf(status);
   return (
-    <div className="mx-auto w-full max-w-xl p-6 pt-20">
+    <div className="mx-auto w-full max-w-xl p-6 pt-12">
+      <div className="mb-8 flex justify-center">
+        <Mascot mood="working" />
+      </div>
       <ol className="grid grid-cols-3 gap-1">
         {STEPS.map((step, index) => (
           <li key={step}>
@@ -123,6 +140,8 @@ function Progress({ status }: { status: "queued" | "processing" }) {
       <p className="mt-8 text-muted" aria-live="polite">
         {WAITING[status]}
       </p>
+      <Snip />
+      <Joke />
     </div>
   );
 }
@@ -130,6 +149,9 @@ function Progress({ status }: { status: "queued" | "processing" }) {
 function Failure({ generation }: { generation: GenerationDetail }) {
   return (
     <div className="max-w-4xl p-4 sm:p-6">
+      <div className="mb-6 ml-4 h-20">
+        <Mascot mood="sad" size={60} />
+      </div>
       <Eyebrow>Failed while {label(generation.failure_stage).toLowerCase()}</Eyebrow>
       <p className="mt-2 text-lg">{generation.error_detail ?? "The worker gave no details."}</p>
       {generation.compilation_log && (

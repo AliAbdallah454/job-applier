@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Generation, Job } from "../api/client";
 import { EditDiff } from "../components/EditDiff";
 import { TailorDialog } from "../components/TailorDialog";
+import { GenerationPage } from "../pages/Generation";
 import { History } from "../pages/History";
 import { Jobs } from "../pages/Jobs";
 
@@ -177,6 +178,35 @@ describe("History", () => {
     await userEvent.type(screen.getByLabelText("Filter by job or company"), "other");
     expect(screen.queryByText("Junior Engineer")).not.toBeInTheDocument();
     expect(screen.getByText("Data")).toBeInTheDocument();
+  });
+});
+
+describe("GenerationPage", () => {
+  const detail = {
+    ...GENERATION,
+    retryable: false,
+    keywords: [],
+    changes: [],
+    explanations: [],
+  };
+
+  function open(generation: unknown) {
+    server({ "GET /api/generations/g1": () => json(generation) });
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={["/generations/g1"]}>
+          <Routes>
+            <Route path="/generations/:id" element={<GenerationPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it("does not celebrate when an old generation is reopened", async () => {
+    open(detail);
+    await screen.findByRole("heading", { name: "Junior Engineer" });
+    expect(screen.queryByText("Fits you perfectly!")).not.toBeInTheDocument();
   });
 });
 

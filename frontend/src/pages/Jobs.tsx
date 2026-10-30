@@ -301,7 +301,7 @@ function JobDetail({ job, generations }: { job: Job; generations?: Generation[] 
         {[job.company, job.location].filter(Boolean).join(" · ")}
       </p>
       <div className="sticky top-0 z-10 -mx-4 mt-2 flex flex-wrap items-center gap-2 border-b border-rule bg-paper px-4 py-3 sm:-mx-6 sm:px-6">
-        <Button primary onClick={() => setTailoring(true)}>
+        <Button primary className="wiggle" onClick={() => setTailoring(true)}>
           Tailor my CV
         </Button>
         {url && (
