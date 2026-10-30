@@ -7,6 +7,7 @@ import boto3
 from botocore.config import Config
 
 from backend.documents.bedrock import BedrockGenerator
+from backend.documents.models import DOCUMENT_MODELS
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.utils.runtime import poll, shutdown_event
@@ -31,7 +32,7 @@ def main():
     service = DocumentService(
         store,
         BedrockGenerator(client),
-        os.environ["DOCUMENT_MODEL_IDS"].split(","),
+        [model.id for model in DOCUMENT_MODELS],
         timeout=timeout,
     )
 

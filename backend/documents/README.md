@@ -16,9 +16,9 @@ for postings that are not in the Jobs table. `--force` creates a new revision.
 
 ## Models
 
-`config/document_models.json` lists the models you can pick; the first is the default.
-Deploying it gives the worker IAM access to each one, and the API, web app and CLI read
-the list from the stack outputs, so adding a model needs no code change. The chosen
+`DOCUMENT_MODELS` in `models.py` lists the models you can pick; the first is the default.
+The API, web app, CLI and worker all use that list, and deploying gives the worker IAM
+access to each one, so adding a model is a one-line change plus a deploy. The chosen
 model is frozen in the generation's input snapshot: `retry` uses the same one, and another
 model on the same inputs creates a new generation. Only Claude and Nova Pro IDs are
 accepted (the Nova schema is adapted in `bedrock.py`, and it gets a lower `maxTokens`).

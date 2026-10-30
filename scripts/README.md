@@ -7,7 +7,6 @@ not import these scripts or include their fixtures in runtime images.
 ```text
 scripts/
 ├── seed_profiles.py
-├── fixtures/demo_profiles.json
 └── tests/test_seed_profiles.py
 ```
 
@@ -30,7 +29,7 @@ intended for your development stack.
 
 Fixtures cover all six career sections with fixed entry IDs, one to three
 experiences per user, and varied technical backgrounds. Edit
-`fixtures/demo_profiles.json` to change them, or pass `--file PATH` for another
+`data/fake-data/demo_profiles.json` to change them, or pass `--file PATH` for another
 non-empty JSON array. All fixture user IDs must use the reserved `demo-user-`
 prefix, with `ali` as an explicit development seed exception. Never use the demo
 prefix for authenticated production accounts. The seed ID `ali` is a development

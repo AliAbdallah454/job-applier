@@ -1,10 +1,12 @@
 """Storage boundaries for the independently deployed Application stack."""
 
 import unittest
+from unittest.mock import patch
 
 from aws_cdk import App
 from aws_cdk.assertions import Match, Template
 
+from backend.documents.models import ModelOption
 from infra.application_stack import ApplicationStack
 
 
@@ -141,14 +143,6 @@ class ApplicationStackTests(unittest.TestCase):
         self.assertEqual(container["User"], "10001:10001")
         environment = {item["Name"]: item["Value"] for item in container["Environment"]}
         self.assertEqual(environment["DOCUMENT_TIMEOUT_SECONDS"], "1200")
-        self.assertEqual(
-            environment["DOCUMENT_MODEL_IDS"].split(","),
-            [
-                "us.anthropic.claude-sonnet-4-6",
-                "us.anthropic.claude-opus-4-6-v1",
-                "us.amazon.nova-pro-v1:0",
-            ],
-        )
 
     def test_worker_permissions_do_not_include_profile_or_jobs_tables(self):
         resources = self.template.to_json()["Resources"]
@@ -203,7 +197,6 @@ class ApplicationStackTests(unittest.TestCase):
             "DocumentGenerationsTable",
             "DocumentQueueUrl",
             "DocumentDLQUrl",
-            "DocumentModels",
             "DocumentClusterName",
             "DocumentWorkerService",
             "DocumentWorkerLogGroup",
@@ -212,20 +205,14 @@ class ApplicationStackTests(unittest.TestCase):
         self.template.resource_count_is("AWS::Cognito::UserPool", 0)
 
     def test_worker_context_overrides(self):
-        template = Template.from_stack(
-            ApplicationStack(
-                App(
-                    context={
-                        "maxDocumentWorkers": 3,
-                        "documentTimeoutSeconds": 900,
-                        "documentModels": [
-                            {"id": "anthropic.claude-sonnet-4-6", "label": "Sonnet"}
-                        ],
-                    }
-                ),
-                "ConfiguredApplication",
+        direct = ModelOption(id="anthropic.claude-sonnet-4-6", label="Sonnet")
+        with patch("infra.application_stack.DOCUMENT_MODELS", (direct,)):
+            template = Template.from_stack(
+                ApplicationStack(
+                    App(context={"maxDocumentWorkers": 3, "documentTimeoutSeconds": 900}),
+                    "ConfiguredApplication",
+                )
             )
-        )
         template.has_resource_properties(
             "AWS::ApplicationAutoScaling::ScalableTarget",
             {
@@ -249,7 +236,12 @@ class ApplicationStackTests(unittest.TestCase):
         for context in [
             {"maxDocumentWorkers": 0},
             {"documentTimeoutSeconds": 1},
-            {"documentModels": [{"id": "*", "label": "Everything"}]},
         ]:
             with self.subTest(context=context), self.assertRaises(ValueError):
                 ApplicationStack(App(context=context), "InvalidApplication")
+
+    def test_invalid_model_id_is_rejected(self):
+        everything = ModelOption(id="*", label="Everything")
+        with patch("infra.application_stack.DOCUMENT_MODELS", (everything,)):
+            with self.assertRaises(ValueError):
+                ApplicationStack(App(), "InvalidApplication")

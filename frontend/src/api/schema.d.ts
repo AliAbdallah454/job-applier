@@ -508,7 +508,10 @@ export interface components {
              */
             url: string;
         };
-        /** ModelOption */
+        /**
+         * ModelOption
+         * @description A model the user can pick for tailoring.
+         */
         ModelOption: {
             /** Id */
             id: string;

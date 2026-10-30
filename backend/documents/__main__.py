@@ -10,7 +10,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
 
-from backend.documents.models import GenerationInput, Job
+from backend.documents.models import DOCUMENT_MODELS, GenerationInput, Job
 from backend.documents.storage import GenerationStore, encode
 from backend.profiles.models import CandidateProfile
 
@@ -79,7 +79,7 @@ def main():
             )
             if data is None:
                 raise ValueError("Profile not found; seed or create it first")
-            models = [model["id"] for model in json.loads(outputs["DocumentModels"])]
+            models = [model.id for model in DOCUMENT_MODELS]
             if args.model and args.model not in models:
                 raise ValueError("Unknown model; choose one of " + ", ".join(models))
             request = GenerationInput(

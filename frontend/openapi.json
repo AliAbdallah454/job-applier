@@ -1062,12 +1062,18 @@
         "type": "object"
       },
       "ModelOption": {
+        "additionalProperties": false,
+        "description": "A model the user can pick for tailoring.",
         "properties": {
           "id": {
+            "maxLength": 10000,
+            "minLength": 1,
             "title": "Id",
             "type": "string"
           },
           "label": {
+            "maxLength": 10000,
+            "minLength": 1,
             "title": "Label",
             "type": "string"
           }

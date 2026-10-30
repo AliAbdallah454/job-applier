@@ -4,8 +4,15 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
-data/
+# Only the fake data is tracked; tests and demo mode read it.
+data/*
+!data/cv-examples/
+data/cv-examples/*
+!data/cv-examples/jake_cv.tex
+!data/fake-data/
 cdk.out/
 node_modules/
 cdk.context.json
 dist/
+
+.DS_Store

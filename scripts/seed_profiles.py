@@ -13,7 +13,7 @@ from backend.profiles.models import CandidateProfile
 
 DEMO_PREFIX = "demo-user-"
 NAMED_SEED_USERS = {"ali"}
-DEFAULT_FIXTURE = Path(__file__).parent / "fixtures" / "demo_profiles.json"
+DEFAULT_FIXTURE = Path(__file__).parents[1] / "data/fake-data/demo_profiles.json"
 
 
 def is_seed_user(user_id):

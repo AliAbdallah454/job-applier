@@ -12,7 +12,7 @@ from moto import mock_aws
 from backend.api.deps import Context, Settings
 from backend.documents.errors import DocumentCompilationError
 from backend.documents.latex import cv_body
-from backend.documents.models import CvChange, TailoredCv
+from backend.documents.models import CvChange, ModelOption, TailoredCv
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.jobs.classification.models import input_hash
@@ -167,7 +167,7 @@ def run_worker(context):
     service = DocumentService(
         store,
         fake_generate,
-        [model["id"] for model in settings.document_models],
+        [model.id for model in settings.document_models],
         compile_document=fake_compile,
     )
     while True:
@@ -257,7 +257,7 @@ def seed(session, user_id):
             }
         )
 
-    profile = json.loads((ROOT / "scripts/fixtures/demo_profiles.json").read_text())[0]
+    profile = json.loads((ROOT / "data/fake-data/demo_profiles.json").read_text())[0]
     profile = CandidateProfile.model_validate({**profile, "user_id": user_id})
     db.Table("profiles").put_item(Item=profile.model_dump(mode="json"))
 
@@ -267,7 +267,7 @@ def seed(session, user_id):
     s3.put_object(
         Bucket="documents",
         Key=f"users/{user_id}/cvs/{uuid.uuid4().hex}/example_cv.tex",
-        Body=(ROOT / "backend/documents/examples/jake_cv.tex").read_bytes(),
+        Body=(ROOT / "data/cv-examples/jake_cv.tex").read_bytes(),
     )
     return session.client("sqs").create_queue(QueueName="documents")["QueueUrl"]
 
@@ -285,10 +285,10 @@ def start_demo(user_id):
             generations_table="generations",
             documents_bucket="documents",
             document_queue_url=queue_url,
-            document_models=[
-                {"id": "demo-fast", "label": "Demo fast model"},
-                {"id": "demo-strong", "label": "Demo strong model"},
-            ],
+            document_models=(
+                ModelOption(id="demo-fast", label="Demo fast model"),
+                ModelOption(id="demo-strong", label="Demo strong model"),
+            ),
             demo=True,
         ),
         region=REGION,

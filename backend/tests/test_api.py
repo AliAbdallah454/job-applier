@@ -16,13 +16,13 @@ from backend.api.app import create_app
 from backend.api.demo import create_tables, example_pdf, fake_generate
 from backend.api.deps import Context, Settings
 from backend.documents.errors import DocumentCompilationError
-from backend.documents.models import TailoredCv
+from backend.documents.models import ModelOption, TailoredCv
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.jobs.classification.models import input_hash
 
 ROOT = Path(__file__).resolve().parents[2]
-CV = (ROOT / "backend/documents/examples/jake_cv.tex").read_bytes()
+CV = (ROOT / "data/cv-examples/jake_cv.tex").read_bytes()
 PROFILE = {"user_id": "ali", "full_name": "Ali Example"}
 
 
@@ -52,10 +52,10 @@ class ApiTests(unittest.TestCase):
             generations_table="generations",
             documents_bucket="documents",
             document_queue_url=self.queue,
-            document_models=[
-                {"id": "test-model", "label": "Test model"},
-                {"id": "other-model", "label": "Other model"},
-            ],
+            document_models=(
+                ModelOption(id="test-model", label="Test model"),
+                ModelOption(id="other-model", label="Other model"),
+            ),
         )
         self.context = Context(self.settings, region="us-east-1")
         self.client = TestClient(create_app(self.context), base_url="http://localhost")

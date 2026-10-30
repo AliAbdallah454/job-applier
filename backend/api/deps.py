@@ -1,6 +1,5 @@
 """Settings, AWS clients and the current user, shared by every route."""
 
-import json
 import threading
 from dataclasses import dataclass
 from typing import Annotated
@@ -10,6 +9,7 @@ from fastapi import Depends, Request
 
 from backend.api.catalogue import JobCatalogue
 from backend.documents.__main__ import stack_outputs
+from backend.documents.models import DOCUMENT_MODELS, ModelOption
 from backend.documents.storage import GenerationStore
 
 
@@ -22,7 +22,7 @@ class Settings:
     generations_table: str
     documents_bucket: str
     document_queue_url: str
-    document_models: list[dict]
+    document_models: tuple[ModelOption, ...] = DOCUMENT_MODELS
     demo: bool = False
 
 
@@ -39,7 +39,6 @@ def resolve_settings(
         generations_table=application["DocumentGenerationsTable"],
         documents_bucket=application["DocumentsBucketName"],
         document_queue_url=application["DocumentQueueUrl"],
-        document_models=json.loads(application["DocumentModels"]),
     )
 
 

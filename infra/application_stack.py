@@ -1,8 +1,6 @@
 """User profile and document storage, deployed independently of job collection."""
 
-import json
 import re
-from pathlib import Path
 
 from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_applicationautoscaling as autoscaling
@@ -17,7 +15,7 @@ from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_sqs as sqs
 from constructs import Construct
 
-MODELS_FILE = Path(__file__).resolve().parents[1] / "config/document_models.json"
+from backend.documents.models import DOCUMENT_MODELS
 
 
 class ApplicationStack(Stack):
@@ -74,8 +72,7 @@ class ApplicationStack(Stack):
         timeout = int(1200 if raw_timeout is None else raw_timeout)
         if maximum < 1 or not 60 <= timeout <= 3600:
             raise ValueError("maxDocumentWorkers must be positive; documentTimeoutSeconds: 60–3600")
-        models = self.node.try_get_context("documentModels") or json.loads(MODELS_FILE.read_text())
-        model_ids = [model["id"] for model in models]
+        model_ids = [model.id for model in DOCUMENT_MODELS]
         if not model_ids or not all(
             re.fullmatch(
                 r"(?:(?:us|eu|apac)\.)?(?:anthropic\.[a-z0-9.:-]+|amazon\.nova-pro-v1:0)", model
@@ -83,7 +80,7 @@ class ApplicationStack(Stack):
             for model in model_ids
         ):
             raise ValueError(
-                "documentModels must be Claude or Nova Pro model IDs or us/eu/apac profile IDs"
+                "DOCUMENT_MODELS must be Claude or Nova Pro model IDs or us/eu/apac profile IDs"
             )
 
         dead_letters = sqs.Queue(
@@ -152,7 +149,6 @@ class ApplicationStack(Stack):
                 "GENERATIONS_TABLE": self.generations.table_name,
                 "DOCUMENTS_BUCKET": self.documents.bucket_name,
                 "QUEUE_URL": queue.queue_url,
-                "DOCUMENT_MODEL_IDS": ",".join(model_ids),
                 "DOCUMENT_TIMEOUT_SECONDS": str(timeout),
                 "AWS_DEFAULT_REGION": self.region,
             },
@@ -245,7 +241,6 @@ class ApplicationStack(Stack):
             "DocumentGenerationsTable": self.generations.table_name,
             "DocumentQueueUrl": queue.queue_url,
             "DocumentDLQUrl": dead_letters.queue_url,
-            "DocumentModels": json.dumps(models),
             "DocumentClusterName": cluster.cluster_name,
             "DocumentWorkerService": service.service_name,
             "DocumentWorkerLogGroup": log_group.log_group_name,

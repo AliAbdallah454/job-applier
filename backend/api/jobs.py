@@ -7,14 +7,10 @@ from pydantic import BaseModel
 
 from backend.api.catalogue import JobFilters
 from backend.api.deps import AppContext, CurrentUser
+from backend.documents.models import ModelOption
 from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 
 router = APIRouter(prefix="/api", tags=["jobs"])
-
-
-class ModelOption(BaseModel):
-    id: str
-    label: str
 
 
 class Options(BaseModel):

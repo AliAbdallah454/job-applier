@@ -17,6 +17,22 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ModelOption(StrictModel):
+    """A model the user can pick for tailoring."""
+
+    id: Text
+    label: Text
+
+
+# The first is the default. Only Claude and Nova Pro IDs are accepted, and each one is given
+# IAM access by the Application stack, so a change here needs a deploy.
+DOCUMENT_MODELS = (
+    ModelOption(id="us.anthropic.claude-sonnet-4-6", label="Claude Sonnet 4.6"),
+    ModelOption(id="us.anthropic.claude-opus-4-6-v1", label="Claude Opus 4.6"),
+    ModelOption(id="us.amazon.nova-pro-v1:0", label="Nova Pro"),
+)
+
+
 class Job(StrictModel):
     """The job being applied to, as given to the model."""
 

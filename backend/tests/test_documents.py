@@ -29,12 +29,12 @@ from backend.profiles.models import CandidateProfile
 ROOT = Path(__file__).resolve().parents[2]
 
 
-CV = (ROOT / "backend/documents/examples/jake_cv.tex").read_text()
+CV = (ROOT / "data/cv-examples/jake_cv.tex").read_text()
 
 
 def request():
     profile = CandidateProfile.model_validate(
-        json.loads((ROOT / "scripts/fixtures/demo_profiles.json").read_text())[0]
+        json.loads((ROOT / "data/fake-data/demo_profiles.json").read_text())[0]
     )
     return GenerationInput(
         profile=profile,
@@ -497,7 +497,6 @@ class GenerationTests(unittest.TestCase):
             "DocumentGenerationsTable": self.store.table.name,
             "DocumentsBucketName": self.store.bucket,
             "DocumentQueueUrl": self.queue,
-            "DocumentModels": json.dumps([{"id": self.request.model_id, "label": "Nova"}]),
             "ProfilesTable": "profiles",
             "JobsTable": "jobs",
         }
@@ -536,7 +535,9 @@ class GenerationTests(unittest.TestCase):
             "--job-id",
             "job-1",
             "--cv-file",
-            str(ROOT / "backend/documents/examples/jake_cv.tex"),
+            str(ROOT / "data/cv-examples/jake_cv.tex"),
+            "--model",
+            self.request.model_id,
         )
         message = {key: submitted[key] for key in ("user_id", "generation_id")}
         self.assertEqual(submitted["status"], "queued")
@@ -574,7 +575,6 @@ class GenerationTests(unittest.TestCase):
             "GENERATIONS_TABLE": self.store.table.name,
             "DOCUMENTS_BUCKET": self.store.bucket,
             "QUEUE_URL": self.queue,
-            "DOCUMENT_MODEL_IDS": self.request.model_id,
         }
         with (
             patch.dict("os.environ", environment),

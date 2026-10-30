@@ -131,7 +131,7 @@ def load_job(context, job_id):
 
 
 def model_ids(context):
-    return [model["id"] for model in context.settings.document_models]
+    return [model.id for model in context.settings.document_models]
 
 
 def submit(context, request, *, force=False):
