@@ -1,4 +1,4 @@
-"""Apply the model's edits to the user's LaTeX CV, build the letter and compile to PDF."""
+"""Put the rewritten body into the user's LaTeX CV, build the letter and compile to PDF."""
 
 import os
 import shutil
@@ -6,13 +6,13 @@ import subprocess
 from pathlib import Path
 
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import apply_edits, engine, escape
+from backend.documents.latex import engine, escape, rewrite_cv
 from backend.documents.models import GenerationInput, TailoredCv
 
 
 def render_sources(request: GenerationInput, content: TailoredCv):
     profile = request.profile
-    cv, _ = apply_edits(request.cv_latex, content.edits)
+    cv = rewrite_cv(request.cv_latex, content.cv_body)
     contact = escape(" | ".join(filter(None, [profile.location, profile.email, profile.phone])))
     letter = "\n".join(
         [
@@ -48,7 +48,7 @@ def compile_pdf(source: Path, *, timeout=60):
     if not compiler:
         raise RuntimeError(f"{name} is required; use the document worker image or install TeX Live")
 
-    # The CV source is the user's own LaTeX; model output inserted into it is always escaped.
+    # The CV is the user's LaTeX with a checked model rewrite of its body; the letter is escaped.
     # Restrict file I/O and do not pass AWS credentials to the compiler process.
     try:
         subprocess.run(

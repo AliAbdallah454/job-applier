@@ -273,18 +273,15 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** Change */
+        /**
+         * Change
+         * @description One difference computed from the original and tailored CV sources.
+         */
         Change: {
-            /** Applied */
-            applied: boolean;
-            /** Error */
-            error?: string | null;
-            /** Find */
-            find: string;
-            /** Reason */
-            reason: string;
-            /** Replace */
-            replace: string;
+            /** After */
+            after: string;
+            /** Before */
+            before: string;
         };
         /** Cv */
         Cv: {
@@ -353,6 +350,16 @@ export interface components {
             /** Technologies */
             technologies?: string[];
         };
+        /**
+         * Explanation
+         * @description The model's account of a change; it can be incomplete, unlike the computed diff.
+         */
+        Explanation: {
+            /** Change */
+            change: string;
+            /** Reason */
+            reason: string;
+        };
         /** Generation */
         Generation: {
             /** Created At */
@@ -383,6 +390,8 @@ export interface components {
             created_at: string;
             /** Error Detail */
             error_detail?: string | null;
+            /** Explanations */
+            explanations: components["schemas"]["Explanation"][];
             /** Failure Stage */
             failure_stage?: string | null;
             /** Files */

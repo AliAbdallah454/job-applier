@@ -44,7 +44,9 @@ failed run or one whose worker died. Each real run calls Bedrock and costs money
 
 A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
-Edits are checked for structure but not fact-checked, so read each one before sending a CV.
+The generation page shows the model's list of edits and a diff computed from the two CV
+sources. Rewrites are checked for structure but not fact-checked, so read each change before
+sending a CV.
 
 ## API
 

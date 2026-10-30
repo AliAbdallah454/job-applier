@@ -14,7 +14,7 @@ from backend.utils.runtime import poll, shutdown_event
 
 def main():
     session = boto3.Session()
-    timeout = int(os.environ.get("DOCUMENT_TIMEOUT_SECONDS", "600"))
+    timeout = int(os.environ.get("DOCUMENT_TIMEOUT_SECONDS", "1200"))
     store = GenerationStore(
         session.resource("dynamodb").Table(os.environ["GENERATIONS_TABLE"]),
         session.client("s3"),

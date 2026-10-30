@@ -14,12 +14,13 @@ from unittest.mock import Mock, patch
 import boto3
 from botocore.stub import Stubber
 from moto import mock_aws
+from pydantic import ValidationError
 
 from backend.documents.__main__ import main as cli_main
 from backend.documents.bedrock import BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import apply_edits, engine, escape, validate_cv
-from backend.documents.models import CvEdit, GenerationInput, Job, TailoredCv
+from backend.documents.latex import cv_body, diff_cv, engine, escape, rewrite_cv, validate_cv
+from backend.documents.models import GenerationInput, Job, TailoredCv
 from backend.documents.render import compile_pdf, render_sources
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
@@ -43,79 +44,72 @@ def request():
     )
 
 
-BULLET = r"\resumeItem{Added bounded retries for intermittent request failures}"
+BODY = cv_body(CV).replace(
+    r"\resumeItem{Built a prediction endpoint for the classifier}",
+    r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}",
+)
 
 
-def content():
+def content(body=BODY):
     return TailoredCv(
         job_keywords=["Python", "APIs", "FastAPI"],
-        edits=[
-            {
-                "find": r"\resumeItem{Built a prediction endpoint for the classifier}",
-                "replace": r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}",
-                "reason": "FastAPI",
-            },
-            {"find": BULLET, "replace": "", "reason": "Not relevant"},
-            {
-                "find": "\\textbf{Languages}{: Python, SQL}",
-                "replace": "\\textbf{Languages}{: SQL, Python, FastAPI}",
-                "reason": "Skills",
-            },
-        ],
+        cv_body=body,
+        changes=[{"change": "Named FastAPI in a bullet", "reason": "FastAPI"}],
         letter_paragraphs=["I am interested in the role.", "I built Python tools."],
     )
 
 
-def edit(find, replace):
-    return CvEdit(find=find, replace=replace, reason="test")
-
-
-class CvEditTests(unittest.TestCase):
-    def test_edits_replace_only_their_snippet(self):
-        edited, report = apply_edits(CV, content().edits)
-        self.assertTrue(all(item["applied"] for item in report))
-        self.assertIn(r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}", edited)
-        self.assertNotIn("bounded retries", edited)
-        self.assertIn(r"\textbf{Languages}{: SQL, Python, FastAPI}", edited)
+class CvRewriteTests(unittest.TestCase):
+    def test_rewrite_keeps_the_preamble_and_changes_only_the_body(self):
+        rewritten = rewrite_cv(CV, BODY)
+        self.assertIn("FastAPI prediction endpoint", rewritten)
         self.assertEqual(
-            edited.replace(
-                r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}", ""
-            ).replace(r"\textbf{Languages}{: SQL, Python, FastAPI}", ""),
-            CV.replace(BULLET, "")
-            .replace(r"\resumeItem{Built a prediction endpoint for the classifier}", "")
-            .replace("\\textbf{Languages}{: Python, SQL}", ""),
+            rewritten[: rewritten.index(r"\begin{document}")],
+            CV[: CV.index(r"\begin{document}")],
         )
+        self.assertTrue(rewritten.rstrip().endswith(r"\end{document}"))
 
-    def test_whitespace_differences_in_find_are_tolerated(self):
-        loose = edit(
-            "\\resumeItem{Added bounded   retries\n for intermittent request failures}", ""
-        )
-        self.assertNotIn("bounded retries", apply_edits(CV, [loose])[0])
-
-    def test_invalid_edits_are_skipped_and_the_rest_applied(self):
-        good = edit(r"\resumeItem{Built a prediction endpoint for the classifier}", "")
-        for name, bad, reason in [
-            ("missing", edit("Not in the CV", "x"), "not in the CV body"),
-            ("ambiguous", edit("Python", "Go"), "several places"),
-            ("preamble", edit(r"\usepackage{latexsym}", ""), "not in the CV body"),
-            ("new command", edit(BULLET, r"\resumeItem{x}\input{/etc/passwd}"), "commands"),
-            ("braces", edit(BULLET, r"\resumeItem{x"), "braces"),
-            ("comment", edit(BULLET, r"\resumeItem{100% done}"), "%"),
-            ("overlap", edit("prediction endpoint", "API"), "overlaps"),
+    def test_invalid_rewrites_are_rejected(self):
+        for name, body, reason in [
+            ("unchanged", cv_body(CV), "unchanged"),
+            ("reflowed only", " ".join(cv_body(CV).split()), "unchanged"),
+            ("new command", BODY + r"\input{/etc/passwd}", "commands"),
+            ("new environment", BODY + r"\begin{filecontents}x\end{filecontents}", "commands"),
+            ("braces", BODY + "{", "braces"),
+            ("closing brace first", "}" + BODY + "{", "braces"),
+            ("comment", BODY + "100% done", "%"),
         ]:
-            with self.subTest(name):
-                edited, report = apply_edits(CV, [good, bad])
-                self.assertNotIn("Built a prediction endpoint", edited)
-                self.assertEqual([item["applied"] for item in report], [True, False])
-                self.assertIn(reason, report[1]["error"])
-                if name != "overlap":
-                    self.assertEqual(edited, CV.replace(good.find, ""))
+            with self.subTest(name), self.assertRaisesRegex(DocumentError, reason):
+                rewrite_cv(CV, body)
 
-    def test_snippet_also_in_the_preamble_matches_the_body_only(self):
-        cv = CV.replace(r"\begin{document}", "% Example Analytics Company\n\\begin{document}")
-        edited, report = apply_edits(cv, [edit("Example Analytics Company", "Example Co")])
-        self.assertTrue(report[0]["applied"])
-        self.assertIn("% Example Analytics Company", edited)
+    def test_document_markers_and_preamble_returned_by_the_model_are_dropped(self):
+        wrapped = CV[: CV.index(r"\begin{document}")] + rf"\begin{{document}}{BODY}\end{{document}}"
+        self.assertEqual(rewrite_cv(CV, wrapped), rewrite_cv(CV, BODY))
+
+    def test_rejection_names_the_command_only_in_model_feedback(self):
+        with self.assertRaises(DocumentError) as caught:
+            rewrite_cv(CV, BODY + r"\inventedMacro{x}")
+        self.assertNotIn("inventedMacro", str(caught.exception))
+        self.assertIn("inventedMacro", caught.exception.feedback)
+
+    def test_diff_reports_real_changes_with_context_and_ignores_reflow(self):
+        before = "one two three four five six seven eight nine ten\neleven twelve"
+        after = "one two three four five SIX seven eight nine ten eleven twelve"
+        self.assertEqual(
+            diff_cv(before, after),
+            [
+                {
+                    "before": "two three four five six seven eight nine ten",
+                    "after": "two three four five SIX seven eight nine ten",
+                }
+            ],
+        )
+        self.assertEqual(diff_cv("a b\nc", "a  b c"), [])
+
+    def test_distant_changes_stay_separate(self):
+        words = [str(number) for number in range(40)]
+        changed = ["x" if word in {"5", "30"} else word for word in words]
+        self.assertEqual(len(diff_cv(" ".join(words), " ".join(changed))), 2)
 
     def test_engine_follows_the_cv(self):
         self.assertEqual(engine(CV), "xelatex")
@@ -141,8 +135,8 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(set(schema), {"type", "properties", "required"})
         self.assertNotIn('"$ref"', json.dumps(schema))
         self.assertNotIn('"$defs"', json.dumps(schema))
-        self.assertEqual(schema["properties"]["edits"]["items"]["type"], "object")
-        self.assertIn("find", schema["properties"]["edits"]["items"]["required"])
+        self.assertEqual(schema["properties"]["changes"]["items"]["type"], "object")
+        self.assertIn("reason", schema["properties"]["changes"]["items"]["required"])
 
     def test_claude_override_keeps_existing_schema(self):
         self.assertEqual(
@@ -240,9 +234,12 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(result["review_required"])
         self.assertEqual(len(result["artifacts"]), 5)
         changes = json.loads(self.store.read_file(result["artifacts"]["changes_json"]))
+        self.assertEqual(len(changes["diff"]), 1)
+        self.assertIn("a prediction endpoint", changes["diff"][0]["before"])
+        self.assertIn("a FastAPI prediction endpoint", changes["diff"][0]["after"])
         self.assertEqual(
-            changes[1],
-            {"find": BULLET, "replace": "", "reason": "Not relevant", "applied": True},
+            changes["explanations"],
+            [{"change": "Named FastAPI in a bullet", "reason": "FastAPI"}],
         )
         self.assertIn("version_id", result["artifacts"]["cv_pdf"])
         self.assertTrue(self.store.read_file(result["artifacts"]["cv_pdf"]).startswith(b"%PDF-"))
@@ -269,6 +266,64 @@ class GenerationTests(unittest.TestCase):
         self.generate.assert_called_once()
         self.assertEqual(self.store.get(**message)["status"], "ready")
 
+    def test_compile_error_goes_back_to_the_model_and_the_next_attempt_succeeds(self):
+        message = self.submit()
+        self.compiler.side_effect = [
+            DocumentCompilationError(
+                timed_out=False, diagnostics=b"preamble noise\n! Undefined control sequence.\nl.42"
+            ),
+            b"%PDF-test",
+            b"%PDF-test",
+        ]
+        with self.assertLogs("backend.documents.service", level="WARNING") as logs:
+            self.assertEqual(self.service.process(message), "ready")
+        self.assertEqual(self.generate.call_count, 2)
+        previous = self.generate.call_args.args[1]
+        self.assertIn("Undefined control sequence", previous["error"])
+        self.assertNotIn("preamble noise", previous["error"])
+        self.assertEqual(previous["cv_body"], BODY)
+        self.assertIn("Attempt 1 of 3", str(logs.output))
+        self.assertNotIn("Undefined control sequence", str(logs.output))
+        self.assertEqual(self.store.get(**message)["failure_artifacts"], {})
+
+    def test_unchanged_cv_is_retried_then_fails_instead_of_looking_ready(self):
+        self.generate.return_value = content(cv_body(CV)), {}
+        message = self.submit()
+        with self.assertLogs("backend.documents.service", level="ERROR"):
+            with self.assertRaisesRegex(DocumentError, "unchanged"):
+                self.service.process(message)
+        self.assertEqual(self.generate.call_count, 3)
+        self.compiler.assert_not_called()
+        failed = self.store.get(**message)
+        self.assertEqual(failed["status"], "failed")
+        self.assertEqual(failed["failure_stage"], "rendering_documents")
+        self.assertNotIn("artifacts", failed)
+
+    def test_malformed_model_output_is_retried(self):
+        with self.assertRaises(ValidationError) as caught:
+            TailoredCv.model_validate({"edits": []})
+        self.generate.side_effect = [caught.exception, (content(), {})]
+        message = self.submit()
+        with self.assertLogs("backend.documents.service", level="WARNING"):
+            self.assertEqual(self.service.process(message), "ready")
+        self.assertIn("Schema validation failed", self.generate.call_args.args[1]["error"])
+        self.assertNotIn("cv_body", self.generate.call_args.args[1])
+
+    def test_retry_of_old_generation_ignores_its_incompatible_checkpoint(self):
+        self.request.prompt_version = 6
+        message = self.submit()
+        record = self.store.get(**message)
+        old = self.store.put_file("old/content.json", b'{"content": {"edits": []}}', "text/json")
+        self.store.table.update_item(
+            Key=message,
+            UpdateExpression="SET #c = :c",
+            ExpressionAttributeNames={"#c": "content"},
+            ExpressionAttributeValues={":c": old},
+        )
+        self.assertEqual(self.service.process(message), "ready")
+        self.generate.assert_called_once()
+        self.assertEqual(record["prompt_version"], 6)
+
     def test_compiler_diagnostics_download_privately_and_retry_reuses_content(self):
         message = self.submit()
         self.compiler.side_effect = DocumentCompilationError(
@@ -289,9 +344,10 @@ class GenerationTests(unittest.TestCase):
         )
         self.assertIn("compilation_log", status["downloads"])
         self.assertIn("compilation_source", status["downloads"])
+        self.assertEqual(self.generate.call_count, 3)
         self.compiler.side_effect = None
         self.service.process(message)
-        self.generate.assert_called_once()
+        self.assertEqual(self.generate.call_count, 3)
         self.assertEqual(self.store.get(**message)["failure_artifacts"], {})
 
     def test_live_lease_rejects_duplicate_and_stale_owner(self):
@@ -382,23 +438,8 @@ class GenerationTests(unittest.TestCase):
         with Stubber(client) as stubber:
             stubber.add_response("converse", response)
             generated, usage = BedrockGenerator(client)(self.request)
-        self.assertEqual(len(generated.edits), 3)
+        self.assertEqual(generated.cv_body, BODY)
         self.assertEqual(usage["totalTokens"], 80)
-
-    def test_invalid_model_edit_is_skipped_and_reported_for_review(self):
-        generated = content()
-        generated.edits[0].find = "Private text not in the CV"
-        self.generate.return_value = generated, {}
-        message = self.submit()
-        with self.assertLogs("backend.documents.service", level="WARNING") as logs:
-            self.assertEqual(self.service.process(message), "ready")
-        record = self.store.get(**message)
-        report = json.loads(self.store.read_file(record["artifacts"]["changes_json"]))
-        self.assertEqual([item["applied"] for item in report], [False, True, True])
-        self.assertIn("not in the CV body", report[0]["error"])
-        self.assertIn("Skipped 1 of 3", str(logs.output))
-        self.assertNotIn("Private text not in the CV", str(logs.output))
-        self.assertNotIn("Private text not in the CV", str(record))
 
     def test_truncated_model_response_reports_stop_reason(self):
         client = Mock()
@@ -430,6 +471,11 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(prompt["cv_latex"], CV)
         self.assertNotIn("email", prompt["candidate_facts"])
         self.assertNotIn("full_name", prompt["candidate_facts"])
+        self.assertNotIn("previous_attempt", prompt)
+        with self.assertRaises(ValueError):
+            BedrockGenerator(client)(self.request, {"error": "Fix this"})
+        prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["previous_attempt"], {"error": "Fix this"})
 
     def run_cli(self, *arguments):
         outputs = {
@@ -528,6 +574,6 @@ class GenerationTests(unittest.TestCase):
                 worker_main()
             timer.return_value.start.assert_called_once()
             timer.return_value.cancel.assert_called_once()
-            self.assertEqual(timer.call_args.args[0], 600)
+            self.assertEqual(timer.call_args.args[0], 1200)
             timer.call_args.args[1]()
             terminate.assert_called_once_with(1)

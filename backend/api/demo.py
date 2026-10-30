@@ -11,7 +11,8 @@ from moto import mock_aws
 
 from backend.api.deps import Context, Settings
 from backend.documents.errors import DocumentCompilationError
-from backend.documents.models import CvEdit, TailoredCv
+from backend.documents.latex import cv_body
+from backend.documents.models import CvChange, TailoredCv
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.jobs.classification.models import input_hash
@@ -106,28 +107,32 @@ def example_pdf(title, lines):
     return body + b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % start
 
 
-def fake_generate(request):
+def fake_generate(request, previous=None):
     time.sleep(3)
+    body = (
+        cv_body(request.cv_latex)
+        .replace(
+            "Added bounded retries for intermittent request failures",
+            "Added bounded retries so APIs survive request failures",
+        )
+        .replace(
+            "PostgreSQL and wrote pytest tests",
+            "PostgreSQL and covered them with automated pytest tests",
+        )
+    )
     return (
         TailoredCv(
             job_keywords=["Python", "APIs", "testing", "CI/CD", "SQL", "AWS"],
-            edits=[
-                CvEdit(
-                    find=r"\resumeItem{Added bounded retries for intermittent request failures}",
-                    replace=r"\resumeItem{Added bounded retries so APIs survive request failures}",
+            # The extra line keeps the example changed for a CV without the bullets above.
+            cv_body=body + "\nExample line added by demo mode.\n",
+            changes=[
+                CvChange(
+                    change="Reworded the retries bullet around APIs",
                     reason="The posting asks for reliable API work",
                 ),
-                CvEdit(
-                    find=r"\resumeItem{Stored normalized records in PostgreSQL and wrote pytest "
-                    r"tests}",
-                    replace=r"\resumeItem{Stored normalized records in PostgreSQL and covered "
-                    r"them with automated pytest tests}",
+                CvChange(
+                    change="Named automated tests in the PostgreSQL bullet",
                     reason="Automated tests are a stated requirement",
-                ),
-                CvEdit(
-                    find=r"\resumeItem{Led a team of forty engineers}",
-                    replace=r"\resumeItem{Led the platform team}",
-                    reason="Shows ownership",
                 ),
             ],
             letter_paragraphs=[

@@ -140,8 +140,6 @@ function Failure({ generation }: { generation: GenerationDetail }) {
 
 function Review({ generation }: { generation: GenerationDetail }) {
   const [document, setDocument] = useState<"cv_pdf" | "motivation_letter_pdf">("cv_pdf");
-  const applied = generation.changes.filter((change) => change.applied).length;
-  const skipped = generation.changes.length - applied;
   return (
     <div className="grid flex-1 lg:grid-cols-2">
       <section className="flex min-w-0 flex-col border-b border-rule lg:border-r lg:border-b-0">
@@ -182,12 +180,26 @@ function Review({ generation }: { generation: GenerationDetail }) {
             </li>
           ))}
         </ul>
+        {generation.explanations.length > 0 && (
+          <>
+            <h2 className="mt-6 text-lg font-semibold tracking-tight">Edits made</h2>
+            <ul className="mt-2 space-y-2">
+              {generation.explanations.map((item, index) => (
+                <li key={index} className="text-sm">
+                  <span className="font-medium">{item.change}</span>
+                  <span className="text-muted"> — {item.reason}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <h2 className="mt-6 text-lg font-semibold tracking-tight">
-          {applied} applied, {skipped} skipped
+          {generation.changes.length} {generation.changes.length === 1 ? "change" : "changes"} in
+          the CV
         </h2>
         <p className="mb-3 text-sm text-muted">
-          These edits passed structure checks but nobody fact-checked them. Read each one before
-          you send this CV.
+          Compared from the two CV sources, so nothing is left out. Nobody fact-checked them: read
+          each one before you send this CV.
         </p>
         {generation.changes.map((change, index) => (
           <EditDiff key={index} change={change} />

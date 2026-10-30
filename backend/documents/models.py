@@ -1,4 +1,4 @@
-"""Frozen generation inputs and the model's proposed edits to the user's CV."""
+"""Frozen generation inputs and the model's rewrite of the user's CV."""
 
 from typing import Annotated, Literal
 
@@ -7,9 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
-PROMPT_VERSION = 6
+PROMPT_VERSION = 7
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
-Snippet = Annotated[str, StringConstraints(max_length=5000)]
 
 
 class StrictModel(BaseModel):
@@ -36,32 +35,28 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    prompt_version: Literal[5, 6] = PROMPT_VERSION
+    prompt_version: Literal[5, 6, 7] = PROMPT_VERSION
 
 
-class CvEdit(StrictModel):
-    """Replace one exact snippet of the CV source; checked and applied by `latex.py`."""
+class CvChange(StrictModel):
+    """The model's own account of one change, shown to the user beside the computed diff."""
 
-    find: Snippet = Field(
-        min_length=1,
-        description="Exact snippet copied from the CV body, unique in the file, kept short",
-    )
-    replace: Snippet = Field(
-        description="New LaTeX for that snippet, using only commands that appear in find; "
-        "empty to delete it"
-    )
+    change: Text = Field(description="What changed in the CV, in a few words")
     reason: Text = Field(description="Which job requirement this serves, in a few words")
 
 
 class TailoredCv(StrictModel):
-    """Edits that make the CV fit the job, plus the motivation letter."""
+    """The rewritten CV body, what changed in it, and the motivation letter."""
 
-    # Not rendered: listing the keywords first steers the edits that follow.
+    # Not rendered: listing the keywords first steers the rewrite that follows.
     job_keywords: list[Text] = Field(
         description="8-15 key technologies, methods and terms in the posting, most important first"
     )
-    edits: list[CvEdit] = Field(
-        max_length=40, description="Non-overlapping edits to the CV, in any order"
+    cv_body: Annotated[str, StringConstraints(min_length=1, max_length=200000)] = Field(
+        description="The complete LaTeX between \\begin{document} and \\end{document}, rewritten"
+    )
+    changes: list[CvChange] = Field(
+        max_length=40, description="Each change made to the CV and the job requirement it serves"
     )
     letter_paragraphs: list[Text] = Field(
         min_length=2,

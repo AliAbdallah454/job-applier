@@ -67,7 +67,7 @@ class ApplicationStack(Stack):
         raw_maximum = self.node.try_get_context("maxDocumentWorkers")
         raw_timeout = self.node.try_get_context("documentTimeoutSeconds")
         maximum = int(2 if raw_maximum is None else raw_maximum)
-        timeout = int(600 if raw_timeout is None else raw_timeout)
+        timeout = int(1200 if raw_timeout is None else raw_timeout)
         if maximum < 1 or not 60 <= timeout <= 3600:
             raise ValueError("maxDocumentWorkers must be positive; documentTimeoutSeconds: 60–3600")
         model = self.node.try_get_context("documentModelId") or "us.amazon.nova-pro-v1:0"

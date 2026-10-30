@@ -62,21 +62,11 @@ function mount(element: React.ReactNode) {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("EditDiff", () => {
-  it("marks added and removed words and shows why an edit was skipped", () => {
+  it("marks added and removed words", () => {
     const { container } = render(
-      <EditDiff
-        change={{
-          find: "wrote tests",
-          replace: "wrote automated tests",
-          reason: "Testing",
-          applied: false,
-          error: "matches several places",
-        }}
-      />,
+      <EditDiff change={{ before: "wrote tests", after: "wrote automated tests" }} />,
     );
     expect(container.querySelector("ins")).toHaveTextContent("automated");
-    expect(screen.getByText("skipped")).toBeInTheDocument();
-    expect(screen.getByText(/matches several places/)).toBeInTheDocument();
   });
 });
 

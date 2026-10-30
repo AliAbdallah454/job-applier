@@ -6,8 +6,8 @@ from backend.documents.errors import DocumentError
 from backend.documents.models import GenerationInput, TailoredCv
 
 SYSTEM = r"""You are an experienced technical recruiter and CV writer. You tailor the
-candidate's existing LaTeX CV to one job posting by proposing precise edits to its
-source, and you write a motivation letter, in English.
+candidate's existing LaTeX CV to one job posting by rewriting its document body, and
+you write a motivation letter, in English.
 
 # Inputs
 - cv_latex: the candidate's CV as LaTeX source. Any template is possible; work with
@@ -33,7 +33,7 @@ technologies, tools, methods, domain terms and responsibilities, spelled as the
 posting spells them, most important first. Every edit serves these keywords.
 
 # Step 2: what to improve
-- Bullets: rewrite bullets so the matching job keywords appear explicitly where the
+- Bullets: reword bullets so the matching job keywords appear explicitly where the
   facts support them, using the posting's vocabulary (for example "REST APIs" for
   "built HTTP endpoints"). Keep each bullet's facts and numbers. Every bullet states
   a different fact; never repeat a fact, phrase or opening verb within an entry.
@@ -43,26 +43,32 @@ posting spells them, most important first. Every edit serves these keywords.
   the candidate facts but not in the CV. Remove bullets or projects only when they are
   irrelevant and the entry keeps stronger content; keep at least two projects.
 - Skills: put the skills matching job keywords first in their line; add skills from the
-  candidate facts that match a job keyword, spelled as there.
+  candidate facts that match a job keyword, spelled as there. Never add a skill that
+  appears only in the job posting.
 - Bullets stay one line of roughly 12-25 words: strong action verb, what was done, how
   (the specific tools), and the result when the facts state one. No "I",
   "responsible for", "helped with", "various", "etc." or other filler.
-- Change only what improves the fit; a good CV may need few edits.
+- Actually make these improvements: returning the CV unchanged is an error.
 
-# Step 3: writing each edit
-- find: copy a snippet from the document body (after \begin{document}) EXACTLY as it
-  appears, character for character. It must occur only once in the body, so use a
-  whole bullet or a whole skills line, never a bare word, phrase or single \textbf{...}
-  that may appear elsewhere. To reorder items, take the block that contains exactly
-  those items.
-- replace: the new LaTeX for that snippet. Use only the LaTeX commands that already
-  appear in find, written the same way; change the text inside them. To add a bullet,
-  find an existing bullet of the same entry and replace it with itself followed by the
-  new bullet using the same command. Use an empty replace to delete the snippet.
-- In replace text, escape LaTeX special characters: \& \% \$ \# \_ . Keep braces
-  balanced. Do not use Markdown.
-- Edits must not overlap: never include the same text in two finds.
-- reason: the job requirement this edit serves, in a few words.
+# Step 3: writing cv_body
+- cv_body is the complete new text between \begin{document} and \end{document}, not
+  including those two lines. The preamble is kept as it is, so do not repeat or change
+  it. Include every part of the CV, also the parts you did not change.
+- Copy everything you do not change exactly, keeping its line breaks and spaces. Line
+  breaks act as spaces in LaTeX, so removing one can join two words.
+- Use only LaTeX commands and environments the body already uses, written the same way;
+  change the text inside them. Do not define new commands.
+- Escape LaTeX special characters in text: \& \% \$ \# \_ . Keep braces balanced. Do not
+  use Markdown.
+
+# Step 4: listing your changes
+List in changes every change you made. change: what changed, in a few words. reason: the
+job requirement it serves, in a few words.
+
+# Fixing a previous attempt
+If previous_attempt is present, your last answer was rejected. It holds the error and,
+when there was one, the cv_body you returned. Fix that error, keep your other
+improvements, and return all fields again.
 
 # Motivation letter
 - Plain text, no LaTeX. 3-4 paragraphs, 250-350 words in total. The greeting ("Dear
@@ -110,30 +116,26 @@ class BedrockGenerator:
         self.client = client
         self.max_tokens = max_tokens
 
-    def __call__(self, request: GenerationInput):
+    def __call__(self, request: GenerationInput, previous=None):
         # Profile contact details are not model inputs (the letter header is rendered locally).
         # The CV source is sent as written, so its own header does reach the model.
         facts = request.profile.model_dump(
             mode="json", exclude={"user_id", "email", "phone", "full_name", "links"}
         )
+        prompt = {
+            "cv_latex": request.cv_latex,
+            "candidate_facts": facts,
+            "job": request.job.model_dump(mode="json"),
+        }
+        if previous:
+            prompt["previous_attempt"] = previous
         response = self.client.converse(
             modelId=request.model_id,
             system=[{"text": SYSTEM}],
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "text": json.dumps(
-                                {
-                                    "cv_latex": request.cv_latex,
-                                    "candidate_facts": facts,
-                                    "job": request.job.model_dump(mode="json"),
-                                },
-                                ensure_ascii=False,
-                            )
-                        }
-                    ],
+                    "content": [{"text": json.dumps(prompt, ensure_ascii=False)}],
                 }
             ],
             inferenceConfig={"maxTokens": self.max_tokens},
@@ -142,7 +144,8 @@ class BedrockGenerator:
                     {
                         "toolSpec": {
                             "name": "deliver_documents",
-                            "description": "Provide the CV edits and the motivation letter.",
+                            "description": "Provide the rewritten CV body, the list of changes "
+                            "and the motivation letter.",
                             "inputSchema": {"json": tool_schema(request.model_id)},
                         }
                     }

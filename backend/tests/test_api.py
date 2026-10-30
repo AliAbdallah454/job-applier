@@ -90,7 +90,7 @@ class ApiTests(unittest.TestCase):
         store = GenerationStore(self.db.Table("generations"), self.s3, "documents")
         service = DocumentService(
             store,
-            lambda request: fake_generate_now(request),
+            fake_generate_now,
             "test-model",
             compile_document=compile_document or (lambda path: example_pdf("x", [])),
         )
@@ -200,13 +200,31 @@ class ApiTests(unittest.TestCase):
         body = self.client.get(f"/api/generations/{generation_id}").json()
         self.assertEqual(body["status"], "ready")
         self.assertEqual(body["keywords"][0], "Python")
-        self.assertEqual([change["applied"] for change in body["changes"]], [True, True, False])
-        self.assertIn("is not in the CV body", body["changes"][2]["error"])
+        self.assertIn("bounded retries so APIs", body["changes"][0]["after"])
+        self.assertEqual(len(body["explanations"]), 2)
+        self.assertTrue(body["explanations"][0]["reason"])
         self.assertEqual(
             body["files"],
             ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
         )
         self.assertFalse(body["retryable"])
+
+    def test_generation_from_before_the_rewrite_still_loads(self):
+        generation_id = self.tailor().json()["generation_id"]
+        self.process(generation_id)
+        store = GenerationStore(self.db.Table("generations"), self.s3, "documents")
+        reference = store.get("ali", generation_id)["artifacts"]["changes_json"]
+        self.s3.put_object(
+            Bucket="documents",
+            Key=reference["key"],
+            Body=json.dumps([{"find": "a", "replace": "b", "reason": "c", "applied": True}]),
+        )
+        self.db.Table("generations").update_item(
+            Key={"user_id": "ali", "generation_id": generation_id},
+            UpdateExpression="REMOVE artifacts.changes_json.version_id",
+        )
+        body = self.client.get(f"/api/generations/{generation_id}").json()
+        self.assertEqual((body["changes"], body["explanations"]), ([], []))
 
     def test_files_are_served_inline_or_as_downloads_and_unknown_names_404(self):
         generation_id = self.tailor().json()["generation_id"]
@@ -318,6 +336,6 @@ class ApiTests(unittest.TestCase):
         self.assertIn("/api/generations/{generation_id}/regenerate", paths)
 
 
-def fake_generate_now(request) -> tuple[TailoredCv, dict]:
+def fake_generate_now(request, previous=None) -> tuple[TailoredCv, dict]:
     with patch("backend.api.demo.time.sleep"):
-        return fake_generate(request)
+        return fake_generate(request, previous)

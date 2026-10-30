@@ -5,13 +5,16 @@ import logging
 import tempfile
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from backend.documents.errors import DocumentCompilationError, DocumentError, error_detail
-from backend.documents.latex import apply_edits
-from backend.documents.models import GenerationInput, TailoredCv
+from backend.documents.latex import cv_body, diff_cv
+from backend.documents.models import PROMPT_VERSION, GenerationInput, TailoredCv
 from backend.documents.render import compile_pdf, render_sources
 from backend.documents.storage import encode, timestamp
 
 LOG = logging.getLogger(__name__)
+MAX_ATTEMPTS = 3
 
 
 class DocumentService:
@@ -21,6 +24,31 @@ class DocumentService:
         self.model_id = model_id
         self.timeout = timeout
         self.compile_document = compile_document
+
+    def compile_all(self, sources, prefix, failure_artifacts):
+        pdfs = {}
+        with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
+            for name, source in sources.items():
+                path = Path(directory) / name
+                path.write_bytes(source)
+                try:
+                    pdfs[name] = self.compile_document(path)
+                except DocumentCompilationError as exc:
+                    # Save before TemporaryDirectory removes the failed compilation files.
+                    try:
+                        failure_artifacts["compilation_source"] = self.store.put_file(
+                            f"{prefix}/{name}", source, "application/x-tex"
+                        )
+                        failure_artifacts["compilation_log"] = self.store.put_file(
+                            f"{prefix}/{path.stem}.log", exc.diagnostics, "text/plain"
+                        )
+                    except Exception as upload_error:
+                        LOG.error(
+                            "Could not save compiler diagnostics (%s)",
+                            type(upload_error).__name__,
+                        )
+                    raise
+        return pdfs
 
     def process(self, message):
         record, token = self.store.claim(
@@ -37,59 +65,62 @@ class DocumentService:
                 raise DocumentError("Snapshot user or model does not match this worker")
 
             prefix = f"{record['prefix']}/attempts/{token}"
-            stage = "generating_content"
-            if "content" in record:
+            content, usage, previous = None, None, None
+            # A checkpoint from an older prompt has another shape, so it is generated again.
+            if "content" in record and request.prompt_version == PROMPT_VERSION:
                 saved = json.loads(self.store.read_file(record["content"]))
                 content = TailoredCv.model_validate(saved["content"])
                 usage = saved["usage"]
-            else:
-                content, usage = self.generate(request)
-                reference = self.store.put_file(
-                    f"{prefix}/content.json",
-                    encode({"content": content.model_dump(mode="json"), "usage": usage}),
-                    "application/json",
-                )
-                self.store.update_owned(record, token, {"content": reference})
 
-            stage = "rendering_documents"
-            artifacts = {}
-            with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
-                for name, source in render_sources(request, content).items():
-                    path = Path(directory) / name
-                    path.write_bytes(source)
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                try:
+                    if content is None:
+                        stage = "generating_content"
+                        content, usage = self.generate(request, previous)
+                        reference = self.store.put_file(
+                            f"{prefix}/content.json",
+                            encode({"content": content.model_dump(mode="json"), "usage": usage}),
+                            "application/json",
+                        )
+                        self.store.update_owned(record, token, {"content": reference})
+                    stage = "rendering_documents"
+                    sources = render_sources(request, content)
                     stage = "compiling_pdf"
-                    try:
-                        pdf = self.compile_document(path)
-                    except DocumentCompilationError as exc:
-                        # Save before TemporaryDirectory removes the failed compilation files.
-                        try:
-                            failure_artifacts["compilation_source"] = self.store.put_file(
-                                f"{prefix}/{name}", source, "application/x-tex"
-                            )
-                            failure_artifacts["compilation_log"] = self.store.put_file(
-                                f"{prefix}/{path.stem}.log", exc.diagnostics, "text/plain"
-                            )
-                        except Exception as upload_error:
-                            LOG.error(
-                                "Could not save compiler diagnostics (%s)",
-                                type(upload_error).__name__,
-                            )
+                    pdfs = self.compile_all(sources, prefix, failure_artifacts)
+                    break
+                except (DocumentError, ValidationError) as exc:
+                    if attempt == MAX_ATTEMPTS:
                         raise
-                    stage = "uploading_documents"
-                    artifacts[path.stem + "_tex"] = self.store.put_file(
-                        f"{prefix}/{name}", source, "application/x-tex"
+                    LOG.warning(
+                        "Attempt %s of %s rejected: %s", attempt, MAX_ATTEMPTS, error_detail(exc)
                     )
-                    artifacts[path.stem + "_pdf"] = self.store.put_file(
-                        f"{prefix}/{path.stem}.pdf", pdf, "application/pdf"
-                    )
-            # Edits are checked structurally, not fact-checked; this is the review list,
-            # including skipped edits and why they were skipped.
-            _, report = apply_edits(request.cv_latex, content.edits)
-            skipped = sum(not edit["applied"] for edit in report)
-            if skipped:
-                LOG.warning("Skipped %s of %s invalid CV edits", skipped, len(report))
+                    previous = {
+                        "error": exc.feedback
+                        if isinstance(exc, DocumentError)
+                        else error_detail(exc)
+                    }
+                    if content:
+                        previous["cv_body"] = content.cv_body
+                    content = None
+
+            stage = "uploading_documents"
+            artifacts = {}
+            for name, source in sources.items():
+                stem = Path(name).stem
+                artifacts[stem + "_tex"] = self.store.put_file(
+                    f"{prefix}/{name}", source, "application/x-tex"
+                )
+                artifacts[stem + "_pdf"] = self.store.put_file(
+                    f"{prefix}/{stem}.pdf", pdfs[name], "application/pdf"
+                )
+            # The diff is computed so it cannot miss a change; the explanations come from the
+            # model. The rewrite is checked structurally, not fact-checked.
+            changes = {
+                "diff": diff_cv(cv_body(request.cv_latex), cv_body(sources["cv.tex"].decode())),
+                "explanations": content.model_dump(mode="json")["changes"],
+            }
             artifacts["changes_json"] = self.store.put_file(
-                f"{prefix}/changes.json", encode(report), "application/json"
+                f"{prefix}/changes.json", encode(changes), "application/json"
             )
 
             self.store.update_owned(

@@ -1,7 +1,7 @@
 # Documents
 
 Tailors your own LaTeX CV to one job and writes a motivation letter. The model does
-not build a CV from scratch: it proposes edits to the CV you supply, using the job
+not build a CV from scratch: it rewrites the body of the CV you supply, using the job
 description and your profile as extra facts. Any LaTeX template works.
 
 ```sh
@@ -13,19 +13,22 @@ uv run python -m backend.documents retry  --user-id ali --generation-id ID --reg
 `--job-file job.json` (title, description, optional company/job_id) replaces `--job-id`
 for postings that are not in the Jobs table. `--force` creates a new revision.
 
-## How edits work
+## How the rewrite works
 
-The model receives the raw `.tex` and returns `find -> replace` edits (`latex.py`).
-Nothing about the template is parsed, so the CV can use any commands. Every edit is
-checked on its own; an invalid edit is skipped (and reported) while the others apply:
+The model receives the raw `.tex` and returns the whole new document body, plus a list of
+its changes (`latex.py`). Nothing about the template is parsed, so the CV can use any
+commands. Your preamble is kept byte for byte; `\begin{document}` and anything before it
+in the answer are dropped. A rewrite is rejected when it:
 
-- `find` must match exactly one place in the document body (after `\begin{document}`);
-  whitespace differences are tolerated, and the preamble is never searched or edited
-- `replace` may only use LaTeX commands that already appear in the matched snippet, so
-  the model can reword and reorder inside your formatting but cannot add packages,
-  file access or new layout
-- braces must stay balanced and no new unescaped `%`; an edit overlapping an earlier one
-  is skipped
+- is unchanged from your CV (whitespace is ignored)
+- uses a LaTeX command or environment the original body does not use, so the model can
+  reword and reorder inside your formatting but cannot add file access or new layout
+- has unbalanced braces or a new unescaped `%`
+
+A rejected rewrite, a compile error or malformed model output goes back to the model
+with the error, for up to 3 attempts in one run. After the third the generation is
+`failed`, with the compiler log downloadable through `status` when compilation was the
+problem. A failed `retry` that has a saved rewrite tries that one first.
 
 The edited CV is compiled with pdfLaTeX, or with XeLaTeX when it uses `fontspec`
 (the letter always uses XeLaTeX). The file must be self-contained: multi-file Overleaf
@@ -33,7 +36,15 @@ projects (`\input`, custom `.cls`, images) are not supported yet.
 
 ## Review
 
-Each generation stores `changes_json` next to the PDFs: every edit with its `find`,
-`replace`, `reason`, `applied` and, for skipped edits, the `error`. Edits are checked structurally but not fact-checked, so review
-them before sending the CV. A CV that fails to compile marks the generation failed with
-the compiler log downloadable through `status`; there is no automatic re-prompt yet.
+Each generation stores `changes_json` next to the PDFs:
+
+- `diff`: `before`/`after` word-level differences computed from the two sources, so
+  nothing can be left out
+- `explanations`: the model's own `change` and `reason` list, which can be incomplete
+  or wrong
+
+The rewrite is checked structurally but not fact-checked, so review the diff before
+sending the CV. The model can also return a wrong list of changes: trust `diff`.
+
+Generations made before prompt version 7 hold a list of find/replace edits instead; the
+API shows them with no changes.

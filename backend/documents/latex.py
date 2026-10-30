@@ -1,16 +1,19 @@
-"""Apply anchored text edits to any LaTeX CV, independent of its template.
+"""Check a model's rewrite of any LaTeX CV, independent of its template.
 
-The model proposes `find -> replace` edits on the raw source. Each edit must match one
-place in the document body, and its replacement may only use LaTeX commands that the
-matched snippet already uses: the model can reword and reorder inside the existing
-formatting, but cannot add packages, file access or new layout.
+The model returns the whole document body. The user's preamble is kept byte for byte, and
+the new body may only use LaTeX commands and environments the original body already uses:
+the model can reword and reorder inside the existing formatting, but cannot add packages,
+file access or new layout.
 """
 
+import difflib
 import re
 
 from backend.documents.errors import DocumentError
 
-COMMAND = re.compile(r"\\[A-Za-z@]+")
+BEGIN = "\\begin{document}"
+END = "\\end{document}"
+COMMAND = re.compile(r"\\begin\{[^}]*\}|\\[A-Za-z@]+")
 WHITESPACE = re.compile(r"\s+")
 
 
@@ -33,9 +36,9 @@ def escape(value):
 
 
 def validate_cv(source):
-    if not all(marker in source for marker in ("\\documentclass", "\\begin{document}")):
+    if not all(marker in source for marker in ("\\documentclass", BEGIN)):
         raise DocumentError("Provide a complete LaTeX CV with \\documentclass and a document body")
-    if "\\end{document}" not in source:
+    if END not in source:
         raise DocumentError("LaTeX CV has no \\end{document}")
     return source
 
@@ -59,53 +62,44 @@ def balanced(text):
     return depth == 0
 
 
-def locate(source, find, body_start, body_end):
-    """Find the snippet in the document body: exact match first, otherwise tolerating
-    whitespace differences. It must be unique there; the preamble is never matched."""
-    words = [re.escape(part) for part in WHITESPACE.split(find.strip()) if part]
-    matches = []
-    for pattern in (re.escape(find), r"\s+".join(words)) if words else ():
-        matches = [m.span() for m in re.compile(pattern).finditer(source, body_start, body_end)]
-        if matches:
-            break
-    if len(matches) != 1:
-        found = "is not in the CV body" if not matches else "matches several places"
-        raise DocumentError(f"CV edit {found}; it must match exactly one place")
-    return matches[0]
-
-
-def apply_edits(source, edits):
-    """Apply every valid edit and skip invalid ones, so one bad edit does not lose the rest.
-
-    Returns the edited source and one report per edit (in the given order) saying whether
-    it was applied and, if not, why.
-    """
+def cv_body(source):
     validate_cv(source)
-    body_start = source.index("\\begin{document}") + len("\\begin{document}")
-    body_end = source.rindex("\\end{document}")
-    spans, reports = [], []
-    for edit in edits:
-        report = {**edit.model_dump(), "applied": False}
-        reports.append(report)
-        try:
-            start, end = locate(source, edit.find, body_start, body_end)
-            original = source[start:end]
-            added = set(COMMAND.findall(edit.replace)) - set(COMMAND.findall(original))
-            if added:
-                raise DocumentError("CV edit adds LaTeX commands that the snippet did not use")
-            if not balanced(edit.replace):
-                raise DocumentError("CV edit has unbalanced braces")
-            if unescaped(edit.replace, "%") > unescaped(original, "%"):
-                raise DocumentError("CV edit adds an unescaped % that would hide text")
-            # The earlier edit wins when two edits touch the same text.
-            if any(start < other_end and other_start < end for other_start, other_end, *_ in spans):
-                raise DocumentError("CV edit overlaps an earlier edit")
-        except DocumentError as exc:
-            report["error"] = str(exc)
-            continue
-        report["applied"] = True
-        spans.append((start, end, edit.replace))
+    return source[source.index(BEGIN) + len(BEGIN) : source.rindex(END)]
 
-    for start, end, replacement in sorted(spans, reverse=True):
-        source = source[:start] + replacement + source[end:]
-    return source, reports
+
+def rewrite_cv(source, body):
+    """Put the rewritten body into the user's CV, or raise what the model must fix."""
+    original = cv_body(source)
+    # Models often return the document markers too; anything outside them is not the body.
+    body = body.split(BEGIN, 1)[-1].rsplit(END, 1)[0]
+    if WHITESPACE.sub("", body) == WHITESPACE.sub("", original):
+        raise DocumentError("The model returned the CV unchanged")
+    added = set(COMMAND.findall(body)) - set(COMMAND.findall(original))
+    if added:
+        raise DocumentError(
+            "The rewritten CV adds LaTeX commands that the original did not use",
+            feedback="cv_body uses LaTeX the original does not: " + ", ".join(sorted(added)),
+        )
+    if not balanced(body):
+        raise DocumentError("The rewritten CV has unbalanced braces")
+    if unescaped(body, "%") > unescaped(original, "%"):
+        raise DocumentError("The rewritten CV adds an unescaped % that would hide text")
+    start = source.index(BEGIN) + len(BEGIN)
+    return f"{source[:start]}\n{body.strip()}\n{source[source.rindex(END) :]}"
+
+
+def diff_cv(before, after):
+    """What actually changed, computed from the sources so it cannot omit anything.
+
+    Compared word by word, so a moved line break alone is not reported as a change.
+    Changes close together are merged, and each keeps a few words of context.
+    """
+    old, new = before.split(), after.split()
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    return [
+        {
+            "before": " ".join(old[group[0][1] : group[-1][2]]),
+            "after": " ".join(new[group[0][3] : group[-1][4]]),
+        }
+        for group in matcher.get_grouped_opcodes(4)
+    ]

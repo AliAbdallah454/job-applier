@@ -140,7 +140,7 @@ class ApplicationStackTests(unittest.TestCase):
         container = next(iter(tasks.values()))["Properties"]["ContainerDefinitions"][0]
         self.assertEqual(container["User"], "10001:10001")
         environment = {item["Name"]: item["Value"] for item in container["Environment"]}
-        self.assertEqual(environment["DOCUMENT_TIMEOUT_SECONDS"], "600")
+        self.assertEqual(environment["DOCUMENT_TIMEOUT_SECONDS"], "1200")
         self.assertEqual(environment["DOCUMENT_MODEL_ID"], "us.amazon.nova-pro-v1:0")
 
     def test_worker_permissions_do_not_include_profile_or_jobs_tables(self):

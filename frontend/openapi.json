@@ -226,40 +226,20 @@
         "type": "object"
       },
       "Change": {
+        "description": "One difference computed from the original and tailored CV sources.",
         "properties": {
-          "applied": {
-            "title": "Applied",
-            "type": "boolean"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "find": {
-            "title": "Find",
+          "after": {
+            "title": "After",
             "type": "string"
           },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "replace": {
-            "title": "Replace",
+          "before": {
+            "title": "Before",
             "type": "string"
           }
         },
         "required": [
-          "find",
-          "replace",
-          "reason",
-          "applied"
+          "before",
+          "after"
         ],
         "title": "Change",
         "type": "object"
@@ -491,6 +471,25 @@
         "title": "Experience",
         "type": "object"
       },
+      "Explanation": {
+        "description": "The model's account of a change; it can be incomplete, unlike the computed diff.",
+        "properties": {
+          "change": {
+            "title": "Change",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "change",
+          "reason"
+        ],
+        "title": "Explanation",
+        "type": "object"
+      },
       "Generation": {
         "properties": {
           "created_at": {
@@ -575,6 +574,13 @@
             ],
             "title": "Error Detail"
           },
+          "explanations": {
+            "items": {
+              "$ref": "#/components/schemas/Explanation"
+            },
+            "title": "Explanations",
+            "type": "array"
+          },
           "failure_stage": {
             "anyOf": [
               {
@@ -646,6 +652,7 @@
           "retryable",
           "keywords",
           "changes",
+          "explanations",
           "files"
         ],
         "title": "GenerationDetail",

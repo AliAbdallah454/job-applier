@@ -31,11 +31,17 @@ class GenerationRequest(BaseModel):
 
 
 class Change(BaseModel):
-    find: str
-    replace: str
+    """One difference computed from the original and tailored CV sources."""
+
+    before: str
+    after: str
+
+
+class Explanation(BaseModel):
+    """The model's account of a change; it can be incomplete, unlike the computed diff."""
+
+    change: str
     reason: str
-    applied: bool
-    error: str | None = None
 
 
 class Generation(BaseModel):
@@ -55,6 +61,7 @@ class GenerationDetail(Generation):
     error_detail: str | None = None
     keywords: list[str]
     changes: list[Change]
+    explanations: list[Explanation]
     files: list[str]
     compilation_log: str | None = None
 
@@ -78,10 +85,13 @@ def read_json(context, reference):
 
 
 def detail(context, record):
-    changes, keywords, log = [], [], None
+    changes, explanations, keywords, log = [], [], [], None
     files = downloads(record)
     if "changes_json" in files:
-        changes = read_json(context, files["changes_json"])
+        saved = read_json(context, files["changes_json"])
+        # Generations from before prompt version 7 stored a list of find/replace edits.
+        if isinstance(saved, dict):
+            changes, explanations = saved["diff"], saved["explanations"]
     if record["status"] == "ready" and "content" in record:
         keywords = read_json(context, record["content"])["content"]["job_keywords"]
     if "compilation_log" in files:
@@ -93,6 +103,7 @@ def detail(context, record):
         error_detail=record.get("error_detail"),
         keywords=keywords,
         changes=changes,
+        explanations=explanations,
         files=sorted(files),
         compilation_log=log,
     )
