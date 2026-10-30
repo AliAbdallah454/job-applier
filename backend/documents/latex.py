@@ -1,29 +1,17 @@
-"""LaTeX CV adapter: parse a Jake-style resume and apply structured edits in place.
+"""Apply anchored text edits to any LaTeX CV, independent of its template.
 
-Only the recognized macros are read and rewritten, by their exact location in the source;
-everything else (preamble, layout, custom commands, comments) is kept byte for byte.
+The model proposes `find -> replace` edits on the raw source. Each edit must match one
+place in the document body, and its replacement may only use LaTeX commands that the
+matched snippet already uses: the model can reword and reorder inside the existing
+formatting, but cannot add packages, file access or new layout.
 """
 
 import re
-from dataclasses import dataclass, field
 
 from backend.documents.errors import DocumentError
-from backend.documents.models import (
-    NEW_BULLET,
-    CvBullet,
-    CvDocument,
-    CvEntry,
-    CvSection,
-    CvSkillGroup,
-    TailoredCv,
-)
 
-HEADINGS = {"resumeSubheading": 4, "resumeSubSubheading": 2, "resumeProjectHeading": 2}
-MACRO = re.compile(
-    r"\\(resumeSubheading|resumeSubSubheading|resumeProjectHeading|resumeItem)(?![A-Za-z])"
-)
-SECTION = re.compile(r"\\section\*?\s*\{")
-SKILL_GROUP = re.compile(r"\\textbf\s*\{")
+COMMAND = re.compile(r"\\[A-Za-z@]+")
+WHITESPACE = re.compile(r"\s+")
 
 
 def escape(value):
@@ -44,255 +32,76 @@ def escape(value):
     )
 
 
-def plain(latex):
-    """Readable text of a LaTeX fragment, as shown to the model."""
-    text = latex.replace(r"\$", "\0")
-    text = re.sub(r"\\href\s*\{[^{}]*\}", "", text)
-    text = text.replace("$|$", "|").replace("$", "").replace("\0", "$")
-    text = text.replace(r"\textasciitilde{}", "~").replace(r"\textasciicircum{}", "^")
-    text = text.replace(r"\textbackslash{}", "\\").replace("---", "—").replace("--", "–")
-    text = re.sub(r"\\([%&#_{}])", r"\1", text)
-    text = re.sub(r"\\[A-Za-z]+\*?\s*", "", text)
-    text = re.sub(r"(?<!\\)[{}]", "", text)
-    return re.sub(r"\s+", " ", text).strip()
+def validate_cv(source):
+    if not all(marker in source for marker in ("\\documentclass", "\\begin{document}")):
+        raise DocumentError("Provide a complete LaTeX CV with \\documentclass and a document body")
+    if "\\end{document}" not in source:
+        raise DocumentError("LaTeX CV has no \\end{document}")
+    return source
 
 
-def mask_comments(source):
-    """Blank out comments (same length) so macros inside them are not parsed."""
-    return re.sub(r"(?<!\\)%[^\n]*", lambda match: " " * len(match[0]), source)
+def engine(source):
+    """XeLaTeX for fontspec documents, otherwise pdfLaTeX (Overleaf's default)."""
+    uses_fontspec = re.search(r"\\usepackage(\[[^\]]*\])?\{(fontspec|unicode-math)\}", source)
+    return "xelatex" if uses_fontspec or "\\setmainfont" in source else "pdflatex"
 
 
-def read_group(masked, position):
-    """Return the span inside the brace group starting at or after `position`."""
-    while position < len(masked) and masked[position].isspace():
-        position += 1
-    if position >= len(masked) or masked[position] != "{":
-        raise DocumentError("CV has a resume macro with missing arguments")
+def unescaped(text, characters):
+    return len(re.findall(r"(?<!\\)[" + re.escape(characters) + "]", text))
+
+
+def balanced(text):
     depth = 0
-    for index in range(position, len(masked)):
-        character = masked[index]
-        if character == "{" and masked[index - 1] != "\\":
-            depth += 1
-        elif character == "}" and masked[index - 1] != "\\":
-            depth -= 1
-            if depth == 0:
-                return position + 1, index
-    raise DocumentError("CV has unbalanced braces")
+    for match in re.finditer(r"(?<!\\)[{}]", text):
+        depth += 1 if match[0] == "{" else -1
+        if depth < 0:
+            return False
+    return depth == 0
 
 
-@dataclass
-class Span:
-    start: int
-    end: int
+def locate(source, find, body_start):
+    """Exact match first; otherwise tolerate whitespace differences. Must be unique."""
+    matches = [m.span() for m in re.finditer(re.escape(find), source)]
+    if not matches:
+        words = [re.escape(part) for part in WHITESPACE.split(find.strip()) if part]
+        pattern = r"\s+".join(words)
+        matches = [m.span() for m in re.finditer(pattern, source)] if words else []
+    if len(matches) != 1:
+        found = "is not in the CV" if not matches else "matches several places"
+        raise DocumentError(f"CV edit {found}; it must match exactly one place")
+    start, end = matches[0]
+    if start < body_start:
+        raise DocumentError("CV edits may only change the document body, not the preamble")
+    return start, end
 
 
-@dataclass
-class Bullet(Span):
-    id: str
-    text: str
+def apply_edits(source, edits):
+    """Check every edit, then apply them all; any invalid edit rejects the whole set."""
+    validate_cv(source)
+    body_start = source.index("\\begin{document}") + len("\\begin{document}")
+    body_end = source.rindex("\\end{document}")
+    spans = []
+    for number, edit in enumerate(edits, 1):
+        try:
+            start, end = locate(source, edit.find, body_start)
+            original = source[start:end]
+            if end > body_end:
+                raise DocumentError("CV edits may only change the document body")
+            added = set(COMMAND.findall(edit.replace)) - set(COMMAND.findall(original))
+            if added:
+                raise DocumentError("CV edit adds LaTeX commands that the snippet did not use")
+            if not balanced(edit.replace):
+                raise DocumentError("CV edit has unbalanced braces")
+            if unescaped(edit.replace, "%") > unescaped(original, "%"):
+                raise DocumentError("CV edit adds an unescaped % that would hide text")
+        except DocumentError as exc:
+            raise DocumentError(f"Edit {number}: {exc}") from None
+        spans.append((start, end, edit.replace))
 
-
-@dataclass
-class Entry(Span):
-    id: str
-    title: str
-    bullets: list[Bullet] = field(default_factory=list)
-
-
-@dataclass
-class SkillGroup:
-    id: str
-    name: str
-    start: int
-    end: int
-    skills: list[tuple[str, str]]  # (plain text, original LaTeX)
-
-
-@dataclass
-class Section:
-    id: str
-    name: str
-    entries: list[Entry] = field(default_factory=list)
-    skill_groups: list[SkillGroup] = field(default_factory=list)
-
-
-class LatexCv:
-    def __init__(self, source):
-        if "\\documentclass" not in source or "\\end{document}" not in source:
-            raise DocumentError("Provide a complete LaTeX CV document")
-        self.source = source
-        masked = mask_comments(source)
-        starts = [match.start() for match in SECTION.finditer(masked)]
-        ends = [*starts[1:], masked.rindex("\\end{document}")]
-        self.sections = [
-            self._section(masked, f"s{number}", start, end)
-            for number, (start, end) in enumerate(zip(starts, ends, strict=False), 1)
-        ]
-        if not any(section.entries for section in self.sections):
-            raise DocumentError(
-                "CV has no recognized entries; use \\resumeSubheading or "
-                "\\resumeProjectHeading with \\resumeItem bullets"
-            )
-
-    def _section(self, masked, section_id, start, end):
-        name_start, name_end = read_group(masked, masked.index("{", start))
-        section = Section(section_id, plain(self.source[name_start:name_end]))
-        position = name_end
-        for match in MACRO.finditer(masked, position, end):
-            if match.start() < position:
-                continue
-            macro = match[1]
-            spans = []
-            position = match.end()
-            for _ in range(HEADINGS.get(macro, 1)):
-                spans.append(read_group(masked, position))
-                position = spans[-1][1] + 1
-            if macro in HEADINGS:
-                title = " | ".join(filter(None, (plain(self.source[a:b]) for a, b in spans)))
-                entry_id = f"{section_id}.e{len(section.entries) + 1}"
-                section.entries.append(Entry(match.start(), position, entry_id, title))
-            elif section.entries:
-                entry = section.entries[-1]
-                bullet_id = f"{entry.id}.b{len(entry.bullets) + 1}"
-                text = plain(self.source[spans[0][0] : spans[0][1]])
-                entry.bullets.append(Bullet(match.start(), position, bullet_id, text))
-                entry.end = position
-        for entry in section.entries:
-            close = re.compile(r"\s*\\resumeItemListEnd(?![A-Za-z])").match(masked, entry.end)
-            if entry.bullets and close:
-                entry.end = close.end()
-        if not section.entries:
-            section.skill_groups = self._skill_groups(masked, section_id, name_end, end)
-        return section
-
-    def _skill_groups(self, masked, section_id, start, end):
-        groups = []
-        for match in SKILL_GROUP.finditer(masked, start, end):
-            name_start, name_end = read_group(masked, match.end() - 1)
-            following = re.compile(r"\s*\{\s*:\s*").match(masked, name_end + 1)
-            if not following:
-                continue
-            list_start = following.end()
-            list_end = read_group(masked, following.start() + following[0].index("{"))[1]
-            skills, depth, item_start = [], 0, list_start
-            for index in range(list_start, list_end + 1):
-                character = masked[index] if index < list_end else ","
-                depth += {"{": 1, "}": -1}.get(character, 0)
-                if character == "," and depth == 0:
-                    raw = self.source[item_start:index].strip()
-                    if raw:
-                        skills.append((plain(raw), raw))
-                    item_start = index + 1
-            stripped_end = list_start + len(self.source[list_start:list_end].rstrip())
-            if skills:
-                group_id = f"{section_id}.g{len(groups) + 1}"
-                name = plain(self.source[name_start:name_end])
-                groups.append(SkillGroup(group_id, name, list_start, stripped_end, skills))
-        return groups
-
-    def document(self):
-        return CvDocument(
-            sections=[
-                CvSection(
-                    id=section.id,
-                    name=section.name,
-                    entries=[
-                        CvEntry(
-                            id=entry.id,
-                            title=entry.title,
-                            bullets=[CvBullet(id=b.id, text=b.text) for b in entry.bullets],
-                        )
-                        for entry in section.entries
-                    ],
-                    skill_groups=[
-                        CvSkillGroup(id=g.id, name=g.name, skills=[s for s, _ in g.skills])
-                        for g in section.skill_groups
-                    ],
-                )
-                for section in self.sections
-                if section.entries or section.skill_groups
-            ]
-        )
-
-    def apply(self, edits: TailoredCv):
-        """Return the edited source; validate the edits against this CV first."""
-        replacements = []
-        sections = {section.id: section for section in self.sections}
-        groups = {g.id: g for section in self.sections for g in section.skill_groups}
-
-        for edit in edits.sections:
-            entries = sections[edit.section_id].entries
-            by_id = {entry.id: entry for entry in entries}
-            rendered = [self._entry(by_id[e.entry_id], e.bullets) for e in edit.entries]
-            replacements.append((entries[0].start, entries[-1].end, self._join(entries, rendered)))
-
-        for edit in edits.skill_groups:
-            group = groups[edit.group_id]
-            originals = {text.casefold(): raw for text, raw in group.skills}
-            items = [originals.get(skill.casefold(), escape(skill)) for skill in edit.skills]
-            replacements.append((group.start, group.end, ", ".join(items)))
-
-        source = self.source
-        for start, end, text in sorted(replacements, reverse=True):
-            source = source[:start] + text + source[end:]
-        return source
-
-    def _entry(self, entry, bullet_edits):
-        if not entry.bullets:
-            return self.source[entry.start : entry.end]
-        originals = {bullet.id: bullet for bullet in entry.bullets}
-        rendered = []
-        for edit in bullet_edits:
-            original = originals.get(edit.source_id)
-            if original and edit.text == original.text:
-                rendered.append(self.source[original.start : original.end])
-            else:
-                rendered.append(r"\resumeItem{" + escape(edit.text) + "}")
-        first, last = entry.bullets[0], entry.bullets[-1]
-        return (
-            self.source[entry.start : first.start]
-            + self._join(entry.bullets, rendered)
-            + self.source[last.end : entry.end]
-        )
-
-    def _join(self, slots, rendered):
-        """Join new items with the original whitespace between consecutive slots."""
-        separators = [self.source[a.end : b.start] for a, b in zip(slots, slots[1:], strict=False)]
-        if not separators:
-            line_start = self.source.rfind("\n", 0, slots[0].start) + 1
-            indent = self.source[line_start : slots[0].start]
-            separators = ["\n" + (indent if not indent.strip() else "")]
-        return "".join(
-            item
-            + (separators[min(index, len(separators) - 1)] if index < len(rendered) - 1 else "")
-            for index, item in enumerate(rendered)
-        )
-
-    def changes(self, edits: TailoredCv):
-        """A reviewable summary of what the edits change, stored next to the PDF."""
-        entries = {e.id: e for section in self.sections for e in section.entries}
-        summary = {"rewritten": [], "added": [], "dropped_entries": [], "dropped_bullets": []}
-        for edit in edits.sections:
-            kept = {e.entry_id for e in edit.entries}
-            for entry in (e for e in entries.values() if e.id.startswith(edit.section_id + ".")):
-                if entry.id not in kept:
-                    summary["dropped_entries"].append(entry.title)
-            for entry_edit in edit.entries:
-                entry = entries[entry_edit.entry_id]
-                originals = {b.id: b for b in entry.bullets}
-                used = set()
-                for bullet in entry_edit.bullets:
-                    original = originals.get(bullet.source_id)
-                    if bullet.source_id == NEW_BULLET:
-                        summary["added"].append({"entry": entry.title, "after": bullet.text})
-                    elif original.text != bullet.text:
-                        summary["rewritten"].append(
-                            {"entry": entry.title, "before": original.text, "after": bullet.text}
-                        )
-                    used.add(bullet.source_id)
-                summary["dropped_bullets"].extend(
-                    {"entry": entry.title, "before": b.text}
-                    for b in entry.bullets
-                    if b.id not in used
-                )
-        return summary
+    spans.sort()
+    for (_, previous_end, _), (start, _, _) in zip(spans, spans[1:], strict=False):
+        if start < previous_end:
+            raise DocumentError("CV edits overlap")
+    for start, end, replacement in reversed(spans):
+        source = source[:start] + replacement + source[end:]
+    return source

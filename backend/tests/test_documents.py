@@ -18,8 +18,8 @@ from moto import mock_aws
 from backend.documents.__main__ import main as cli_main
 from backend.documents.bedrock import BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import LatexCv, escape
-from backend.documents.models import GenerationInput, Job, TailoredCv
+from backend.documents.latex import apply_edits, engine, escape, validate_cv
+from backend.documents.models import CvEdit, GenerationInput, Job, TailoredCv
 from backend.documents.render import compile_pdf, render_sources
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
@@ -43,114 +43,74 @@ def request():
     )
 
 
+BULLET = r"\resumeItem{Added bounded retries for intermittent request failures}"
+
+
 def content():
     return TailoredCv(
         job_keywords=["Python", "APIs", "FastAPI"],
-        sections=[
+        edits=[
             {
-                "section_id": "s2",
-                "entries": [
-                    {
-                        "entry_id": "s2.e1",
-                        "bullets": [
-                            {
-                                "source_id": "s2.e1.b3",
-                                "text": "Stored normalized records in PostgreSQL "
-                                "and wrote pytest tests",
-                            },
-                            {
-                                "source_id": "s2.e1.b1",
-                                "text": "Built Python scripts that collected "
-                                "supplier records every morning",
-                            },
-                            {"source_id": "new", "text": "Documented how to rerun a failed run"},
-                        ],
-                    },
-                ],
+                "find": r"\resumeItem{Built a prediction endpoint for the classifier}",
+                "replace": r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}",
+                "reason": "FastAPI",
             },
+            {"find": BULLET, "replace": "", "reason": "Not relevant"},
             {
-                "section_id": "s3",
-                "entries": [
-                    {
-                        "entry_id": "s3.e1",
-                        "bullets": [
-                            {
-                                "source_id": "s3.e1.b2",
-                                "text": "Built a FastAPI prediction endpoint with 50% & more",
-                            }
-                        ],
-                    }
-                ],
+                "find": "\\textbf{Languages}{: Python, SQL}",
+                "replace": "\\textbf{Languages}{: SQL, Python, FastAPI}",
+                "reason": "Skills",
             },
         ],
-        skill_groups=[{"group_id": "s4.g1", "skills": ["SQL", "Python", "FastAPI"]}],
         letter_paragraphs=["I am interested in the role.", "I built Python tools."],
     )
 
 
-class LatexCvTests(unittest.TestCase):
-    def test_parses_sections_entries_bullets_and_skills(self):
-        cv = LatexCv(CV).document()
-        self.assertEqual(
-            [section.name for section in cv.sections][:3], ["Education", "Experience", "Projects"]
-        )
-        experience = cv.sections[1].entries[0]
-        self.assertIn("Example Analytics Company", experience.title)
-        self.assertEqual(
-            experience.bullets[0].text,
-            "Built Python scripts that collected supplier records every morning",
-        )
-        self.assertEqual(cv.sections[3].skill_groups[0].skills, ["Python", "SQL"])
-        self.assertNotIn("commented-out", cv.model_dump_json())
+def edit(find, replace):
+    return CvEdit(find=find, replace=replace, reason="test")
 
-    def test_edits_are_applied_in_place_and_the_rest_is_kept(self):
-        edited = LatexCv(CV).apply(content())
-        experience = edited[
-            edited.index(r"\section{Experience}") : edited.index(r"\section{Projects}")
-        ]
-        self.assertLess(experience.index("pytest"), experience.index("supplier records"))
-        self.assertIn(r"\resumeItem{Built \textbf{Python} scripts", experience)
-        self.assertIn(r"\resumeItem{Documented how to rerun a failed run}", experience)
+
+class CvEditTests(unittest.TestCase):
+    def test_edits_replace_only_their_snippet(self):
+        edited = apply_edits(CV, content().edits)
+        self.assertIn(r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}", edited)
         self.assertNotIn("bounded retries", edited)
-        self.assertNotIn("Student research assistant", edited)
-        self.assertIn(r"\resumeItem{Built a FastAPI prediction endpoint with 50\% \& more}", edited)
         self.assertIn(r"\textbf{Languages}{: SQL, Python, FastAPI}", edited)
-        self.assertIn(r"\textbf{Libraries}{: pandas, scikit-learn}", edited)
-        self.assertIn("MSc in Computer Science", edited)
         self.assertEqual(
-            edited[: edited.index(r"\begin{document}")], CV[: CV.index(r"\begin{document}")]
-        )
-        self.assertEqual(
-            LatexCv(edited).document().sections[1].entries[0].bullets[2].text,
-            "Documented how to rerun a failed run",
+            edited.replace(
+                r"\resumeItem{Built a FastAPI prediction endpoint, 50\% \& more}", ""
+            ).replace(r"\textbf{Languages}{: SQL, Python, FastAPI}", ""),
+            CV.replace(BULLET, "")
+            .replace(r"\resumeItem{Built a prediction endpoint for the classifier}", "")
+            .replace("\\textbf{Languages}{: Python, SQL}", ""),
         )
 
-    def test_changes_list_rewrites_additions_and_drops(self):
-        changes = LatexCv(CV).changes(content())
-        self.assertEqual(changes["added"][0]["after"], "Documented how to rerun a failed run")
-        self.assertEqual(len(changes["rewritten"]), 1)
-        self.assertIn("Student research assistant", changes["dropped_entries"][0])
-        self.assertIn("bounded retries", changes["dropped_bullets"][0]["before"])
-
-    def test_cv_without_resume_macros_is_rejected(self):
-        with self.assertRaisesRegex(DocumentError, "no recognized entries"):
-            LatexCv(r"\documentclass{article}\begin{document}Hi\end{document}")
+    def test_whitespace_differences_in_find_are_tolerated(self):
+        loose = edit(
+            "\\resumeItem{Added bounded   retries\n for intermittent request failures}", ""
+        )
+        self.assertNotIn("bounded retries", apply_edits(CV, [loose]))
 
     def test_invalid_edits_are_rejected(self):
-        cv, profile = LatexCv(CV).document(), request().profile
-        for change in [
-            lambda c: c.sections[0].entries[0].bullets.append(c.sections[1].entries[0].bullets[0]),
-            lambda c: setattr(c.sections[0], "section_id", "s9"),
-            lambda c: c.sections[0].entries[0].bullets.clear(),
-            lambda c: c.skill_groups[0].skills.append("Invented skill"),
-        ]:
-            edits = content()
-            change(edits)
-            with self.subTest(change=change), self.assertRaises(DocumentError):
-                edits.validate_against(cv, profile)
+        for name, edits in {
+            "missing": [edit("Not in the CV", "x")],
+            "ambiguous": [edit("Python", "Go")],
+            "preamble": [edit(r"\usepackage{latexsym}", "")],
+            "new command": [edit(BULLET, r"\resumeItem{x}\input{/etc/passwd}")],
+            "braces": [edit(BULLET, r"\resumeItem{x")],
+            "comment": [edit(BULLET, r"\resumeItem{100% done}")],
+            "overlap": [edit(BULLET, ""), edit("bounded retries", "retries")],
+        }.items():
+            with self.subTest(name), self.assertRaises(DocumentError):
+                apply_edits(CV, edits)
 
-    def test_skills_may_come_from_profile_technologies(self):
-        content().validate_against(LatexCv(CV).document(), request().profile)
+    def test_engine_follows_the_cv(self):
+        self.assertEqual(engine(CV), "xelatex")
+        self.assertEqual(engine(r"\documentclass{article}\input{glyphtounicode}"), "pdflatex")
+
+    def test_incomplete_cv_is_rejected(self):
+        with self.assertRaises(DocumentError):
+            validate_cv("Just text")
 
 
 class RenderingTests(unittest.TestCase):
@@ -168,8 +128,8 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(set(schema), {"type", "properties", "required"})
         self.assertNotIn('"$ref"', json.dumps(schema))
         self.assertNotIn('"$defs"', json.dumps(schema))
-        self.assertEqual(schema["properties"]["sections"]["items"]["type"], "object")
-        self.assertIn("section_id", schema["properties"]["sections"]["items"]["required"])
+        self.assertEqual(schema["properties"]["edits"]["items"]["type"], "object")
+        self.assertIn("find", schema["properties"]["edits"]["items"]["required"])
 
     def test_claude_override_keeps_existing_schema(self):
         self.assertEqual(
@@ -178,7 +138,7 @@ class RenderingTests(unittest.TestCase):
 
     def test_compiler_missing_is_actionable(self):
         with patch("backend.documents.render.shutil.which", return_value=None):
-            with self.assertRaisesRegex(RuntimeError, "XeLaTeX"):
+            with self.assertRaisesRegex(RuntimeError, "xelatex is required"):
                 compile_pdf(Path("cv.tex"))
 
     def test_compiler_failure_preserves_log_without_exposing_it_in_message(self):
@@ -267,7 +227,7 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(result["review_required"])
         self.assertEqual(len(result["artifacts"]), 5)
         changes = json.loads(self.store.read_file(result["artifacts"]["changes_json"]))
-        self.assertEqual(len(changes["added"]), 1)
+        self.assertEqual(changes[1], {"find": BULLET, "replace": "", "reason": "Not relevant"})
         self.assertIn("version_id", result["artifacts"]["cv_pdf"])
         self.assertTrue(self.store.read_file(result["artifacts"]["cv_pdf"]).startswith(b"%PDF-"))
         self.assertNotIn("lock_token", result)
@@ -406,12 +366,12 @@ class GenerationTests(unittest.TestCase):
         with Stubber(client) as stubber:
             stubber.add_response("converse", response)
             generated, usage = BedrockGenerator(client)(self.request)
-        self.assertEqual(generated.skill_groups[0].skills, ["SQL", "Python", "FastAPI"])
+        self.assertEqual(len(generated.edits), 3)
         self.assertEqual(usage["totalTokens"], 80)
 
     def test_invalid_model_sources_have_actionable_private_safe_diagnostics(self):
         generated = content()
-        generated.skill_groups[0].skills = ["Private invented skill"]
+        generated.edits[0].find = "Private text not in the CV"
         self.generate.return_value = generated, {}
         message = self.submit()
         with self.assertLogs("backend.documents.service", level="ERROR") as logs:
@@ -419,10 +379,10 @@ class GenerationTests(unittest.TestCase):
                 self.service.process(message)
         record = self.store.get(**message)
         self.assertEqual(record["failure_stage"], "generating_content")
-        self.assertIn("skills that are not in the CV or profile", record["error_detail"])
-        self.assertNotIn("Private invented skill", str(record))
+        self.assertIn("Edit 1: CV edit is not in the CV", record["error_detail"])
+        self.assertNotIn("Private text not in the CV", str(record))
         self.assertIn("stage=generating_content", str(logs.output))
-        self.assertNotIn("Private invented skill", str(logs.output))
+        self.assertNotIn("Private text not in the CV", str(logs.output))
 
     def test_truncated_model_response_reports_stop_reason(self):
         client = Mock()
@@ -433,7 +393,7 @@ class GenerationTests(unittest.TestCase):
             self.service.process(message)
         self.assertIn("stop_reason=max_tokens", self.store.get(**message)["error_detail"])
 
-    def test_bedrock_does_not_send_contact_details(self):
+    def test_bedrock_sends_cv_but_not_profile_contact_details(self):
         client = Mock()
         client.converse.return_value = {
             "stopReason": "max_tokens",
@@ -450,9 +410,10 @@ class GenerationTests(unittest.TestCase):
             set(arguments["toolConfig"]["tools"][0]["toolSpec"]["inputSchema"]["json"]),
             {"type", "properties", "required"},
         )
-        prompt = arguments["messages"][0]["content"][0]["text"]
-        self.assertNotIn(self.request.profile.email, prompt)
-        self.assertNotIn(self.request.profile.full_name, prompt)
+        prompt = json.loads(arguments["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["cv_latex"], CV)
+        self.assertNotIn("email", prompt["candidate_facts"])
+        self.assertNotIn("full_name", prompt["candidate_facts"])
 
     def run_cli(self, *arguments):
         outputs = {

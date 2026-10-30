@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 from backend.documents.errors import DocumentCompilationError, DocumentError, error_detail
-from backend.documents.latex import LatexCv
+from backend.documents.latex import apply_edits
 from backend.documents.models import GenerationInput, TailoredCv
 from backend.documents.render import compile_pdf, render_sources
 from backend.documents.storage import encode, timestamp
@@ -44,7 +44,7 @@ class DocumentService:
                 usage = saved["usage"]
             else:
                 content, usage = self.generate(request)
-                content.validate_against(LatexCv(request.cv_latex).document(), request.profile)
+                apply_edits(request.cv_latex, content.edits)  # Reject before checkpointing.
                 reference = self.store.put_file(
                     f"{prefix}/content.json",
                     encode({"content": content.model_dump(mode="json"), "usage": usage}),
@@ -83,10 +83,10 @@ class DocumentService:
                     artifacts[path.stem + "_pdf"] = self.store.put_file(
                         f"{prefix}/{path.stem}.pdf", pdf, "application/pdf"
                     )
-            # Rewritten bullets are not fact-checked automatically; this is the review list.
+            # Edits are checked structurally, not fact-checked; this is the review list.
             artifacts["changes_json"] = self.store.put_file(
                 f"{prefix}/changes.json",
-                encode(LatexCv(request.cv_latex).changes(content)),
+                encode([edit.model_dump() for edit in content.edits]),
                 "application/json",
             )
 

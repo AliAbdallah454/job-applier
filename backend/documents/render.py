@@ -1,4 +1,4 @@
-"""Apply the model's edits to the user's LaTeX CV, build the letter and compile with XeLaTeX."""
+"""Apply the model's edits to the user's LaTeX CV, build the letter and compile to PDF."""
 
 import os
 import shutil
@@ -6,14 +6,13 @@ import subprocess
 from pathlib import Path
 
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import LatexCv, escape
+from backend.documents.latex import apply_edits, engine, escape
 from backend.documents.models import GenerationInput, TailoredCv
 
 
 def render_sources(request: GenerationInput, content: TailoredCv):
     profile = request.profile
-    cv = LatexCv(request.cv_latex)
-    content.validate_against(cv.document(), profile)
+    cv = apply_edits(request.cv_latex, content.edits)
     contact = escape(" | ".join(filter(None, [profile.location, profile.email, profile.phone])))
     letter = "\n".join(
         [
@@ -36,13 +35,18 @@ def render_sources(request: GenerationInput, content: TailoredCv):
             r"\end{document}",
         ]
     )
-    return {"cv.tex": cv.apply(content).encode(), "motivation_letter.tex": letter.encode()}
+    return {"cv.tex": cv.encode(), "motivation_letter.tex": letter.encode()}
 
 
 def compile_pdf(source: Path, *, timeout=60):
-    compiler = shutil.which("xelatex")
+    name = (
+        engine(source.read_text(encoding="utf-8", errors="replace"))
+        if source.exists()
+        else "xelatex"
+    )
+    compiler = shutil.which(name)
     if not compiler:
-        raise RuntimeError("XeLaTeX is required; use the document worker image or install TeX Live")
+        raise RuntimeError(f"{name} is required; use the document worker image or install TeX Live")
 
     # The CV source is the user's own LaTeX; model output inserted into it is always escaped.
     # Restrict file I/O and do not pass AWS credentials to the compiler process.

@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from backend.documents.latex import LatexCv
+from backend.documents.latex import validate_cv
 from backend.documents.models import GenerationInput
 
 
@@ -50,7 +50,7 @@ class GenerationStore:
             return stream.read()
 
     def submit(self, request: GenerationInput, sqs, queue_url, *, force=False):
-        LatexCv(request.cv_latex)  # Reject an unsupported CV before anything is written.
+        validate_cv(request.cv_latex)  # Reject an incomplete CV before anything is written.
         body = encode(request.model_dump(mode="json"))
         digest = hashlib.sha256(body).hexdigest()
         generation_id = uuid.uuid4().hex if force else digest
