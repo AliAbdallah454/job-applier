@@ -1,6 +1,7 @@
 """Settings, AWS clients and the current user, shared by every route."""
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated
 
@@ -10,6 +11,7 @@ from fastapi import Depends, Request
 from backend.api.catalogue import JobCatalogue
 from backend.documents.__main__ import stack_outputs
 from backend.documents.models import DOCUMENT_MODELS, ModelOption
+from backend.documents.render import compile_pdf
 from backend.documents.storage import GenerationStore
 
 
@@ -23,6 +25,7 @@ class Settings:
     documents_bucket: str
     document_queue_url: str
     document_models: tuple[ModelOption, ...] = DOCUMENT_MODELS
+    compile_document: Callable = compile_pdf
     demo: bool = False
 
 

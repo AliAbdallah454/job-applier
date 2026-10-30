@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from backend.documents.latex import validate_cv
+from backend.documents.latex import cv_body, diff_cv, validate_cv
 from backend.documents.models import GenerationInput
 
 
@@ -92,6 +92,51 @@ class GenerationStore:
         if record["status"] in {"queued", "failed"}:
             self.enqueue(sqs, queue_url, user_id, generation_id)
         return record
+
+    def save_edit(self, record, source, pdf):
+        """A new ready version with the user's compiled CV; the letter and input stay the same."""
+        frozen = GenerationInput.model_validate_json(self.read_file(record["input"]))
+        saved = json.loads(self.read_file(record["artifacts"]["changes_json"]))
+        changes = {
+            "diff": diff_cv(cv_body(frozen.cv_latex), cv_body(source)),
+            # Generations from before prompt version 7 stored a list of find/replace edits.
+            "explanations": saved["explanations"] if isinstance(saved, dict) else [],
+        }
+        user_id, generation_id = record["user_id"], uuid.uuid4().hex
+        prefix = f"users/{quote(user_id, safe='')}/generations/{generation_id}"
+        created = timestamp()
+        kept = (
+            "user_id",
+            "job_id",
+            "job_title",
+            "profile_version",
+            "model_id",
+            "prompt_version",
+            "input_hash",
+            "input",
+            "content",
+            "review_required",
+        )
+        revision = {
+            **{key: record[key] for key in kept},
+            "generation_id": generation_id,
+            "job_created": f"{record['job_id']}#{created}#{generation_id}",
+            "edited_from": record["generation_id"],
+            "artifacts": {
+                **record["artifacts"],
+                "cv_tex": self.put_file(f"{prefix}/cv.tex", source.encode(), "application/x-tex"),
+                "cv_pdf": self.put_file(f"{prefix}/cv.pdf", pdf, "application/pdf"),
+                "changes_json": self.put_file(
+                    f"{prefix}/changes.json", encode(changes), "application/json"
+                ),
+            },
+            "prefix": prefix,
+            "status": "ready",
+            "created_at": created,
+            "updated_at": created,
+        }
+        self.table.put_item(Item=revision)
+        return revision
 
     def enqueue(self, sqs, queue_url, user_id, generation_id):
         if self.get(user_id, generation_id) is None:

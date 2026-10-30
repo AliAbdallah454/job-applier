@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { fileUrl, type GenerationDetail } from "../api/client";
 import { useGeneration, useRegenerate, useRetry } from "../api/queries";
+import { CvEditor } from "../components/CvEditor";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
 import { Celebration, Joke, Mascot, Snip } from "../components/Silly";
@@ -76,6 +77,7 @@ export function GenerationPage() {
               Tailored CVs
             </Link>{" "}
             / {formatDate(data.created_at)} / {data.model_id}
+            {data.edited_from && " / edited by you"}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>
           {data.company && <p className="text-muted">{data.company}</p>}
@@ -179,6 +181,7 @@ function Failure({ generation }: { generation: GenerationDetail }) {
 
 function Review({ generation }: { generation: GenerationDetail }) {
   const [document, setDocument] = useState<"cv_pdf" | "motivation_letter_pdf">("cv_pdf");
+  const [panel, setPanel] = useState<"review" | "edit">("review");
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
       <section className="flex min-w-0 flex-col border-b border-rule lg:border-r lg:border-b-0">
@@ -208,52 +211,87 @@ function Review({ generation }: { generation: GenerationDetail }) {
           className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
         />
       </section>
-      <section className="min-w-0 p-4 sm:p-6 lg:overflow-y-auto">
-        <Eyebrow>Job keywords</Eyebrow>
-        <ul className="mt-2 flex flex-wrap gap-1">
-          {generation.keywords.map((keyword) => (
-            <li key={keyword} className="border border-rule px-2 py-0.5 text-xs">
-              {keyword}
-            </li>
-          ))}
-        </ul>
-        {generation.explanations.length > 0 && (
-          <>
-            <h2 className="mt-6 text-lg font-semibold tracking-tight">Edits made</h2>
-            <ul className="mt-2 space-y-2">
-              {generation.explanations.map((item, index) => (
-                <li key={index} className="text-sm">
-                  <span className="font-medium">{item.change}</span>
-                  <span className="text-muted"> — {item.reason}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        <h2 className="mt-6 text-lg font-semibold tracking-tight">
-          {generation.changes.length} {generation.changes.length === 1 ? "change" : "changes"} in
-          the CV
-        </h2>
-        <p className="mb-3 text-sm text-muted">
-          Compared from the two CV sources, so nothing is left out. Nobody fact-checked them: read
-          each one before you send this CV.
-        </p>
-        {generation.changes.map((change, index) => (
-          <EditDiff key={index} change={change} />
-        ))}
-        <Eyebrow>Sources</Eyebrow>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-          {FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
-            <a
+      <section className="flex min-w-0 flex-col">
+        <div className="flex gap-5 px-4 pt-3 text-sm sm:px-6" role="tablist">
+          {(
+            [
+              ["review", "Review"],
+              ["edit", "Edit LaTeX"],
+            ] as const
+          ).map(([name, text]) => (
+            <button
               key={name}
-              href={fileUrl(generation.generation_id, name, true)}
-              className="underline underline-offset-4"
+              role="tab"
+              type="button"
+              aria-selected={panel === name}
+              onClick={() => setPanel(name)}
+              className={TAB}
             >
               {text}
-            </a>
+            </button>
           ))}
         </div>
+        {/* Hidden rather than removed, so switching tabs keeps an unsaved draft. */}
+        <div hidden={panel !== "edit"} className="min-h-0 flex-1">
+          <CvEditor generation={generation} />
+        </div>
+        <div hidden={panel !== "review"} className="min-h-0 flex-1 lg:overflow-y-auto">
+          <ReviewList generation={generation} />
+        </div>
       </section>
+    </div>
+  );
+}
+
+function ReviewList({ generation }: { generation: GenerationDetail }) {
+  return (
+    <div className="p-4 sm:p-6">
+      <Eyebrow>Job keywords</Eyebrow>
+      <ul className="mt-2 flex flex-wrap gap-1">
+        {generation.keywords.map((keyword) => (
+          <li key={keyword} className="border border-rule px-2 py-0.5 text-xs">
+            {keyword}
+          </li>
+        ))}
+      </ul>
+      {generation.explanations.length > 0 && (
+        <>
+          <h2 className="mt-6 text-lg font-semibold tracking-tight">
+            {generation.edited_from ? "Edits made by the model" : "Edits made"}
+          </h2>
+          <ul className="mt-2 space-y-2">
+            {generation.explanations.map((item, index) => (
+              <li key={index} className="text-sm">
+                <span className="font-medium">{item.change}</span>
+                <span className="text-muted"> — {item.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <h2 className="mt-6 text-lg font-semibold tracking-tight">
+        {generation.changes.length} {generation.changes.length === 1 ? "change" : "changes"} in
+        the CV
+      </h2>
+      <p className="mb-3 text-sm text-muted">
+        Compared from the two CV sources, so nothing is left out. Nobody fact-checked them: read
+        each one before you send this CV.
+      </p>
+      {generation.changes.map((change, index) => (
+        <EditDiff key={index} change={change} />
+      ))}
+      <Eyebrow>Sources</Eyebrow>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        {FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
+          <a
+            key={name}
+            href={fileUrl(generation.generation_id, name, true)}
+            className="underline underline-offset-4"
+          >
+            {text}
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

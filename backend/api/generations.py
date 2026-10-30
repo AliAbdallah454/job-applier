@@ -8,13 +8,16 @@ from typing import Annotated, Literal
 
 from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException, Query, Response
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, StringConstraints, ValidationError
 
 from backend.api.catalogue import posting_of
 from backend.api.cvs import read_cv
 from backend.api.deps import AppContext, CurrentUser
 from backend.api.profile import load_profile
+from backend.documents.errors import DocumentCompilationError
+from backend.documents.latex import validate_cv
 from backend.documents.models import PROMPT_VERSION, GenerationInput, Job
+from backend.documents.render import compile_source
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 
@@ -47,6 +50,10 @@ class Explanation(BaseModel):
     reason: str
 
 
+class CvEdit(BaseModel):
+    cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
+
+
 class Generation(BaseModel):
     generation_id: str
     job_id: str
@@ -54,6 +61,7 @@ class Generation(BaseModel):
     company: str | None = None
     job_url: str | None = None
     model_id: str
+    edited_from: str | None = None  # The generation whose CV the user edited.
     status: Status
     created_at: str
     updated_at: str
@@ -236,6 +244,25 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
         }
     )
     return summary(context, submit(context, request, force=True))
+
+
+@router.post("/{generation_id}/edit", status_code=201)
+def edit_cv(
+    generation_id: str, body: CvEdit, context: AppContext, user: CurrentUser
+) -> GenerationDetail:
+    """Compile the user's CV source here and save it as a new version; nothing is queued."""
+    record = load(context, user, generation_id)
+    if record["status"] != "ready":
+        raise HTTPException(409, f"A {record['status']} generation cannot be edited")
+    validate_cv(body.cv_latex)
+    try:
+        pdf = compile_source(body.cv_latex, context.settings.compile_document)
+    except DocumentCompilationError as exc:
+        # The compiler's output quotes this user's own source, and only goes back to them.
+        raise HTTPException(422, exc.feedback) from None
+    except RuntimeError as exc:  # TeX is not installed where the API runs.
+        raise HTTPException(503, str(exc)) from None
+    return detail(context, context.generations.save_edit(record, body.cv_latex, pdf))
 
 
 @router.get("/{generation_id}/files/{name}")

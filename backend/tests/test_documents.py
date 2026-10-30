@@ -245,6 +245,18 @@ class GenerationTests(unittest.TestCase):
         self.assertTrue(self.store.read_file(result["artifacts"]["cv_pdf"]).startswith(b"%PDF-"))
         self.assertNotIn("lock_token", result)
 
+    def test_edit_diffs_against_the_original_cv_and_keeps_the_explanations(self):
+        message = self.submit()
+        self.service.process(message)
+        source = self.request.cv_latex.replace("a prediction endpoint", "a hand-edited endpoint")
+        edited = self.store.save_edit(self.store.get(**message), source, b"%PDF-edited")
+        self.generate.assert_called_once()
+        self.assertEqual(self.store.read_file(edited["artifacts"]["cv_pdf"]), b"%PDF-edited")
+        changes = json.loads(self.store.read_file(edited["artifacts"]["changes_json"]))
+        self.assertIn("a hand-edited endpoint", changes["diff"][0]["after"])
+        self.assertEqual(len(changes["explanations"]), 1)
+        self.assertEqual(self.store.get(edited["user_id"], edited["generation_id"]), edited)
+
     def test_ready_duplicate_does_not_call_model_again(self):
         message = self.submit()
         self.service.process(message)

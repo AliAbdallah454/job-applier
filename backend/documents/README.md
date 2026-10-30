@@ -40,6 +40,11 @@ with the error, for up to 3 attempts in one run. After the third the generation 
 `failed`, with the compiler log downloadable through `status` when compilation was the
 problem. A failed `retry` that has a saved rewrite tries that one first.
 
+A user can also edit the CV source of a ready generation (`POST /api/generations/{id}/edit`).
+The API compiles it and `save_edit` stores a new ready version directly: no queue, worker or
+model. It keeps the letter, keywords and the model's explanations of the generation it came
+from, and none of the checks above apply, since the compiler decides.
+
 The edited CV is compiled with pdfLaTeX, or with XeLaTeX when it uses `fontspec`
 (the letter always uses XeLaTeX). The file must be self-contained: multi-file Overleaf
 projects (`\input`, custom `.cls`, images) are not supported yet.

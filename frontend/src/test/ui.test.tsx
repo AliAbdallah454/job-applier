@@ -52,7 +52,8 @@ function json(body: unknown, status = 200) {
 
 function server(routes: Record<string, () => Response>) {
   const calls: { method: string; path: string; body: string }[] = [];
-  vi.stubGlobal("fetch", async (request: Request) => {
+  vi.stubGlobal("fetch", async (input: Request | string) => {
+    const request = typeof input === "string" ? new Request(new URL(input, location.href)) : input;
     const { pathname } = new URL(request.url);
     const body = await request.clone().text();
     calls.push({ method: request.method, path: pathname, body });
@@ -190,9 +191,13 @@ describe("GenerationPage", () => {
     explanations: [],
   };
 
-  function open(generation: unknown) {
-    server({ "GET /api/generations/g1": () => json(generation) });
-    return render(
+  function open(generation: unknown, routes: Record<string, () => Response> = {}) {
+    const calls = server({
+      "GET /api/generations/g1": () => json(generation),
+      "GET /api/generations/g1/files/cv_tex": () => new Response("\\section{Old}"),
+      ...routes,
+    });
+    render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter initialEntries={["/generations/g1"]}>
           <Routes>
@@ -201,7 +206,55 @@ describe("GenerationPage", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
+    return calls;
   }
+
+  async function saveEdit(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    const editor = await screen.findByLabelText("CV LaTeX source");
+    await waitFor(() => expect(editor).toHaveValue("\\section{Old}"));
+    await user.clear(editor);
+    await user.type(editor, "new text");
+    await user.click(screen.getByRole("button", { name: "Save new version" }));
+    return editor;
+  }
+
+  it("cannot save an unchanged source", async () => {
+    const user = userEvent.setup();
+    open(detail);
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    await waitFor(() => expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Old}"));
+    expect(screen.getByRole("button", { name: "Save new version" })).toBeDisabled();
+  });
+
+  it("moves to the saved version of an edited CV", async () => {
+    const user = userEvent.setup();
+    const edited = { ...detail, generation_id: "g2", edited_from: "g1" };
+    const calls = open(detail, {
+      "POST /api/generations/g1/edit": () => json(edited, 201),
+      "GET /api/generations/g2": () => json(edited),
+    });
+    await saveEdit(user);
+    expect(await screen.findByText(/edited by you/)).toBeInTheDocument();
+    expect(calls.find((call) => call.method === "POST")?.body).toBe(
+      JSON.stringify({ cv_latex: "new text" }),
+    );
+    const preview = screen.getByTitle("CV preview");
+    expect(preview).toHaveAttribute("src", "/api/generations/g2/files/cv_pdf");
+    expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("new text");
+  });
+
+  it("keeps the draft beside the compile error when an edit fails", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "POST /api/generations/g1/edit": () =>
+        json({ detail: "LaTeX failed to compile:\n! Undefined control sequence." }, 422),
+    });
+    const editor = await saveEdit(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent("! Undefined control sequence.");
+    expect(editor).toHaveValue("new text");
+    expect(screen.getByRole("button", { name: "Save new version" })).toBeEnabled();
+  });
 
   it("does not celebrate when an old generation is reopened", async () => {
     open(detail);

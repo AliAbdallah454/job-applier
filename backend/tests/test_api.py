@@ -44,6 +44,7 @@ class ApiTests(unittest.TestCase):
         )
         self.sqs = self.session.client("sqs")
         self.queue = self.sqs.create_queue(QueueName="documents")["QueueUrl"]
+        self.compiler = Mock(return_value=example_pdf("edited", []))
         self.settings = Settings(
             user_id="ali",
             jobs_table="jobs",
@@ -56,6 +57,7 @@ class ApiTests(unittest.TestCase):
                 ModelOption(id="test-model", label="Test model"),
                 ModelOption(id="other-model", label="Other model"),
             ),
+            compile_document=self.compiler,
         )
         self.context = Context(self.settings, region="us-east-1")
         self.client = TestClient(create_app(self.context), base_url="http://localhost")
@@ -347,6 +349,75 @@ class ApiTests(unittest.TestCase):
         record = self.context.generations.get("ali", body["generation_id"])
         frozen = json.loads(self.context.generations.read_file(record["input"]))
         self.assertNotIn("location", {k for k, v in frozen["profile"].items() if v})
+
+    def edit(self, generation_id, source):
+        return self.client.post(f"/api/generations/{generation_id}/edit", json={"cv_latex": source})
+
+    def cv_source(self, generation_id):
+        return self.client.get(f"/api/generations/{generation_id}/files/cv_tex").text
+
+    def test_editing_saves_a_new_compiled_version_without_the_queue_or_model(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        queued = self.messages()
+        source = self.cv_source(original).replace(
+            "\\end{document}", "Added by hand\n\\end{document}"
+        )
+        response = self.edit(original, source)
+        self.assertEqual(response.status_code, 201)
+        detail = response.json()
+        edited = detail["generation_id"]
+        self.assertNotEqual(edited, original)
+        self.assertEqual(detail["edited_from"], original)
+        self.assertEqual(detail["status"], "ready")
+        self.compiler.assert_called_once()
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(len(queued), 1)
+
+        self.assertEqual(self.cv_source(edited), source)
+        self.assertIn("Added by hand", detail["changes"][-1]["after"])
+        self.assertEqual(len(detail["explanations"]), 2)
+        self.assertEqual(detail["keywords"][0], "Python")
+        self.assertEqual(
+            detail["files"],
+            ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
+        )
+        records = [self.context.generations.get("ali", item) for item in (original, edited)]
+        self.assertEqual(
+            records[0]["artifacts"]["motivation_letter_pdf"],
+            records[1]["artifacts"]["motivation_letter_pdf"],
+        )
+        self.assertNotEqual(records[0]["artifacts"]["cv_pdf"], records[1]["artifacts"]["cv_pdf"])
+        self.assertNotIn("Added by hand", self.cv_source(original))
+
+    def test_an_edit_that_does_not_compile_returns_the_error_and_saves_nothing(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.compiler.side_effect = DocumentCompilationError(
+            timed_out=False, diagnostics=b"noise\n! Undefined control sequence."
+        )
+        response = self.edit(original, self.cv_source(original))
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("! Undefined control sequence.", response.json()["detail"])
+        self.assertNotIn("noise", response.json()["detail"])
+        self.assertEqual(len(self.client.get("/api/generations").json()), 1)
+
+    def test_editing_without_tex_says_what_is_missing(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.compiler.side_effect = RuntimeError("pdflatex is required")
+        response = self.edit(original, self.cv_source(original))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], "pdflatex is required")
+
+    def test_only_a_complete_cv_of_a_ready_generation_can_be_edited(self):
+        original = self.tailor().json()["generation_id"]
+        self.assertEqual(self.edit(original, CV.decode()).status_code, 409)
+        self.process(original)
+        self.assertEqual(self.edit(original, "no document here").status_code, 400)
+        self.assertEqual(self.edit(original, "").status_code, 422)
+        self.assertEqual(self.edit("0" * 64, CV.decode()).status_code, 404)
+        self.compiler.assert_not_called()
 
     def test_history_lists_newest_first_and_filters(self):
         first = self.tailor().json()["generation_id"]

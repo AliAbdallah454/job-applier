@@ -37,6 +37,24 @@ known key. Until then, nothing collects jobs automatically.
   `cdk deploy -c <worker>ImageTag=<older tag>`.
 - The CI runs in a single environment; there are no dev/prod stage separation or approvals.
 
+## Compiling edited CVs on Lambda
+
+Saving a CV edited in the web app (`POST /api/generations/{id}/edit`) compiles it inside the API
+process, so TeX must be installed on the machine running the API. That is fine while the API runs
+locally for one user, but the API should not compile other users' LaTeX once it is deployed.
+
+The likely approach is a Lambda function built from a container image with TeX, called
+synchronously by the API through `Settings.compile_document`, with almost no AWS permissions of
+its own. The save flow would not change, and edits would stay off the document queue, because
+the user is waiting for the result. It needs:
+
+- a Lambda image, an ECR repository, a CDK function, a CI build step and permission for the API
+  to invoke the function
+- TeX's working and cache files in `/tmp`, the only writable path, tested with the CV fonts
+- a plan for Lambda's 6 MB response limit, which a PDF with large embedded images could exceed
+
+A cold start of such a large image will make the first save after an idle period slower.
+
 ## Application
 
 Authentication and the profile API, application submission, mailbox integration, per-user

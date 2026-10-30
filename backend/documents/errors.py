@@ -25,7 +25,7 @@ class DocumentCompilationError(DocumentError):
         log = diagnostics.decode("utf-8", "replace")
         first_error = max(log.find("\n!"), 0)
         super().__init__(
-            f"XeLaTeX {reason}; download the compilation_log for details",
+            f"LaTeX {reason}; see the compilation log for details",
             feedback="LaTeX failed to compile:\n" + log[first_error:][:1500],
         )
         self.diagnostics = diagnostics

@@ -272,6 +272,21 @@
         "title": "Cv",
         "type": "object"
       },
+      "CvEdit": {
+        "properties": {
+          "cv_latex": {
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Cv Latex",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cv_latex"
+        ],
+        "title": "CvEdit",
+        "type": "object"
+      },
       "Education": {
         "additionalProperties": false,
         "properties": {
@@ -507,6 +522,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "edited_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited From"
+          },
           "files": {
             "items": {
               "type": "string"
@@ -608,6 +634,17 @@
           "created_at": {
             "title": "Created At",
             "type": "string"
+          },
+          "edited_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edited From"
           },
           "error_detail": {
             "anyOf": [
@@ -1616,6 +1653,59 @@
           }
         },
         "summary": "Get Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/{generation_id}/edit": {
+      "post": {
+        "description": "Compile the user's CV source here and save it as a new version; nothing is queued.",
+        "operationId": "edit_cv_api_generations__generation_id__edit_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CvEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Cv",
         "tags": [
           "generations"
         ]

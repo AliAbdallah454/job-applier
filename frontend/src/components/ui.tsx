@@ -66,7 +66,7 @@ export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null;
   const message = error instanceof ApiError ? error.message : "Something went wrong.";
   return (
-    <p role="alert" className="border-l-2 border-ink pl-3 text-sm">
+    <p role="alert" className="border-l-2 border-ink pl-3 text-sm whitespace-pre-wrap">
       {message}
     </p>
   );

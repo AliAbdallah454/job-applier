@@ -77,6 +77,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generations/{generation_id}/edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit Cv
+         * @description Compile the user's CV source here and save it as a new version; nothing is queued.
+         */
+        post: operations["edit_cv_api_generations__generation_id__edit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generations/{generation_id}/files/{name}": {
         parameters: {
             query?: never;
@@ -294,6 +314,11 @@ export interface components {
             /** Uploaded At */
             uploaded_at: string;
         };
+        /** CvEdit */
+        CvEdit: {
+            /** Cv Latex */
+            cv_latex: string;
+        };
         /** Education */
         Education: {
             /** Achievements */
@@ -366,6 +391,8 @@ export interface components {
             company?: string | null;
             /** Created At */
             created_at: string;
+            /** Edited From */
+            edited_from?: string | null;
             /** Files */
             files: string[];
             /** Generation Id */
@@ -398,6 +425,8 @@ export interface components {
             compilation_log?: string | null;
             /** Created At */
             created_at: string;
+            /** Edited From */
+            edited_from?: string | null;
             /** Error Detail */
             error_detail?: string | null;
             /** Explanations */
@@ -760,6 +789,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_cv_api_generations__generation_id__edit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CvEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

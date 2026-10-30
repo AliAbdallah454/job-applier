@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from backend.documents.errors import DocumentCompilationError, DocumentError
@@ -36,6 +37,13 @@ def render_sources(request: GenerationInput, content: TailoredCv):
         ]
     )
     return {"cv.tex": cv.encode(), "motivation_letter.tex": letter.encode()}
+
+
+def compile_source(source: str, compile_document):
+    with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
+        path = Path(directory) / "cv.tex"
+        path.write_text(source, encoding="utf-8")
+        return compile_document(path)
 
 
 def compile_pdf(source: Path, *, timeout=60):

@@ -48,6 +48,13 @@ The generation page shows the model's list of edits and a diff computed from the
 sources. Rewrites are checked for structure but not fact-checked, so read each change before
 sending a CV.
 
+**Edit LaTeX** beside the preview edits the whole CV source. Saving compiles it in the API and
+stores a new version straight away, with no queue, worker or Bedrock call, so the machine running
+the API needs TeX Live (`--demo` does not). The letter, keywords and the model's list of edits are
+kept, and the diff compares the original CV with your version. If it does not compile, nothing is
+saved and your draft stays open beside the error. A draft that was not saved is lost when the page
+is left.
+
 ## API
 
 | Endpoint | Purpose |
@@ -59,6 +66,7 @@ sending a CV.
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
+| `POST /api/generations/{id}/edit` | Compile `cv_latex` and save it as a new version; 422 with the error if it does not compile |
 | `GET /api/generations/{id}/files/{name}` | PDF, source or log; add `?download=true` to save it under a name from the job title |
 
 Search filters one scanned page at a time, so a page can be empty while more remain; the

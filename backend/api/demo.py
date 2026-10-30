@@ -152,7 +152,8 @@ def fake_compile(path):
             diagnostics=b"! Undefined control sequence.\nl.42 \\resumeItm\n"
             b"                {Example compile failure}\n",
         )
-    return example_pdf(path.stem, ["Example document produced by demo mode."])
+    size = f"Source length: {len(source)} characters."  # Shows that an edit was compiled.
+    return example_pdf(path.stem, ["Example document produced by demo mode.", size])
 
 
 def run_worker(context):
@@ -289,6 +290,7 @@ def start_demo(user_id):
                 ModelOption(id="demo-fast", label="Demo fast model"),
                 ModelOption(id="demo-strong", label="Demo strong model"),
             ),
+            compile_document=fake_compile,
             demo=True,
         ),
         region=REGION,

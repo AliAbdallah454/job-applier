@@ -5,7 +5,15 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import { api, type CandidateProfile, ApiError, type Status, unwrap } from "./client";
+import {
+  api,
+  type CandidateProfile,
+  ApiError,
+  fileUrl,
+  type Status,
+  toApiError,
+  unwrap,
+} from "./client";
 
 export type JobQuery = {
   tech: string;
@@ -149,5 +157,35 @@ export function useRegenerate(id: string) {
         }),
       ),
     onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
+  });
+}
+
+export function useCvSource(id: string) {
+  return useQuery({
+    queryKey: ["cv-source", id],
+    queryFn: async () => {
+      const response = await fetch(fileUrl(id, "cv_tex"));
+      if (!response.ok) throw toApiError(response.status, await response.json());
+      return response.text();
+    },
+  });
+}
+
+export function useEditCv(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (cvLatex: string) =>
+      unwrap(
+        api.POST("/api/generations/{generation_id}/edit", {
+          params: { path: { generation_id: id } },
+          body: { cv_latex: cvLatex },
+        }),
+      ),
+    onSuccess: (saved, cvLatex) => {
+      // Already known, so the page moves to the new version without a loading state.
+      client.setQueryData(["generation", saved.generation_id], saved);
+      client.setQueryData(["cv-source", saved.generation_id], cvLatex);
+      return client.invalidateQueries({ queryKey: ["generations"] });
+    },
   });
 }
