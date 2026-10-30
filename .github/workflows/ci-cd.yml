@@ -37,7 +37,6 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run python -m unittest discover -s backend/tests -v
       - run: uv run python -m unittest discover -s scripts/tests -v
-      - run: uv run python -m unittest discover -s frontend/tests -v
       - run: uv run --group infra python -m unittest discover -s infra/tests -v
       - run: npm run synth -- --quiet
 

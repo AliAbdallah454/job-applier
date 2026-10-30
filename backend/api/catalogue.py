@@ -108,58 +108,66 @@ class JobCatalogue:
         matches = []
 
         for result in results:
-            job = jobs.get(result["job_id"])
-            if not job:
+            match = self._match(result, jobs.get(result["job_id"]))
+            if match is None:
                 continue
-            posting = job.get("job", job) if "title" not in job else job
-            try:
-                state = classification_input(posting)
-                if result.get("input_hash") != input_hash(state):
-                    continue
-                classification = JobClassification.model_validate(
-                    {
-                        "seniority": None
-                        if result.get("seniority") == "unknown"
-                        else result.get("seniority"),
-                        "contract_type": result.get("contract_type"),
-                        "category": result["category"],
-                        "is_tech": result["is_tech"],
-                    }
-                )
-            except (ValueError, KeyError):
-                continue
-
             text = " ".join(
-                str(posting.get(field) or "")
+                str(match.get(field) or "")
                 for field in ("title", "company", "location", "description")
             )
-            if not all(word in text.casefold() for word in filters.search.casefold().split()):
-                continue
-
-            matches.append(
-                {
-                    "job_id": result["job_id"],
-                    **{
-                        field: posting.get(field)
-                        for field in (
-                            "title",
-                            "company",
-                            "location",
-                            "description",
-                            "source",
-                            "posting_url",
-                            "application_url",
-                            "published_at",
-                            "published_text",
-                        )
-                    },
-                    **classification.model_dump(),
-                }
-            )
+            if all(word in text.casefold() for word in filters.search.casefold().split()):
+                matches.append(match)
 
         return {
             "jobs": matches,
             "next_cursor": encode_cursor(page.get("LastEvaluatedKey"), filters),
+        }
+
+    def get(self, job_id):
+        """One classified posting, or None when it is missing or its classification is stale."""
+        result = self.results.get_item(Key={"job_id": job_id}).get("Item")
+        if result is None:
+            return None
+        job = self.db.Table(self.jobs_table).get_item(Key={"job_id": job_id}, ConsistentRead=True)
+        return self._match(result, job.get("Item"))
+
+    def _match(self, result, job):
+        if not job:
+            return None
+        posting = job.get("job", job) if "title" not in job else job
+        try:
+            state = classification_input(posting)
+            if result.get("input_hash") != input_hash(state):
+                return None
+            classification = JobClassification.model_validate(
+                {
+                    "seniority": None
+                    if result.get("seniority") == "unknown"
+                    else result.get("seniority"),
+                    "contract_type": result.get("contract_type"),
+                    "category": result["category"],
+                    "is_tech": result["is_tech"],
+                }
+            )
+        except (ValueError, KeyError):
+            return None
+        return {
+            "job_id": result["job_id"],
+            **{
+                field: posting.get(field)
+                for field in (
+                    "title",
+                    "company",
+                    "location",
+                    "description",
+                    "source",
+                    "posting_url",
+                    "application_url",
+                    "published_at",
+                    "published_text",
+                )
+            },
+            **classification.model_dump(),
         }
 
     def _postings(self, job_ids):

@@ -18,13 +18,14 @@ CDK creates the worker ECR repositories; you push images to them from a laptop o
 For deployment, API-key setup and a small first run, see the
 [AWS pipeline guide](infra/README.md).
 
-Browse your collected jobs locally with the [jobs frontend](frontend/README.md):
+Browse jobs and tailor your CV locally with the [web app](frontend/README.md):
 
 ```sh
-uv run python -m frontend.server --region us-east-1
+uv run python -m backend.api --region us-east-1      # add --demo for example data, no AWS
+cd frontend && npm ci && npm run dev
 ```
 
-Open http://127.0.0.1:8000. Use `--demo` to preview example jobs without AWS.
+Open http://localhost:5173.
 
 Detailed candidate records are defined in [backend/profiles/models.py](backend/profiles/models.py).
 This provides validated models and a fictional-profile seeder for the separate

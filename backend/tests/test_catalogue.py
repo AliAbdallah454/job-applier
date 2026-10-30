@@ -7,8 +7,8 @@ from unittest.mock import patch
 import boto3
 from moto import mock_aws
 
+from backend.api.catalogue import JobCatalogue, JobFilters
 from backend.jobs.classification.models import input_hash
-from frontend.catalogue import JobCatalogue, JobFilters
 
 
 @mock_aws
@@ -142,7 +142,7 @@ class CatalogueTests(unittest.TestCase):
 
         with (
             patch.object(self.db, "batch_get_item", side_effect=throttled),
-            patch("frontend.catalogue.time.sleep"),
+            patch("backend.api.catalogue.time.sleep"),
         ):
             self.assertEqual(len(self.catalogue.page(JobFilters())["jobs"]), 2)
         self.assertEqual(len(calls), 2)
@@ -153,7 +153,7 @@ class CatalogueTests(unittest.TestCase):
                 "batch_get_item",
                 side_effect=lambda **kwargs: {"UnprocessedKeys": kwargs["RequestItems"]},
             ),
-            patch("frontend.catalogue.time.sleep"),
+            patch("backend.api.catalogue.time.sleep"),
             self.assertRaises(RuntimeError),
         ):
             self.catalogue.page(JobFilters())

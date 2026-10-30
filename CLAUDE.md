@@ -12,7 +12,7 @@ Python 3.12+, `uv`, committed `uv.lock`.
 uv sync --locked --group infra                       # dev + CDK deps
 uv run python -m unittest discover -s backend/tests -v          # runtime tests
 uv run python -m unittest backend.tests.test_documents.SomeClass.test_name   # single test
-uv run python -m unittest discover -s frontend/tests -v         # frontend tests
+(cd frontend && npm ci && npm test && npm run build)            # web app tests and build
 uv run python -m unittest discover -s scripts/tests -v          # seed script and image tag tests
 uv run --group infra python -m unittest discover -s infra/tests -v   # CDK template tests
 uv run ruff check . && uv run ruff format --check .             # lint (line length 100; E,F,I,UP,B)
@@ -24,7 +24,9 @@ Operational entry points:
 
 ```sh
 uv run python -m infra.manage collect --config config/collections/default.yaml   # launch a collection run on ECS
-uv run python -m frontend.server --region us-east-1   # local jobs dashboard (--demo needs no AWS)
+uv run python -m backend.api --region us-east-1   # local API on :8000 (--demo needs no AWS or Bedrock)
+(cd frontend && npm run dev)                      # web app on :5173, proxies /api to :8000
+(cd frontend && npm run types)                    # regenerate openapi.json and schema.d.ts after API changes
 uv run python -m backend.documents generate --user-id U --job-id J --cv-file cv.tex --region us-east-1   # also: status, retry
 uv run python -m scripts.seed_profiles --stack Application --region us-east-1
 ```
@@ -39,9 +41,11 @@ Two independently deployable CDK stacks (`infra/stack.py` = `JobPipeline`, `infr
 
 **Documents** (`backend/documents/`): tailors the user's own LaTeX CV (any template) to a job. CV source + profile (`backend/profiles/models.py`, extra facts) + job → frozen versioned S3 snapshot + generation record `(user_id, generation_id)` → SQS → ECS document worker → Bedrock (Nova Pro; tool schema adapted in `bedrock.py`) returns `find → replace` edits on the raw source + the letter. `latex.py` checks them without parsing the template (each `find` matches exactly one place in the body, `replace` may only use commands already in that snippet, balanced braces, no overlaps), skips invalid edits (reported in `changes.json`) and applies the rest; validated output is checkpointed to S3 → compiled (`render.py`; pdfLaTeX, or XeLaTeX when the CV uses fontspec) → S3 artifacts, including `changes.json` (the edits, for review; not fact-checked). Inputs are frozen per request; `retry` reuses it, changed inputs create a new generation, `--force` a new revision. A lease prevents concurrent generation. SQS is at-least-once; ack only after success; failures go to a DLQ.
 
+**API and web app** (`backend/api/`, `frontend/`, local only, not deployed): FastAPI in its own folder because it imports both jobs and documents; handlers get the user from `deps.current_user` (config user today, the single place to add Cognito). CVs live in S3 at `users/<id>/cvs/<cv_id>/<filename>.tex` with no table. Files are streamed by the API, so the browser needs no presigned URLs or bucket CORS. `--demo` runs the real routes and `DocumentService` on Moto with a fake model and compiler (`demo.py`). `frontend/` is React, TypeScript, Vite and Tailwind with its own `package.json`; its types are generated from FastAPI's OpenAPI, so Pydantic stays the source of truth. TypeScript stays on 5.x because `openapi-typescript` does not work with 7.
+
 `backend/utils/runtime.py` is the shared SQS polling/ack/visibility-renewal loop used by the job workers and the document worker. `backend/utils/job_taxonomy.py` holds the job labels (`Seniority`, `ContractType`, `JobCategory`) used by classification and profile preferences. Keep `backend/documents`/`backend/profiles` free of `backend/jobs` imports (and vice versa): image rebuild tags rely on that folder split. Workers run in ECS at desired count 0 with Application Auto Scaling (source defaults: 8 scrapers, 8 classifiers, 2 document workers via `maxScrapers`/`maxClassifiers`/`maxDocumentWorkers` context). Each worker has its own Dockerfile in `containers/` and a CDK-created ECR repo (`jobpipeline/{seed,scraper,classifier}`, `application/documents`, created by `worker_image()` in each stack). CDK never builds or pushes images: push manually/CI, then deploy with `-c imageTag=<tag>` (or `<worker>ImageTag`); default tag is the placeholder `unpublished`.
 
-CI/CD is `.github/workflows/ci-cd.yml` (see `docs/ci-cd.md`): on push to main it deploys both stacks with per-worker content-hash tags (`scripts/image_tag.sh` hashes the Dockerfile, lockfiles and a hard-coded list of code folders per image: documents → `backend/documents` + `backend/profiles` + `backend/utils`, job workers → `backend/jobs` + `backend/utils`; passed as `-c <worker>ImageTag=`), then builds and pushes only images whose tag is not yet in ECR; the workflow matrix is the Dockerfile↔repository mapping. The IAM role template is `infra/ci/github-actions-role.yaml`.
+The API dependencies are in the `api` dependency group, included by `dev`, so `--no-dev` worker images do not install them. CI/CD is `.github/workflows/ci-cd.yml` plus `frontend.yml` (see `docs/ci-cd.md`): on push to main it deploys both stacks with per-worker content-hash tags (`scripts/image_tag.sh` hashes the Dockerfile, lockfiles and a hard-coded list of code folders per image: documents → `backend/documents` + `backend/profiles` + `backend/utils`, job workers → `backend/jobs` + `backend/utils`; passed as `-c <worker>ImageTag=`), then builds and pushes only images whose tag is not yet in ECR; the workflow matrix is the Dockerfile↔repository mapping. The IAM role template is `infra/ci/github-actions-role.yaml`.
 
 Collection settings live in `config/collections/default.yaml` (local only: `manage.py collect --config` passes it to ECS as overrides; CDK does not read it and there is no scheduled collection, see `docs/skipped-work.md`); board list is `infra/board_sources/job-board-directory.csv` uploaded to S3.
 
@@ -49,5 +53,5 @@ Collection settings live in `config/collections/default.yaml` (local only: `mana
 
 - Runtime code is grouped by feature; dev scripts/fixtures stay outside `backend/`. Don't add layers/services without need.
 - Collection needs no LLM key; classification needs `TYPESAFE_API_KEY`. Never commit `.env` or credentials.
-- Application submission, mailbox integration, profile API and recommendations are not implemented; a generated document package is not a submitted application.
+- Application submission, mailbox integration and recommendations are not implemented; a generated document package is not a submitted application.
 - When behavior changes, update the relevant feature README.

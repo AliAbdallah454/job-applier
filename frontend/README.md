@@ -1,69 +1,95 @@
-# Jobs browser
+# Web app
 
-A local, read-only browser for the existing Jobs and Classifications tables.
-All browser files and the local Python HTTP helper live in this folder. There are
-no frontend build dependencies and no AWS credentials in client-side JavaScript.
+Browse classified jobs, keep your profile and LaTeX CVs, tailor a CV to a job and review
+the result. React, TypeScript, Vite and Tailwind talk to the FastAPI app in `backend/api/`.
+Both run on your machine. Nothing here is deployed, and the API has no login, so it only
+binds to localhost and refuses writes from other sites.
 
 ## Start
 
-From the repository root, install Python dependencies and load your AWS environment:
+Two terminals, from the repository root:
 
 ```sh
 uv sync --locked
-set -a
-source .env
-set +a
-uv run python -m frontend.server --region us-east-1
+uv run python -m backend.api --region us-east-1
 ```
-
-Open **http://127.0.0.1:8000**. The server discovers table names from the `JobPipeline`
-CloudFormation outputs. Use `--stack` for another stack or `--profile` to select
-another AWS profile. The normal AWS credential chain handles authentication;
-refresh your AWS login if the session has expired.
-
-Alternatively, supply both table names without CloudFormation discovery:
 
 ```sh
-uv run python -m frontend.server --region us-east-1 \
-  --jobs-table YOUR_JOBS_TABLE --classifications-table YOUR_CLASSIFICATIONS_TABLE
+cd frontend
+npm ci
+npm run dev
 ```
 
-Preview with clearly labelled example jobs and no AWS access:
+Open **http://localhost:5173**. Vite forwards `/api` to port 8000, and the API uses your
+normal AWS login, so credentials never reach the browser. API options: `--user-id` (default
+`ali`), `--profile`, `--port`, `--application-stack`, `--jobs-stack`.
+
+To try everything without AWS, Bedrock or TeX:
 
 ```sh
-uv run python -m frontend.server --demo
+uv run python -m backend.api --demo
 ```
 
-Use `--port 8001` if port 8000 is occupied. Press Ctrl+C to stop. The server binds
-to localhost and has no user authentication; it is a local development tool.
-It is not deployed by the current CDK stack.
+Demo mode runs the real routes and document service on in-memory AWS with a fake model and
+compiler, and forgets everything when stopped. The job marked "compile failure example"
+shows the failure page.
 
-## Filters and pagination
+## Tailoring
 
-- Defaults to tech jobs with entry or junior seniority.
-- Filter technical relevance, experience levels, role category and contract type.
-- Search title, company, location and description; all search words must match.
-- Selecting no experience levels includes every level, including unspecified.
-- Select a card to read its description and open the original posting.
-- **Load more** continues the same search. The count is loaded matches, not a
-  full-table total. A filtered DynamoDB page can be empty while more pages remain.
+**Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
+document queue. The generation page polls until a worker finishes. Workers start from zero,
+so a run can stay queued for a few minutes. Identical inputs return the existing generation;
+**Regenerate** makes a new revision from the same frozen inputs, and **Retry** re-queues a
+failed run or one whose worker died. Each real run calls Bedrock and costs money.
 
-The helper queries `ByTechSeniority`, applies classification filters, and batch-reads
-the associated postings. It skips deleted postings and classifications whose input
-hash no longer matches the current title/description. Older results without contract
-type appear as unspecified when otherwise compatible. Index reads are eventually
-consistent. These reads consume DynamoDB capacity; the browser never writes data,
-calls Jev or launches workers.
+A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
-Your AWS identity needs `dynamodb:Query` on the Classifications index,
-`dynamodb:BatchGetItem` on Jobs and, for automatic discovery,
-`cloudformation:DescribeStacks`.
+Edits are checked for structure but not fact-checked, so read each one before sending a CV.
+
+## API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/options` | Filter values, current user, demo flag |
+| `GET /api/jobs`, `GET /api/jobs/{id}` | Filters: `tech`, `seniority`, `category`, `contract`, `q`, `cursor` |
+| `GET`/`PUT /api/profile` | `PUT` must carry the loaded `version`, or it returns 409 |
+| `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
+| `GET`/`POST /api/generations` | History (`job_id`, `status`) and start a run |
+| `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log |
+| `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
+| `GET /api/generations/{id}/files/{name}` | PDF, source or log; add `?download=true` to save |
+
+Search filters one scanned page at a time, so a page can be empty while more remain; the
+app keeps loading automatically, up to ten empty pages in a row. The count is loaded
+matches, not a total. History reads all of your generations and sorts them in the API.
+
+Your AWS identity needs CloudFormation `DescribeStacks`, DynamoDB read and write on the
+tables, S3 read, write, list and delete under `users/*`, and `sqs:SendMessage` on the
+document queue.
+
+## Change the API
+
+Pydantic is the source of truth. After changing a route or model:
+
+```sh
+cd frontend
+npm run types
+```
+
+This rewrites `openapi.json` and `src/api/schema.d.ts`; commit both. CI fails if they are
+out of date.
 
 ## Verify
 
 ```sh
-uv run python -m unittest discover -s frontend/tests -v
-uv run ruff check frontend
-uv run ruff format --check frontend
-node --check frontend/app.js
+uv run python -m unittest backend.tests.test_api backend.tests.test_catalogue
+cd frontend && npm run lint && npm test && npm run build
 ```
+
+## Later (proposed, not implemented)
+
+Host the build on S3 and CloudFront, run the API on Lambda or ECS with its own image
+(`containers/Dockerfile.api`, `uv sync --no-dev --group api`, and an entry in
+`scripts/image_tag.sh` for `backend/api`, `backend/documents`, `backend/profiles`,
+`backend/jobs` and `backend/utils`), and add Cognito by replacing `deps.current_user`.
+Replace the local host and origin guards in `app.py` at the same time.

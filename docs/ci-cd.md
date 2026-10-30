@@ -8,6 +8,12 @@
 | Push to `main` (docs/frontend-only pushes are skipped) | The above, then `cdk deploy JobPipeline Application`, then parallel builds of only the images whose contents changed. |
 | Manual (`workflow_dispatch`) | Same as a push; only deploys when run on `main`. |
 
+`.github/workflows/frontend.yml` runs separately on pull requests and pushes to `main` that
+touch `frontend/` or `backend/`: type check, Vitest, production build, and a check that
+`frontend/openapi.json` and `frontend/src/api/schema.d.ts` match the API. It has no AWS access.
+`backend/api` is copied into worker images by `COPY backend/` but no worker runs it, so it is
+not part of any image tag.
+
 ## How it fits together
 
 1. **Image tags are content hashes.** `scripts/image_tag.sh <Dockerfile>` hashes the

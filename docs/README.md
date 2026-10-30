@@ -11,7 +11,7 @@ For a new contributor or LLM session, start with [AGENTS.md](../AGENTS.md) and [
 | [Skipped work](skipped-work.md) | Deliberately unimplemented items, including scheduled collection | Living list |
 | [Documents guide](../backend/documents/README.md) | Tailoring your LaTeX CV and letter generation, retries and review | Current implementation |
 | [Fetcher guide](fetchers.md) | Employer-board adapter behavior and limitations | Feature reference |
-| [Frontend guide](../frontend/README.md) | Run the local jobs dashboard | Current implementation |
+| [Web app guide](../frontend/README.md) | Run the local API and React app; hosting plan | Current implementation; local only, not deployed |
 | [Development scripts](../scripts/README.md) | Profile fixtures and reset behavior | Current implementation |
 
 When changing behavior, update the relevant feature guide.

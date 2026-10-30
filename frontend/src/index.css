@@ -1,0 +1,96 @@
+@import "@fontsource-variable/schibsted-grotesk";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "tailwindcss";
+
+:root {
+  --paper: #ffffff;
+  --ink: #0a0a0a;
+  --muted: #6b6b6b;
+  --rule: #e2e2e2;
+  --wash: #f4f4f4;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0a0a0a;
+    --ink: #f5f5f5;
+    --muted: #9a9a9a;
+    --rule: #2a2a2a;
+    --wash: #171717;
+    color-scheme: dark;
+  }
+}
+
+@theme {
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-wash: var(--wash);
+  --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The one signature move: ink floods the control from the left. */
+.flood {
+  background-image: linear-gradient(var(--ink), var(--ink));
+  background-repeat: no-repeat;
+  background-size: 0% 100%;
+  transition:
+    background-size 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    color 160ms;
+}
+.flood:hover:not(:disabled) {
+  background-size: 100% 100%;
+  color: var(--paper);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.rise {
+  animation: rise 320ms cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+}
+
+@keyframes travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+.travel {
+  animation: travel 1.4s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+
+dialog::backdrop {
+  background: color-mix(in srgb, var(--ink) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise,
+  .travel {
+    animation: none;
+  }
+  .flood {
+    transition: none;
+  }
+}
