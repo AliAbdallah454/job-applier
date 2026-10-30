@@ -42,6 +42,18 @@ so rerun after a failed or interrupted write. Documents and job records are not
 changed. Required permissions are CloudFormation `DescribeStacks` and DynamoDB
 `DescribeTable`, `Scan` and `BatchWriteItem`.
 
+## Export junior tech jobs
+
+```sh
+uv run python -m scripts.fetch_junior_jobs --region us-east-1 --output junior-jobs.csv
+```
+
+Reads the `JobPipeline` stack's `JobsTable` and `ClassificationsTable` outputs and
+writes a CSV of tech jobs classified as `entry` or `junior` whose contract type is
+not `internship` (unknown contract types are kept), newest first. Jobs whose posting
+changed since classification are skipped. Read-only; needs CloudFormation
+`DescribeStacks` and DynamoDB `Query` and `BatchGetItem`.
+
 ## Offline checks
 
 ```sh

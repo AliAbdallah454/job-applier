@@ -11,7 +11,6 @@ from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import ValidationError
 
 from backend.documents.models import GenerationInput, Job
-from backend.documents.render import DEFAULT_TEMPLATE
 from backend.documents.storage import GenerationStore, encode
 from backend.profiles.models import CandidateProfile
 
@@ -53,11 +52,11 @@ def main():
     jobs = parser.add_mutually_exclusive_group()
     jobs.add_argument("--job-id")
     jobs.add_argument("--job-file", help="JSON with title, description, optional company/job_id")
-    parser.add_argument("--cv-template", help="Trusted self-contained XeLaTeX template")
+    parser.add_argument("--cv-file", help="Your LaTeX CV (Jake-style resume macros) to tailor")
     parser.add_argument("--force", action="store_true", help="Create a new generation revision")
     args = parser.parse_args()
-    if args.command == "generate" and not (args.job_id or args.job_file):
-        parser.error("generate requires --job-id or --job-file")
+    if args.command == "generate" and not ((args.job_id or args.job_file) and args.cv_file):
+        parser.error("generate requires --cv-file and --job-id or --job-file")
     if args.command != "generate" and not args.generation_id:
         parser.error("status/retry requires --generation-id")
 
@@ -83,9 +82,7 @@ def main():
                 profile=CandidateProfile.model_validate(data),
                 job=load_job(args, session),
                 model_id=outputs["DocumentModelId"],
-                cv_template=Path(args.cv_template).read_text()
-                if args.cv_template
-                else DEFAULT_TEMPLATE.read_text(),
+                cv_latex=Path(args.cv_file).read_text(encoding="utf-8"),
             )
             record = store.submit(
                 request, session.client("sqs"), outputs["DocumentQueueUrl"], force=args.force
