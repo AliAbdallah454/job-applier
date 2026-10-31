@@ -88,7 +88,7 @@ export interface paths {
         put?: never;
         /**
          * Edit Cv
-         * @description Compile the user's CV source here and save it as a new version; nothing is queued.
+         * @description Compile the user's CV source here and save it over the current CV; nothing is queued.
          */
         post: operations["edit_cv_api_generations__generation_id__edit_post"];
         delete?: never;
@@ -106,7 +106,7 @@ export interface paths {
         };
         /**
          * Get File
-         * @description Served by the API so the browser never needs a signed S3 link that can expire.
+         * @description The current file. An edit changes what this URL returns, so it must be revalidated.
          */
         get: operations["get_file_api_generations__generation_id__files__name__get"];
         put?: never;
@@ -148,6 +148,26 @@ export interface paths {
         put?: never;
         /** Retry Generation */
         post: operations["retry_generation_api_generations__generation_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/{generation_id}/versions/{number}/files/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Version File
+         * @description A file of a CV that an edit replaced; those never change, so it can be cached.
+         */
+        get: operations["get_version_file_api_generations__generation_id__versions__number__files__name__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -318,6 +338,18 @@ export interface components {
         CvEdit: {
             /** Cv Latex */
             cv_latex: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * CvVersion
+         * @description A CV that a later edit replaced; number 1 is the oldest.
+         */
+        CvVersion: {
+            /** Number */
+            number: number;
+            /** Saved At */
+            saved_at: string;
         };
         /** Education */
         Education: {
@@ -391,8 +423,6 @@ export interface components {
             company?: string | null;
             /** Created At */
             created_at: string;
-            /** Edited From */
-            edited_from?: string | null;
             /** Files */
             files: string[];
             /** Generation Id */
@@ -425,8 +455,6 @@ export interface components {
             compilation_log?: string | null;
             /** Created At */
             created_at: string;
-            /** Edited From */
-            edited_from?: string | null;
             /** Error Detail */
             error_detail?: string | null;
             /** Explanations */
@@ -447,10 +475,14 @@ export interface components {
             keywords: string[];
             /** Model Id */
             model_id: string;
+            /** Previous Versions */
+            previous_versions: components["schemas"]["CvVersion"][];
             /** Retryable */
             retryable: boolean;
             /** Review Required */
             review_required: boolean;
+            /** Starts From Edit */
+            starts_from_edit: boolean;
             /**
              * Status
              * @enum {string}
@@ -823,7 +855,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -925,6 +957,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Generation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_version_file_api_generations__generation_id__versions__number__files__name__get: {
+        parameters: {
+            query?: {
+                download?: boolean;
+            };
+            header?: never;
+            path: {
+                generation_id: string;
+                number: number;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

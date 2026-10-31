@@ -59,3 +59,22 @@ export function fileUrl(generationId: string, name: string, download = false) {
   const path = `/api/generations/${encodeURIComponent(generationId)}/files/${name}`;
   return download ? `${path}?download=true` : path;
 }
+
+/** An edit changes what fileUrl returns, so previews and downloads name the state they want. */
+export function previewUrl(generationId: string, name: string, updatedAt: string) {
+  return `${fileUrl(generationId, name)}?v=${encodeURIComponent(updatedAt)}`;
+}
+
+export function downloadUrl(generationId: string, name: string, updatedAt: string) {
+  return `${fileUrl(generationId, name, true)}&v=${encodeURIComponent(updatedAt)}`;
+}
+
+export function versionFileUrl(
+  generationId: string,
+  number: number,
+  name: string,
+  download = false,
+) {
+  const path = `/api/generations/${encodeURIComponent(generationId)}/versions/${number}/files/${name}`;
+  return download ? `${path}?download=true` : path;
+}

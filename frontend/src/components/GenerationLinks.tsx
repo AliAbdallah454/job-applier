@@ -1,4 +1,4 @@
-import { fileUrl, type Generation } from "../api/client";
+import { downloadUrl, type Generation } from "../api/client";
 import { ACTION, DownloadIcon, LeaveIcon } from "./ui";
 
 const DOWNLOADS = [
@@ -20,7 +20,7 @@ export function GenerationLinks({
       {DOWNLOADS.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
         <a
           key={name}
-          href={fileUrl(id, name, true)}
+          href={downloadUrl(id, name, generation.updated_at)}
           aria-label={`Download ${text.toLowerCase()} for ${title}`}
           className={ACTION}
         >

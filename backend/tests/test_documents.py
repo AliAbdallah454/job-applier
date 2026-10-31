@@ -257,6 +257,86 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(len(changes["explanations"]), 1)
         self.assertEqual(self.store.get(edited["user_id"], edited["generation_id"]), edited)
 
+    def test_each_edit_keeps_the_replaced_cv_and_diffs_against_the_original(self):
+        message = self.submit()
+        self.service.process(message)
+        ready = self.store.get(**message)
+        first = self.store.save_edit(
+            ready,
+            self.request.cv_latex.replace("a prediction endpoint", "a first endpoint"),
+            b"%PDF-first",
+        )
+        second = self.store.save_edit(
+            first,
+            self.request.cv_latex.replace("a prediction endpoint", "a second endpoint"),
+            b"%PDF-second",
+        )
+        self.assertEqual(
+            (second["generation_id"], second["created_at"], second["job_created"]),
+            (ready["generation_id"], ready["created_at"], ready["job_created"]),
+        )
+        files = ("cv_tex", "cv_pdf", "changes_json")
+        self.assertEqual(
+            second["cv_versions"],
+            [
+                {
+                    "saved_at": record["updated_at"],
+                    "files": {name: record["artifacts"][name] for name in files},
+                }
+                for record in (ready, first)
+            ],
+        )
+        for name in files:
+            keys = {version["files"][name]["key"] for version in second["cv_versions"]}
+            keys.add(second["artifacts"][name]["key"])
+            self.assertEqual(len(keys), 3)
+            self.assertIn(f"{ready['prefix']}/edits/", second["artifacts"][name]["key"])
+        for record, pdf in ((first, b"%PDF-first"), (second, b"%PDF-second")):
+            self.assertEqual(self.store.read_file(record["artifacts"]["cv_pdf"]), pdf)
+        changes = json.loads(self.store.read_file(second["artifacts"]["changes_json"]))
+        self.assertIn("a prediction endpoint", changes["diff"][0]["before"])
+        self.assertIn("a second endpoint", changes["diff"][0]["after"])
+
+    def test_edit_of_a_generation_from_before_prompt_version_7_has_no_explanations(self):
+        message = self.submit()
+        self.service.process(message)
+        record = self.store.get(**message)
+        old_format = self.store.put_file(
+            f"{record['prefix']}/old-changes.json",
+            json.dumps([{"find": "a", "replace": "b", "reason": "c"}]).encode(),
+            "application/json",
+        )
+        record["artifacts"]["changes_json"] = old_format
+        source = self.request.cv_latex.replace("a prediction endpoint", "a hand-edited endpoint")
+        edited = self.store.save_edit(record, source, b"%PDF-edited")
+        changes = json.loads(self.store.read_file(edited["artifacts"]["changes_json"]))
+        self.assertEqual(changes["explanations"], [])
+        self.assertEqual(len(changes["diff"]), 1)
+
+    def test_edit_of_a_stale_record_changes_nothing(self):
+        message = self.submit()
+        self.service.process(message)
+        stale = self.store.get(**message)
+        source = self.request.cv_latex.replace("a prediction endpoint", "a hand-edited endpoint")
+        winner = self.store.save_edit(stale, source, b"%PDF-winner")
+        self.assertIsNone(self.store.save_edit(stale, source, b"%PDF-loser"))
+        self.assertEqual(self.store.get(**message), winner)
+        self.assertEqual(len(winner["cv_versions"]), 1)
+
+    def test_edit_needs_a_ready_generation(self):
+        message = self.submit()
+        self.service.process(message)
+        record = self.store.get(**message)
+        self.store.table.update_item(
+            Key=message,
+            UpdateExpression="SET #status = :failed",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":failed": "failed"},
+        )
+        source = self.request.cv_latex.replace("a prediction endpoint", "a hand-edited endpoint")
+        self.assertIsNone(self.store.save_edit(record, source, b"%PDF-edited"))
+        self.assertNotIn("cv_versions", self.store.get(**message))
+
     def test_ready_duplicate_does_not_call_model_again(self):
         message = self.submit()
         self.service.process(message)

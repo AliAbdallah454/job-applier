@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fileUrl, toApiError } from "../api/client";
+import { downloadUrl, fileUrl, previewUrl, toApiError, versionFileUrl } from "../api/client";
 import { pollInterval } from "../api/queries";
 import { descriptionBlocks } from "../pages/jobText";
 import { clean, setIn } from "../pages/profileForm";
@@ -56,6 +56,31 @@ describe("fileUrl", () => {
   it("adds the download flag only when asked", () => {
     expect(fileUrl("abc", "cv_pdf")).toBe("/api/generations/abc/files/cv_pdf");
     expect(fileUrl("abc", "cv_tex", true)).toBe("/api/generations/abc/files/cv_tex?download=true");
+  });
+});
+
+describe("previewUrl", () => {
+  it("names the saved state, encoding the plus sign of the timestamp", () => {
+    expect(previewUrl("abc", "cv_pdf", "2026-01-02T03:04:05.678+00:00")).toBe(
+      "/api/generations/abc/files/cv_pdf?v=2026-01-02T03%3A04%3A05.678%2B00%3A00",
+    );
+  });
+});
+
+describe("downloadUrl", () => {
+  it("names the saved state too", () => {
+    expect(downloadUrl("abc", "cv_pdf", "2026-01-02T03:04:05.678+00:00")).toBe(
+      "/api/generations/abc/files/cv_pdf?download=true&v=2026-01-02T03%3A04%3A05.678%2B00%3A00",
+    );
+  });
+});
+
+describe("versionFileUrl", () => {
+  it("adds the download flag only when asked", () => {
+    expect(versionFileUrl("abc", 2, "cv_pdf")).toBe("/api/generations/abc/versions/2/files/cv_pdf");
+    expect(versionFileUrl("abc", 1, "cv_tex", true)).toBe(
+      "/api/generations/abc/versions/1/files/cv_tex?download=true",
+    );
   });
 });
 

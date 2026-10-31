@@ -279,12 +279,36 @@
             "minLength": 1,
             "title": "Cv Latex",
             "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
           }
         },
         "required": [
-          "cv_latex"
+          "cv_latex",
+          "updated_at"
         ],
         "title": "CvEdit",
+        "type": "object"
+      },
+      "CvVersion": {
+        "description": "A CV that a later edit replaced; number 1 is the oldest.",
+        "properties": {
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "saved_at": {
+            "title": "Saved At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "saved_at"
+        ],
+        "title": "CvVersion",
         "type": "object"
       },
       "Education": {
@@ -522,17 +546,6 @@
             "title": "Created At",
             "type": "string"
           },
-          "edited_from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edited From"
-          },
           "files": {
             "items": {
               "type": "string"
@@ -635,17 +648,6 @@
             "title": "Created At",
             "type": "string"
           },
-          "edited_from": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Edited From"
-          },
           "error_detail": {
             "anyOf": [
               {
@@ -716,12 +718,23 @@
             "title": "Model Id",
             "type": "string"
           },
+          "previous_versions": {
+            "items": {
+              "$ref": "#/components/schemas/CvVersion"
+            },
+            "title": "Previous Versions",
+            "type": "array"
+          },
           "retryable": {
             "title": "Retryable",
             "type": "boolean"
           },
           "review_required": {
             "title": "Review Required",
+            "type": "boolean"
+          },
+          "starts_from_edit": {
+            "title": "Starts From Edit",
             "type": "boolean"
           },
           "status": {
@@ -752,7 +765,9 @@
           "retryable",
           "keywords",
           "changes",
-          "explanations"
+          "explanations",
+          "previous_versions",
+          "starts_from_edit"
         ],
         "title": "GenerationDetail",
         "type": "object"
@@ -1660,7 +1675,7 @@
     },
     "/api/generations/{generation_id}/edit": {
       "post": {
-        "description": "Compile the user's CV source here and save it as a new version; nothing is queued.",
+        "description": "Compile the user's CV source here and save it over the current CV; nothing is queued.",
         "operationId": "edit_cv_api_generations__generation_id__edit_post",
         "parameters": [
           {
@@ -1684,7 +1699,7 @@
           "required": true
         },
         "responses": {
-          "201": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
@@ -1713,7 +1728,7 @@
     },
     "/api/generations/{generation_id}/files/{name}": {
       "get": {
-        "description": "Served by the API so the browser never needs a signed S3 link that can expire.",
+        "description": "The current file. An edit changes what this URL returns, so it must be revalidated.",
         "operationId": "get_file_api_generations__generation_id__files__name__get",
         "parameters": [
           {
@@ -1851,6 +1866,75 @@
           }
         },
         "summary": "Retry Generation",
+        "tags": [
+          "generations"
+        ]
+      }
+    },
+    "/api/generations/{generation_id}/versions/{number}/files/{name}": {
+      "get": {
+        "description": "A file of a CV that an edit replaced; those never change, so it can be cached.",
+        "operationId": "get_version_file_api_generations__generation_id__versions__number__files__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "generation_id",
+            "required": true,
+            "schema": {
+              "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "download",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Download",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Version File",
         "tags": [
           "generations"
         ]

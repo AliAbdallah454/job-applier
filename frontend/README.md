@@ -39,8 +39,9 @@ shows the failure page.
 **Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
 document queue. The generation page polls until a worker finishes. Workers start from zero,
 so a run can stay queued for a few minutes. Identical inputs return the existing generation;
-**Regenerate** makes a new revision from the same frozen inputs, and **Retry** re-queues a
-failed run or one whose worker died. Each real run calls Bedrock and costs money.
+**Regenerate** makes a new, separate revision from the same frozen inputs, so it starts from
+your uploaded CV and not from your edits, and **Retry** re-queues a failed run or one whose
+worker died. Each real run calls Bedrock and costs money.
 
 A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
@@ -49,11 +50,17 @@ sources. Rewrites are checked for structure but not fact-checked, so read each c
 sending a CV.
 
 **Edit LaTeX** beside the preview edits the whole CV source. Saving compiles it in the API and
-stores a new version straight away, with no queue, worker or Bedrock call, so the machine running
-the API needs TeX Live (`--demo` does not). The letter, keywords and the model's list of edits are
+updates the same generation straight away, with no queue, worker or Bedrock call, so the machine
+running the API needs TeX Live (`--demo` does not). The job keeps one entry, which always holds your
+latest CV: its id and date stay the same. The letter, keywords and the model's list of edits are
 kept, and the diff compares the original CV with your version. If it does not compile, nothing is
-saved and your draft stays open beside the error. A draft that was not saved is lost when the page
-is left.
+saved and your draft stays open beside the error. If the same CV was saved elsewhere after your draft
+began, you get a 409, the page shows that newer CV, your draft stays, and saving again replaces it. A
+draft that was not saved is lost when the page is left.
+
+Each CV an edit replaces appears under **Previous versions** in the review list, newest first, with
+its PDF and `.tex`. Version 1 is the model's, unless the entry came from the old edit flow, which
+gave each edit its own entry. Old versions can be opened but not restored.
 
 ## API
 
@@ -64,10 +71,11 @@ is left.
 | `GET`/`PUT /api/profile` | `PUT` must carry the loaded `version`, or it returns 409 |
 | `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
-| `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log |
+| `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
-| `POST /api/generations/{id}/edit` | Compile `cv_latex` and save it as a new version; 422 with the error if it does not compile |
-| `GET /api/generations/{id}/files/{name}` | PDF, source or log; add `?download=true` to save it under a name from the job title |
+| `POST /api/generations/{id}/edit` | Compile `cv_latex` and save it over the current CV. Must carry the `updated_at` the draft started from, or it returns 409; 422 with the error if it does not compile |
+| `GET /api/generations/{id}/files/{name}` | Current PDF, source or log; add `?download=true` to save it under a name from the job title. An edit changes what this URL returns, so it is sent as `no-cache`, and previews and CV downloads add `v=<updated_at>` |
+| `GET /api/generations/{id}/versions/{number}/files/{name}` | `cv_pdf`, `cv_tex` or `changes_json` of a replaced CV, from number 1; takes `?download=true` too, and these never change, so they can be cached |
 
 Search filters one scanned page at a time, so a page can be empty while more remain; the
 app keeps loading automatically, up to ten empty pages in a row. The count is loaded

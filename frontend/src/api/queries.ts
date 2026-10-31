@@ -9,7 +9,7 @@ import {
   api,
   type CandidateProfile,
   ApiError,
-  fileUrl,
+  previewUrl,
   type Status,
   toApiError,
   unwrap,
@@ -160,32 +160,38 @@ export function useRegenerate(id: string) {
   });
 }
 
-export function useCvSource(id: string) {
+export function useCvSource(id: string, updatedAt: string) {
   return useQuery({
-    queryKey: ["cv-source", id],
+    queryKey: ["cv-source", id, updatedAt],
     queryFn: async () => {
-      const response = await fetch(fileUrl(id, "cv_tex"));
+      const response = await fetch(previewUrl(id, "cv_tex", updatedAt));
       if (!response.ok) throw toApiError(response.status, await response.json());
       return response.text();
     },
+    staleTime: Infinity, // The key names one saved state of the CV.
   });
 }
 
 export function useEditCv(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (cvLatex: string) =>
+    mutationFn: ({ cvLatex, updatedAt }: { cvLatex: string; updatedAt: string }) =>
       unwrap(
         api.POST("/api/generations/{generation_id}/edit", {
           params: { path: { generation_id: id } },
-          body: { cv_latex: cvLatex },
+          body: { cv_latex: cvLatex, updated_at: updatedAt },
         }),
       ),
-    onSuccess: (saved, cvLatex) => {
-      // Already known, so the page moves to the new version without a loading state.
-      client.setQueryData(["generation", saved.generation_id], saved);
-      client.setQueryData(["cv-source", saved.generation_id], cvLatex);
+    onSuccess: async (saved, { cvLatex }) => {
+      // A read from before the save would otherwise land afterwards and bring the old CV back.
+      await client.cancelQueries({ queryKey: ["generation", id] });
+      // Already known, so the page shows the saved CV without a loading state. The source goes
+      // first because the generation's new updated_at is what makes the editor ask for it.
+      client.setQueryData(["cv-source", id, saved.updated_at], cvLatex);
+      client.setQueryData(["generation", id], saved);
       return client.invalidateQueries({ queryKey: ["generations"] });
     },
+    // After a 409 the page must show the CV that got there first, as saving again replaces it.
+    onError: () => client.invalidateQueries({ queryKey: ["generation", id] }),
   });
 }

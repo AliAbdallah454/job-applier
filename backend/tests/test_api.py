@@ -350,31 +350,40 @@ class ApiTests(unittest.TestCase):
         frozen = json.loads(self.context.generations.read_file(record["input"]))
         self.assertNotIn("location", {k for k, v in frozen["profile"].items() if v})
 
-    def edit(self, generation_id, source):
-        return self.client.post(f"/api/generations/{generation_id}/edit", json={"cv_latex": source})
+    def edit(self, generation_id, source, updated_at=None):
+        url = f"/api/generations/{generation_id}"
+        updated_at = updated_at or self.client.get(url).json().get("updated_at", "")
+        return self.client.post(f"{url}/edit", json={"cv_latex": source, "updated_at": updated_at})
 
     def cv_source(self, generation_id):
         return self.client.get(f"/api/generations/{generation_id}/files/cv_tex").text
 
-    def test_editing_saves_a_new_compiled_version_without_the_queue_or_model(self):
+    def version_file(self, generation_id, number, name="cv_tex"):
+        return self.client.get(f"/api/generations/{generation_id}/versions/{number}/files/{name}")
+
+    def added_by_hand(self, generation_id, line):
+        source = self.cv_source(generation_id)
+        return source.replace("\\end{document}", f"{line}\n\\end{{document}}")
+
+    def test_editing_updates_the_generation_in_place_without_the_queue_or_model(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)
         queued = self.messages()
-        source = self.cv_source(original).replace(
-            "\\end{document}", "Added by hand\n\\end{document}"
-        )
+        before = self.context.generations.get("ali", original)
+        source = self.added_by_hand(original, "Added by hand")
         response = self.edit(original, source)
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 200)
         detail = response.json()
-        edited = detail["generation_id"]
-        self.assertNotEqual(edited, original)
-        self.assertEqual(detail["edited_from"], original)
+        self.assertEqual(detail["generation_id"], original)
+        self.assertNotIn("edited_from", detail)
         self.assertEqual(detail["status"], "ready")
+        self.assertEqual(detail["created_at"], before["created_at"])
+        self.assertGreater(detail["updated_at"], before["updated_at"])
         self.compiler.assert_called_once()
         self.assertEqual(self.messages(), [])
         self.assertEqual(len(queued), 1)
 
-        self.assertEqual(self.cv_source(edited), source)
+        self.assertEqual(self.cv_source(original), source)
         self.assertIn("Added by hand", detail["changes"][-1]["after"])
         self.assertEqual(len(detail["explanations"]), 2)
         self.assertEqual(detail["keywords"][0], "Python")
@@ -382,17 +391,72 @@ class ApiTests(unittest.TestCase):
             detail["files"],
             ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
         )
-        records = [self.context.generations.get("ali", item) for item in (original, edited)]
+        after = self.context.generations.get("ali", original)
+        self.assertEqual(after["job_created"], before["job_created"])
+        for name in ("motivation_letter_pdf", "motivation_letter_tex"):
+            self.assertEqual(after["artifacts"][name], before["artifacts"][name])
+        self.assertNotEqual(after["artifacts"]["cv_pdf"], before["artifacts"]["cv_pdf"])
+
+    def test_two_edits_leave_one_entry_for_the_job_and_two_previous_versions(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        ready = self.context.generations.get("ali", original)
+        model_source = self.cv_source(original)
+        model_pdf = self.client.get(f"/api/generations/{original}/files/cv_pdf").content
+        self.compiler.return_value = b"%PDF-first"
+        first = self.added_by_hand(original, "First edit")
+        saved_first = self.edit(original, first).json()
+        self.compiler.return_value = b"%PDF-second"
+        second = self.added_by_hand(original, "Second edit")
+        detail = self.edit(original, second).json()
+
+        for listing in ("/api/generations", "/api/generations?job_id=job-1"):
+            rows = self.client.get(listing).json()
+            self.assertEqual([row["generation_id"] for row in rows], [original])
         self.assertEqual(
-            records[0]["artifacts"]["motivation_letter_pdf"],
-            records[1]["artifacts"]["motivation_letter_pdf"],
+            detail["previous_versions"],
+            [
+                {"number": 1, "saved_at": ready["updated_at"]},
+                {"number": 2, "saved_at": saved_first["updated_at"]},
+            ],
         )
-        self.assertNotEqual(records[0]["artifacts"]["cv_pdf"], records[1]["artifacts"]["cv_pdf"])
-        self.assertNotIn("Added by hand", self.cv_source(original))
+        fetched = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual(fetched["previous_versions"], detail["previous_versions"])
+
+        self.assertEqual(self.version_file(original, 1).text, model_source)
+        self.assertEqual(self.version_file(original, 1, "cv_pdf").content, model_pdf)
+        self.assertEqual(self.version_file(original, 2).text, first)
+        self.assertEqual(self.version_file(original, 2, "cv_pdf").content, b"%PDF-first")
+        changes = self.version_file(original, 2, "changes_json").json()
+        self.assertIn("First edit", changes["diff"][-1]["after"])
+        self.assertNotIn("First edit", self.version_file(original, 1, "changes_json").text)
+
+        self.assertEqual(self.cv_source(original), second)
+        current = self.client.get(f"/api/generations/{original}/files/cv_pdf")
+        self.assertEqual(current.content, b"%PDF-second")
+        letter = self.context.generations.get("ali", original)["artifacts"]
+        self.assertEqual(
+            letter["motivation_letter_pdf"], ready["artifacts"]["motivation_letter_pdf"]
+        )
+
+    def test_a_version_file_can_be_downloaded_under_the_job_name(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.edit(original, self.added_by_hand(original, "Edit"))
+        response = self.client.get(
+            f"/api/generations/{original}/versions/1/files/cv_tex?download=true"
+        )
+        self.assertEqual(
+            response.headers["content-disposition"],
+            'attachment; filename="engineer-job-1-cv.tex"',
+        )
+        self.assertTrue(response.headers["content-type"].startswith("text/plain"))
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def test_an_edit_that_does_not_compile_returns_the_error_and_saves_nothing(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)
+        before = self.context.generations.get("ali", original)
         self.compiler.side_effect = DocumentCompilationError(
             timed_out=False, diagnostics=b"noise\n! Undefined control sequence."
         )
@@ -401,6 +465,120 @@ class ApiTests(unittest.TestCase):
         self.assertIn("! Undefined control sequence.", response.json()["detail"])
         self.assertNotIn("noise", response.json()["detail"])
         self.assertEqual(len(self.client.get("/api/generations").json()), 1)
+        self.assertEqual(self.context.generations.get("ali", original), before)
+
+    def test_a_save_that_lost_a_race_gets_409_and_loses_no_version(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        store = self.context.generations
+        model_source = self.cv_source(original)
+        rival = self.added_by_hand(original, "Saved in another tab")
+
+        def compile_while_another_tab_saves(path):
+            store.save_edit(store.get("ali", original), rival, b"%PDF-rival")
+            return b"%PDF-mine"
+
+        self.compiler.side_effect = compile_while_another_tab_saves
+        response = self.edit(original, self.added_by_hand(original, "Mine"))
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("changed elsewhere", response.json()["detail"])
+        self.assertIn("Save again", response.json()["detail"])
+
+        detail = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual([item["number"] for item in detail["previous_versions"]], [1])
+        self.assertEqual(self.version_file(original, 1).text, model_source)
+        self.assertEqual(self.cv_source(original), rival)
+
+        self.compiler.side_effect = None
+        mine = self.added_by_hand(original, "Mine")
+        self.assertEqual(self.edit(original, mine).status_code, 200)
+        self.assertEqual(self.version_file(original, 2).text, rival)
+        self.assertEqual(self.cv_source(original), mine)
+
+    def test_a_draft_from_before_another_save_gets_409_and_changes_nothing(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        loaded = self.client.get(f"/api/generations/{original}").json()["updated_at"]
+        self.edit(original, self.added_by_hand(original, "Saved in another tab"))
+        saved = self.context.generations.get("ali", original)
+        self.compiler.reset_mock()
+
+        response = self.edit(original, self.added_by_hand(original, "Stale draft"), loaded)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("changed elsewhere", response.json()["detail"])
+        self.compiler.assert_not_called()
+        self.assertEqual(self.context.generations.get("ali", original), saved)
+
+    def test_an_edit_must_say_which_state_it_started_from(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        response = self.client.post(
+            f"/api/generations/{original}/edit", json={"cv_latex": self.cv_source(original)}
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_a_row_from_the_old_edit_flow_says_its_first_cv_is_not_the_models(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        url = f"/api/generations/{original}"
+        self.assertFalse(self.client.get(url).json()["starts_from_edit"])
+        self.context.generations.table.update_item(
+            Key={"user_id": "ali", "generation_id": original},
+            UpdateExpression="SET edited_from = :source",
+            ExpressionAttributeValues={":source": "0" * 32},
+        )
+        detail = self.client.get(url).json()
+        self.assertTrue(detail["starts_from_edit"])
+        self.assertNotIn("edited_from", detail)
+        edited = self.edit(original, self.added_by_hand(original, "Edit")).json()
+        self.assertTrue(edited["starts_from_edit"])
+
+    def test_a_version_file_needs_a_real_number_and_name(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.assertEqual(self.version_file(original, 1).status_code, 404)
+        self.edit(original, self.added_by_hand(original, "First"))
+        self.edit(original, self.added_by_hand(original, "Second"))
+        self.assertEqual(self.version_file(original, 2).status_code, 200)
+        for number in (0, -1, -2, 3, 10**30):
+            self.assertEqual(self.version_file(original, number).status_code, 404, number)
+        for name in ("saved_at", "files", "motivation_letter_pdf", "input", "nothing"):
+            self.assertEqual(self.version_file(original, 1, name).status_code, 404, name)
+        self.assertEqual(self.version_file("0" * 64, 1).status_code, 404)
+
+    def test_version_files_of_other_users_are_invisible(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.edit(original, self.added_by_hand(original, "Mine"))
+        other = Context(
+            Settings(**{**self.settings.__dict__, "user_id": "other"}), region="us-east-1"
+        )
+        client = TestClient(create_app(other), base_url="http://localhost")
+        url = f"/api/generations/{original}/versions/1/files/cv_tex"
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertEqual(client.get(url).status_code, 404)
+
+    def test_only_old_versions_may_be_cached_because_an_edit_changes_the_current_file(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.edit(original, self.added_by_hand(original, "Edit"))
+        for name in ("cv_pdf", "cv_tex", "motivation_letter_pdf"):
+            response = self.client.get(f"/api/generations/{original}/files/{name}?v=anything")
+            self.assertEqual(response.headers["cache-control"], "private, no-cache", name)
+        response = self.version_file(original, 1, "cv_pdf")
+        self.assertEqual(response.headers["cache-control"], "private, max-age=3600")
+
+    def test_regenerating_an_edited_cv_starts_again_from_the_frozen_input(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.edit(original, self.added_by_hand(original, "Added by hand"))
+        body = self.client.post(f"/api/generations/{original}/regenerate").json()
+        self.assertNotEqual(body["generation_id"], original)
+        record = self.context.generations.get("ali", body["generation_id"])
+        self.assertNotIn("cv_versions", record)
+        frozen = json.loads(self.context.generations.read_file(record["input"]))
+        self.assertNotIn("Added by hand", frozen["cv_latex"])
+        self.assertEqual(len(self.client.get("/api/generations").json()), 2)
 
     def test_editing_without_tex_says_what_is_missing(self):
         original = self.tailor().json()["generation_id"]

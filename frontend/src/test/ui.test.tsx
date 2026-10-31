@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Generation, Job } from "../api/client";
 import { EditDiff } from "../components/EditDiff";
 import { TailorDialog } from "../components/TailorDialog";
+import { formatDate } from "../components/ui";
 import { GenerationPage } from "../pages/Generation";
 import { History } from "../pages/History";
 import { Jobs } from "../pages/Jobs";
@@ -50,13 +51,15 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function server(routes: Record<string, () => Response>) {
-  const calls: { method: string; path: string; body: string }[] = [];
+type Routes = Record<string, () => Response | Promise<Response>>;
+
+function server(routes: Routes) {
+  const calls: { method: string; path: string; search: string; body: string }[] = [];
   vi.stubGlobal("fetch", async (input: Request | string) => {
     const request = typeof input === "string" ? new Request(new URL(input, location.href)) : input;
-    const { pathname } = new URL(request.url);
+    const { pathname, search } = new URL(request.url);
     const body = await request.clone().text();
-    calls.push({ method: request.method, path: pathname, body });
+    calls.push({ method: request.method, path: pathname, search, body });
     const route = routes[`${request.method} ${pathname}`];
     return route ? route() : json({ detail: "Not found" }, 404);
   });
@@ -149,10 +152,14 @@ describe("History", () => {
     server({ "GET /api/generations": () => json([GENERATION]) });
     mount(<History />);
     const cv = await screen.findByRole("link", { name: "Download cv for Junior Engineer" });
-    expect(cv).toHaveAttribute("href", "/api/generations/g1/files/cv_pdf?download=true");
+    const state = encodeURIComponent(GENERATION.updated_at);
+    expect(cv).toHaveAttribute("href", `/api/generations/g1/files/cv_pdf?download=true&v=${state}`);
     expect(
       screen.getByRole("link", { name: "Download motivation letter for Junior Engineer" }),
-    ).toHaveAttribute("href", "/api/generations/g1/files/motivation_letter_pdf?download=true");
+    ).toHaveAttribute(
+      "href",
+      `/api/generations/g1/files/motivation_letter_pdf?download=true&v=${state}`,
+    );
     expect(screen.getByRole("link", { name: "Job posting for Junior Engineer" })).toHaveAttribute(
       "href",
       "https://example.com/job",
@@ -189,17 +196,34 @@ describe("GenerationPage", () => {
     keywords: [],
     changes: [],
     explanations: [],
+    previous_versions: [],
+    starts_from_edit: false,
   };
 
-  function open(generation: unknown, routes: Record<string, () => Response> = {}) {
+  function Place() {
+    return (
+      <nav>
+        <output aria-label="Current page">{useLocation().pathname}</output>
+        <Link to="/generations/g1">To g1</Link>
+        <Link to="/generations/g2">To g2</Link>
+      </nav>
+    );
+  }
+
+  function testClient() {
+    return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  }
+
+  function open(generation: unknown, routes: Routes = {}, client = testClient()) {
     const calls = server({
       "GET /api/generations/g1": () => json(generation),
       "GET /api/generations/g1/files/cv_tex": () => new Response("\\section{Old}"),
       ...routes,
     });
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={["/generations/g1"]}>
+          <Place />
           <Routes>
             <Route path="/generations/:id" element={<GenerationPage />} />
           </Routes>
@@ -209,14 +233,34 @@ describe("GenerationPage", () => {
     return calls;
   }
 
-  async function saveEdit(user: ReturnType<typeof userEvent.setup>) {
+  async function typeDraft(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
     const editor = await screen.findByLabelText("CV LaTeX source");
     await waitFor(() => expect(editor).toHaveValue("\\section{Old}"));
     await user.clear(editor);
     await user.type(editor, "new text");
-    await user.click(screen.getByRole("button", { name: "Save new version" }));
     return editor;
+  }
+
+  async function saveEdit(user: ReturnType<typeof userEvent.setup>) {
+    const editor = await typeDraft(user);
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    return editor;
+  }
+
+  /** What the browser does when the user comes back to the tab. */
+  function comeBackToTheTab() {
+    act(() => void window.dispatchEvent(new Event("visibilitychange")));
+  }
+
+  function settle() {
+    return act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  }
+
+  function postedStates(calls: ReturnType<typeof server>) {
+    return calls
+      .filter((call) => call.method === "POST")
+      .map((call) => JSON.parse(call.body).updated_at);
   }
 
   it("cannot save an unchanged source", async () => {
@@ -224,24 +268,199 @@ describe("GenerationPage", () => {
     open(detail);
     await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
     await waitFor(() => expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Old}"));
-    expect(screen.getByRole("button", { name: "Save new version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
 
-  it("moves to the saved version of an edited CV", async () => {
+  const SAVED_AT = "2026-01-02T03:04:05.678+00:00";
+  const saved = {
+    ...detail,
+    updated_at: SAVED_AT,
+    previous_versions: [{ number: 1, saved_at: detail.updated_at }],
+  };
+
+  it("updates the CV in place and stays on the Edit LaTeX tab", async () => {
     const user = userEvent.setup();
-    const edited = { ...detail, generation_id: "g2", edited_from: "g1" };
-    const calls = open(detail, {
-      "POST /api/generations/g1/edit": () => json(edited, 201),
-      "GET /api/generations/g2": () => json(edited),
-    });
+    const calls = open(detail, { "POST /api/generations/g1/edit": () => json(saved) });
+    const preview = await screen.findByTitle("CV preview");
+    expect(preview).toHaveAttribute(
+      "src",
+      `/api/generations/g1/files/cv_pdf?v=${encodeURIComponent(detail.updated_at)}`,
+    );
     await saveEdit(user);
     expect(await screen.findByText(/edited by you/)).toBeInTheDocument();
     expect(calls.find((call) => call.method === "POST")?.body).toBe(
-      JSON.stringify({ cv_latex: "new text" }),
+      JSON.stringify({ cv_latex: "new text", updated_at: detail.updated_at }),
     );
-    const preview = screen.getByTitle("CV preview");
-    expect(preview).toHaveAttribute("src", "/api/generations/g2/files/cv_pdf");
+
+    expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g1");
+    expect(screen.getByTitle("CV preview")).toHaveAttribute(
+      "src",
+      `/api/generations/g1/files/cv_pdf?v=${encodeURIComponent(SAVED_AT)}`,
+    );
+    expect(screen.getByRole("link", { name: "Download cv for Junior Engineer" })).toHaveAttribute(
+      "href",
+      `/api/generations/g1/files/cv_pdf?download=true&v=${encodeURIComponent(SAVED_AT)}`,
+    );
+    expect(screen.getByRole("tab", { name: "Edit LaTeX" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("new text");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled());
+    expect(
+      calls.filter((call) => call.method === "GET" && call.path === "/api/generations/g1"),
+    ).toHaveLength(1);
+  });
+
+  it("asks for the CV source of the generation's current state", async () => {
+    const user = userEvent.setup();
+    const calls = open({ ...detail, updated_at: SAVED_AT });
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Old}"),
+    );
+    expect(calls.find((call) => call.path.endsWith("/cv_tex"))?.search).toBe(
+      `?v=${encodeURIComponent(SAVED_AT)}`,
+    );
+  });
+
+  it("keeps the draft and says why when another save got there first", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "POST /api/generations/g1/edit": () =>
+        json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409),
+    });
+    const editor = await saveEdit(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent("changed elsewhere");
+    expect(editor).toHaveValue("new text");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g1");
+  });
+
+  it("shows the CV that got there first after a 409, then saves over it", async () => {
+    const user = userEvent.setup();
+    let current: unknown = detail;
+    let posts = 0;
+    const calls = open(detail, {
+      "GET /api/generations/g1": () => json(current),
+      "POST /api/generations/g1/edit": () => {
+        posts += 1;
+        if (posts > 1) return json({ ...saved, updated_at: "2026-01-03T00:00:00+00:00" });
+        current = saved;
+        return json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409);
+      },
+    });
+    await saveEdit(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent("changed elsewhere");
+    expect(screen.getByTitle("CV preview")).toHaveAttribute(
+      "src",
+      `/api/generations/g1/files/cv_pdf?v=${encodeURIComponent(SAVED_AT)}`,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Previous versions", hidden: true }),
+    ).toBeInTheDocument();
+    expect(await screen.findByLabelText("CV LaTeX source")).toHaveValue("new text");
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(postedStates(calls)).toEqual([detail.updated_at, SAVED_AT]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("sends the state a draft started from, even when a newer one has arrived", async () => {
+    const user = userEvent.setup();
+    let current: unknown = detail;
+    const calls = open(detail, {
+      "GET /api/generations/g1": () => json(current),
+      "POST /api/generations/g1/edit": () =>
+        json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409),
+    });
+    await typeDraft(user);
+    current = saved;
+    comeBackToTheTab();
+    await waitFor(() => expect(screen.getByText(/edited by you/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByRole("alert");
+    expect(postedStates(calls)).toEqual([detail.updated_at]);
+  });
+
+  it("does not let a read from before the save bring the old CV back", async () => {
+    const user = userEvent.setup();
+    let answer = (_: Response) => {};
+    let slow = false;
+    open(detail, {
+      "GET /api/generations/g1": () =>
+        slow ? new Promise<Response>((resolve) => (answer = resolve)) : json(detail),
+      "POST /api/generations/g1/edit": () => json(saved),
+    });
+    await screen.findByTitle("CV preview");
+    slow = true;
+    comeBackToTheTab();
+    await saveEdit(user);
+    await screen.findByText(/edited by you/);
+
+    answer(json(detail));
+    await settle();
+    expect(screen.getByText(/edited by you/)).toBeInTheDocument();
+    expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("new text");
+  });
+
+  it("follows a newer CV after a save, because the draft is gone", async () => {
+    const user = userEvent.setup();
+    let current = saved;
+    open(detail, {
+      "GET /api/generations/g1": () => json(current),
+      "GET /api/generations/g1/files/cv_tex": () =>
+        new Response(current === saved ? "\\section{Old}" : "\\section{Newer}"),
+      "POST /api/generations/g1/edit": () => json(saved),
+    });
+    await saveEdit(user);
+    await screen.findByText(/edited by you/);
+    await settle();
+    current = { ...saved, updated_at: "2026-01-03T00:00:00+00:00" };
+    comeBackToTheTab();
+    await waitFor(() =>
+      expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Newer}"),
+    );
+  });
+
+  it("refreshes the list of generations after a save", async () => {
+    const user = userEvent.setup();
+    const client = testClient();
+    client.setQueryData(["generations"], [GENERATION]);
+    open(detail, { "POST /api/generations/g1/edit": () => json(saved) }, client);
+    await saveEdit(user);
+    await waitFor(() => expect(client.getQueryState(["generations"])?.isInvalidated).toBe(true));
+  });
+
+  it("keeps an unsaved draft when a background refresh fails", async () => {
+    const user = userEvent.setup();
+    let down = false;
+    open(detail, {
+      "GET /api/generations/g1": () =>
+        down ? json({ detail: "Check your AWS login" }, 503) : json(detail),
+    });
+    await typeDraft(user);
+    down = true;
+    comeBackToTheTab();
+    await settle();
+    expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("new text");
+  });
+
+  it("cannot save when the CV source failed to load", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "GET /api/generations/g1/files/cv_tex": () => json({ detail: "Check your AWS login" }, 503),
+    });
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Check your AWS login");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  });
+
+  it("downloads a source of the saved state", async () => {
+    open({ ...saved, files: ["cv_tex"] });
+    expect(await screen.findByRole("link", { name: "CV .tex" })).toHaveAttribute(
+      "href",
+      `/api/generations/g1/files/cv_tex?download=true&v=${encodeURIComponent(SAVED_AT)}`,
+    );
   });
 
   it("keeps the draft beside the compile error when an edit fails", async () => {
@@ -253,7 +472,85 @@ describe("GenerationPage", () => {
     const editor = await saveEdit(user);
     expect(await screen.findByRole("alert")).toHaveTextContent("! Undefined control sequence.");
     expect(editor).toHaveValue("new text");
-    expect(screen.getByRole("button", { name: "Save new version" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  });
+
+  it("does not carry a draft over to another generation", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "GET /api/generations/g2": () => json({ ...detail, generation_id: "g2", job_title: "Other" }),
+      "GET /api/generations/g2/files/cv_tex": () => new Response("\\section{Other}"),
+    });
+    // Opened once first, because a generation not cached yet replaces the page with a skeleton.
+    await user.click(await screen.findByRole("link", { name: "To g2" }));
+    await screen.findByRole("heading", { name: "Other" });
+    await user.click(screen.getByRole("link", { name: "To g1" }));
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    const editor = await screen.findByLabelText("CV LaTeX source");
+    await waitFor(() => expect(editor).toHaveValue("\\section{Old}"));
+    await user.type(editor, " draft");
+    await user.click(screen.getByRole("link", { name: "To g2" }));
+    await screen.findByRole("heading", { name: "Other" });
+    await waitFor(() =>
+      expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Other}"),
+    );
+  });
+
+  it("lists previous versions newest first and names the model's", async () => {
+    open({
+      ...detail,
+      previous_versions: [
+        { number: 1, saved_at: "2026-01-02T10:00:00Z" },
+        { number: 2, saved_at: "2026-01-03T10:00:00Z" },
+      ],
+    });
+    const heading = await screen.findByRole("heading", { name: "Previous versions" });
+    const rows = within(heading.nextElementSibling as HTMLElement).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("Version 2");
+    expect(rows[0]).not.toHaveTextContent("model");
+    expect(rows[0]).toHaveTextContent(formatDate("2026-01-03T10:00:00Z"));
+    expect(rows[1]).toHaveTextContent("Version 1 (the model's version)");
+    expect(rows[1]).toHaveTextContent(formatDate("2026-01-02T10:00:00Z"));
+    const pdf = screen.getByRole("link", { name: "Open the PDF of version 2" });
+    expect(pdf).toHaveAttribute("href", "/api/generations/g1/versions/2/files/cv_pdf");
+    expect(pdf).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Download the .tex of version 1" })).toHaveAttribute(
+      "href",
+      "/api/generations/g1/versions/1/files/cv_tex?download=true",
+    );
+    expect(screen.getByText(/edited by you/)).toBeInTheDocument();
+  });
+
+  it("shows no version history or edited label before the first edit", async () => {
+    open({ ...detail, explanations: [{ change: "Named FastAPI", reason: "Job asks for it" }] });
+    expect(await screen.findByRole("heading", { name: "Edits made" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Previous versions" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/edited by you/)).not.toBeInTheDocument();
+  });
+
+  it("says the listed edits are the model's once the CV was edited", async () => {
+    open({ ...saved, explanations: [{ change: "Named FastAPI", reason: "Job asks for it" }] });
+    expect(
+      await screen.findByRole("heading", { name: "Edits made by the model" }),
+    ).toBeInTheDocument();
+  });
+
+  it("marks a row from the old edit flow as edited before it has versions", async () => {
+    open({
+      ...detail,
+      starts_from_edit: true,
+      explanations: [{ change: "Named FastAPI", reason: "Job asks for it" }],
+    });
+    expect(await screen.findByText(/edited by you/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Edits made by the model" })).toBeInTheDocument();
+  });
+
+  it("does not call the first CV of a row from the old edit flow the model's", async () => {
+    open({ ...saved, starts_from_edit: true });
+    const heading = await screen.findByRole("heading", { name: "Previous versions" });
+    expect(heading.nextElementSibling).toHaveTextContent("Version 1");
+    expect(heading.nextElementSibling).not.toHaveTextContent("model");
   });
 
   it("does not celebrate when an old generation is reopened", async () => {

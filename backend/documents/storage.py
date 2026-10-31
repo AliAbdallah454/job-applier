@@ -94,7 +94,10 @@ class GenerationStore:
         return record
 
     def save_edit(self, record, source, pdf):
-        """A new ready version with the user's compiled CV; the letter and input stay the same."""
+        """Put the user's compiled CV on the record, or None if it changed since it was read.
+
+        The CV it replaces goes to cv_versions, oldest first; the letter and input stay the same.
+        """
         frozen = GenerationInput.model_validate_json(self.read_file(record["input"]))
         saved = json.loads(self.read_file(record["artifacts"]["changes_json"]))
         changes = {
@@ -102,41 +105,43 @@ class GenerationStore:
             # Generations from before prompt version 7 stored a list of find/replace edits.
             "explanations": saved["explanations"] if isinstance(saved, dict) else [],
         }
-        user_id, generation_id = record["user_id"], uuid.uuid4().hex
-        prefix = f"users/{quote(user_id, safe='')}/generations/{generation_id}"
-        created = timestamp()
-        kept = (
-            "user_id",
-            "job_id",
-            "job_title",
-            "profile_version",
-            "model_id",
-            "prompt_version",
-            "input_hash",
-            "input",
-            "content",
-            "review_required",
-        )
-        revision = {
-            **{key: record[key] for key in kept},
-            "generation_id": generation_id,
-            "job_created": f"{record['job_id']}#{created}#{generation_id}",
-            "edited_from": record["generation_id"],
-            "artifacts": {
-                **record["artifacts"],
-                "cv_tex": self.put_file(f"{prefix}/cv.tex", source.encode(), "application/x-tex"),
-                "cv_pdf": self.put_file(f"{prefix}/cv.pdf", pdf, "application/pdf"),
-                "changes_json": self.put_file(
-                    f"{prefix}/changes.json", encode(changes), "application/json"
-                ),
-            },
-            "prefix": prefix,
-            "status": "ready",
-            "created_at": created,
-            "updated_at": created,
+        # A key of its own for each edit, so the references in cv_versions stay valid.
+        prefix = f"{record['prefix']}/edits/{uuid.uuid4().hex}"
+        artifacts = {
+            **record["artifacts"],
+            "cv_tex": self.put_file(f"{prefix}/cv.tex", source.encode(), "application/x-tex"),
+            "cv_pdf": self.put_file(f"{prefix}/cv.pdf", pdf, "application/pdf"),
+            "changes_json": self.put_file(
+                f"{prefix}/changes.json", encode(changes), "application/json"
+            ),
         }
-        self.table.put_item(Item=revision)
-        return revision
+        replaced = {
+            "saved_at": record["updated_at"],
+            "files": {
+                name: record["artifacts"][name] for name in ("cv_tex", "cv_pdf", "changes_json")
+            },
+        }
+        try:
+            response = self.table.update_item(
+                Key={"user_id": record["user_id"], "generation_id": record["generation_id"]},
+                UpdateExpression=(
+                    "SET artifacts = :artifacts, cv_versions = :versions, updated_at = :updated"
+                ),
+                # Two saves from the same read would otherwise lose one entry of the history.
+                ConditionExpression="#status = :ready AND updated_at = :read",
+                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeValues={
+                    ":artifacts": artifacts,
+                    ":versions": [*record.get("cv_versions", []), replaced],
+                    ":updated": timestamp(),
+                    ":ready": "ready",
+                    ":read": record["updated_at"],
+                },
+                ReturnValues="ALL_NEW",
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return None
+        return response["Attributes"]
 
     def enqueue(self, sqs, queue_url, user_id, generation_id):
         if self.get(user_id, generation_id) is None:

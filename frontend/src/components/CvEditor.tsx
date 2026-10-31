@@ -1,18 +1,18 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 
-import type { GenerationDetail } from "../api/client";
+import { ApiError, type GenerationDetail } from "../api/client";
 import { useCvSource, useEditCv } from "../api/queries";
 import { Button, ErrorNote, Skeleton } from "./ui";
 
-/** Saving compiles and stores a new version; a compile error keeps the draft open beside it. */
+/** Saving compiles and replaces the CV; a compile error keeps the draft open beside it. */
 export function CvEditor({ generation }: { generation: GenerationDetail }) {
   const id = generation.generation_id;
-  const source = useCvSource(id);
+  const source = useCvSource(id, generation.updated_at);
   const save = useEditCv(id);
-  const navigate = useNavigate();
-  const [draft, setDraft] = useState<string | null>(null);
-  const text = draft ?? source.data ?? "";
+  // A draft keeps the state it started from, so a newer CV is not replaced without a word.
+  const [draft, setDraft] = useState<{ text: string; base: string | null } | null>(null);
+  const text = draft?.text ?? source.data ?? "";
+  const base = draft?.base ?? generation.updated_at;
 
   if (source.isPending) return <Skeleton rows={6} />;
 
@@ -26,22 +26,28 @@ export function CvEditor({ generation }: { generation: GenerationDetail }) {
         value={text}
         spellCheck={false}
         readOnly={save.isPending}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => setDraft({ text: event.target.value, base })}
         className="h-[60dvh] w-full flex-1 resize-none border border-rule bg-wash p-3 font-mono text-xs leading-relaxed outline-none focus:border-ink lg:h-auto"
       />
       <div>
         <Button
-          disabled={save.isPending || text === source.data}
+          disabled={save.isPending || source.data === undefined || text === source.data}
           onClick={() =>
-            save.mutate(text, {
-              onSuccess: (next) => {
-                navigate(`/generations/${next.generation_id}`);
-                setDraft(null);
+            save.mutate(
+              { cvLatex: text, updatedAt: base },
+              {
+                onSuccess: () => setDraft(null),
+                // The page now shows the newer CV, so saving again replaces it knowingly.
+                onError: (error) => {
+                  if (error instanceof ApiError && error.status === 409) {
+                    setDraft({ text, base: null });
+                  }
+                },
               },
-            })
+            )
           }
         >
-          {save.isPending ? "Compiling…" : "Save new version"}
+          {save.isPending ? "Compiling…" : "Save changes"}
         </Button>
       </div>
       <ErrorNote error={source.error ?? save.error} />

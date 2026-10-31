@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { fileUrl, type GenerationDetail } from "../api/client";
+import {
+  downloadUrl,
+  fileUrl,
+  type GenerationDetail,
+  previewUrl,
+  versionFileUrl,
+} from "../api/client";
 import { useGeneration, useRegenerate, useRetry } from "../api/queries";
 import { CvEditor } from "../components/CvEditor";
 import { EditDiff } from "../components/EditDiff";
@@ -34,6 +40,11 @@ const FAILURE_FILES = [
   ["compilation_log", "Compile log .log"],
 ];
 
+/** A row from the old edit flow already holds the user's CV before it has any versions. */
+function isEdited(generation: GenerationDetail) {
+  return generation.previous_versions.length > 0 || generation.starts_from_edit;
+}
+
 export function GenerationPage() {
   const { id = "" } = useParams();
   const generation = useGeneration(id);
@@ -54,7 +65,8 @@ export function GenerationPage() {
     previous.current = status;
   }, [status]);
 
-  if (generation.error) {
+  // A failed refresh of a page already showing keeps it, and with it any unsaved draft.
+  if (generation.error && !data) {
     return (
       <div className="p-6">
         <ErrorNote error={generation.error} />
@@ -77,7 +89,7 @@ export function GenerationPage() {
               Tailored CVs
             </Link>{" "}
             / {formatDate(data.created_at)} / {data.model_id}
-            {data.edited_from && " / edited by you"}
+            {isEdited(data) && " / edited by you"}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>
           {data.company && <p className="text-muted">{data.company}</p>}
@@ -110,7 +122,7 @@ export function GenerationPage() {
         <ErrorNote error={retry.error ?? regenerate.error} />
       </div>
       {celebrating && <Celebration onDone={stopCelebrating} />}
-      {data.status === "ready" && <Review generation={data} />}
+      {data.status === "ready" && <Review key={data.generation_id} generation={data} />}
       {data.status === "failed" && <Failure generation={data} />}
       {(data.status === "queued" || data.status === "processing") && (
         <Progress status={data.status} />
@@ -205,9 +217,9 @@ function Review({ generation }: { generation: GenerationDetail }) {
           ))}
         </div>
         <iframe
-          key={document}
+          key={`${document}-${generation.updated_at}`}
           title={document === "cv_pdf" ? "CV preview" : "Letter preview"}
-          src={fileUrl(generation.generation_id, document)}
+          src={previewUrl(generation.generation_id, document, generation.updated_at)}
           className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
         />
       </section>
@@ -257,7 +269,7 @@ function ReviewList({ generation }: { generation: GenerationDetail }) {
       {generation.explanations.length > 0 && (
         <>
           <h2 className="mt-6 text-lg font-semibold tracking-tight">
-            {generation.edited_from ? "Edits made by the model" : "Edits made"}
+            {isEdited(generation) ? "Edits made by the model" : "Edits made"}
           </h2>
           <ul className="mt-2 space-y-2">
             {generation.explanations.map((item, index) => (
@@ -285,13 +297,50 @@ function ReviewList({ generation }: { generation: GenerationDetail }) {
         {FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
           <a
             key={name}
-            href={fileUrl(generation.generation_id, name, true)}
+            href={downloadUrl(generation.generation_id, name, generation.updated_at)}
             className="underline underline-offset-4"
           >
             {text}
           </a>
         ))}
       </div>
+      {generation.previous_versions.length > 0 && <PreviousVersions generation={generation} />}
     </div>
+  );
+}
+
+function PreviousVersions({ generation }: { generation: GenerationDetail }) {
+  const id = generation.generation_id;
+  return (
+    <>
+      <h2 className="mt-6 text-lg font-semibold tracking-tight">Previous versions</h2>
+      <ul className="mt-2 space-y-2">
+        {generation.previous_versions.toReversed().map(({ number, saved_at: savedAt }) => (
+          <li key={number} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <span className="font-medium">
+              Version {number}
+              {number === 1 && !generation.starts_from_edit && " (the model's version)"}
+            </span>
+            <span className="text-muted">{formatDate(savedAt)}</span>
+            <a
+              href={versionFileUrl(id, number, "cv_pdf")}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Open the PDF of version ${number}`}
+              className="underline underline-offset-4"
+            >
+              PDF
+            </a>
+            <a
+              href={versionFileUrl(id, number, "cv_tex", true)}
+              aria-label={`Download the .tex of version ${number}`}
+              className="underline underline-offset-4"
+            >
+              .tex
+            </a>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }

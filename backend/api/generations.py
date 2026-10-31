@@ -28,6 +28,7 @@ CONTENT_TYPES = {
     ".tex": "text/plain; charset=utf-8",
     ".log": "text/plain; charset=utf-8",
 }
+CHANGED_ELSEWHERE = "This CV was changed elsewhere. Save again to replace it."
 
 
 class GenerationRequest(BaseModel):
@@ -52,6 +53,14 @@ class Explanation(BaseModel):
 
 class CvEdit(BaseModel):
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
+    updated_at: str  # The saved state the draft started from.
+
+
+class CvVersion(BaseModel):
+    """A CV that a later edit replaced; number 1 is the oldest."""
+
+    number: int
+    saved_at: str
 
 
 class Generation(BaseModel):
@@ -61,7 +70,6 @@ class Generation(BaseModel):
     company: str | None = None
     job_url: str | None = None
     model_id: str
-    edited_from: str | None = None  # The generation whose CV the user edited.
     status: Status
     created_at: str
     updated_at: str
@@ -78,6 +86,9 @@ class GenerationDetail(Generation):
     changes: list[Change]
     explanations: list[Explanation]
     compilation_log: str | None = None
+    previous_versions: list[CvVersion]
+    # The old edit flow gave each edit its own record, so the first CV on one is the user's.
+    starts_from_edit: bool
 
 
 def retryable(record):
@@ -135,6 +146,11 @@ def detail(context, record):
         changes=changes,
         explanations=explanations,
         compilation_log=log,
+        previous_versions=[
+            CvVersion(number=number, saved_at=version["saved_at"])
+            for number, version in enumerate(record.get("cv_versions", []), start=1)
+        ],
+        starts_from_edit="edited_from" in record,
     )
 
 
@@ -246,14 +262,16 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
     return summary(context, submit(context, request, force=True))
 
 
-@router.post("/{generation_id}/edit", status_code=201)
+@router.post("/{generation_id}/edit")
 def edit_cv(
     generation_id: str, body: CvEdit, context: AppContext, user: CurrentUser
 ) -> GenerationDetail:
-    """Compile the user's CV source here and save it as a new version; nothing is queued."""
+    """Compile the user's CV source here and save it over the current CV; nothing is queued."""
     record = load(context, user, generation_id)
     if record["status"] != "ready":
         raise HTTPException(409, f"A {record['status']} generation cannot be edited")
+    if record["updated_at"] != body.updated_at:
+        raise HTTPException(409, CHANGED_ELSEWHERE)
     validate_cv(body.cv_latex)
     try:
         pdf = compile_source(body.cv_latex, context.settings.compile_document)
@@ -262,22 +280,14 @@ def edit_cv(
         raise HTTPException(422, exc.feedback) from None
     except RuntimeError as exc:  # TeX is not installed where the API runs.
         raise HTTPException(503, str(exc)) from None
-    return detail(context, context.generations.save_edit(record, body.cv_latex, pdf))
+    saved = context.generations.save_edit(record, body.cv_latex, pdf)
+    if saved is None:
+        raise HTTPException(409, CHANGED_ELSEWHERE)
+    return detail(context, saved)
 
 
-@router.get("/{generation_id}/files/{name}")
-def get_file(
-    generation_id: str,
-    name: str,
-    context: AppContext,
-    user: CurrentUser,
-    download: bool = False,
-) -> Response:
+def file_response(context, record, reference, *, download, cache_control):
     """Served by the API so the browser never needs a signed S3 link that can expire."""
-    record = load(context, user, generation_id)
-    reference = downloads(record).get(name)
-    if reference is None:
-        raise HTTPException(404, "File not found")
     path = PurePosixPath(reference["key"])
     disposition = f'attachment; filename="{download_name(record, path)}"'
     if not download:
@@ -288,6 +298,45 @@ def get_file(
         headers={
             "Content-Disposition": disposition,
             "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "private, max-age=3600",
+            "Cache-Control": cache_control,
         },
+    )
+
+
+@router.get("/{generation_id}/files/{name}")
+def get_file(
+    generation_id: str,
+    name: str,
+    context: AppContext,
+    user: CurrentUser,
+    download: bool = False,
+) -> Response:
+    """The current file. An edit changes what this URL returns, so it must be revalidated."""
+    record = load(context, user, generation_id)
+    reference = downloads(record).get(name)
+    if reference is None:
+        raise HTTPException(404, "File not found")
+    return file_response(
+        context, record, reference, download=download, cache_control="private, no-cache"
+    )
+
+
+@router.get("/{generation_id}/versions/{number}/files/{name}")
+def get_version_file(
+    generation_id: str,
+    number: int,
+    name: str,
+    context: AppContext,
+    user: CurrentUser,
+    download: bool = False,
+) -> Response:
+    """A file of a CV that an edit replaced; those never change, so it can be cached."""
+    record = load(context, user, generation_id)
+    versions = record.get("cv_versions", [])
+    # Numbers start at 1, and without the check a negative one would count from the end.
+    files = versions[number - 1]["files"] if 1 <= number <= len(versions) else {}
+    if name not in files:
+        raise HTTPException(404, "File not found")
+    return file_response(
+        context, record, files[name], download=download, cache_control="private, max-age=3600"
     )

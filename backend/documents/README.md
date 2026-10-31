@@ -41,9 +41,22 @@ with the error, for up to 3 attempts in one run. After the third the generation 
 problem. A failed `retry` that has a saved rewrite tries that one first.
 
 A user can also edit the CV source of a ready generation (`POST /api/generations/{id}/edit`).
-The API compiles it and `save_edit` stores a new ready version directly: no queue, worker or
-model. It keeps the letter, keywords and the model's explanations of the generation it came
-from, and none of the checks above apply, since the compiler decides.
+The API compiles it and `save_edit` updates the same record directly: no queue, worker or
+model. The generation id, `created_at` and `job_created` stay the same, so the job still has
+one entry. It keeps the letter, keywords and the model's explanations, and none of the checks
+above apply, since the compiler decides. The new files go under `edits/<uuid>/`, and `diff` is
+always computed against the frozen original CV.
+
+The CV an edit replaces is appended to the record's `cv_versions`, oldest first, as its file
+references and `saved_at` (its `updated_at`), so version 1 is the model's CV. A record the old
+edit flow left behind has `edited_from` and its first CV is already the user's; the API reports
+that as `starts_from_edit`, and nothing writes the attribute any more. The request carries the
+`updated_at` its draft started from, and a different one gets a 409 before anything compiles.
+The update is conditional on `status` and that `updated_at`: of two saves from the same read,
+the second gets a 409 instead of dropping a version. A compile failure saves nothing.
+
+`regenerate` does not use edits: it makes a separate generation from the frozen inputs, with
+no version history.
 
 The edited CV is compiled with pdfLaTeX, or with XeLaTeX when it uses `fontspec`
 (the letter always uses XeLaTeX). The file must be self-contained: multi-file Overleaf
