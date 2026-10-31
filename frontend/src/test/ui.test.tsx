@@ -57,6 +57,7 @@ const GENERATION: Generation = {
   company: "Example",
   job_url: "https://example.com/job",
   model_id: "model",
+  language: "en",
   status: "ready",
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
@@ -121,7 +122,11 @@ describe("TailorDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
     expect(await screen.findByText("Status page")).toBeInTheDocument();
     const post = calls.find((call) => call.method === "POST");
-    expect(JSON.parse(post!.body)).toEqual({ job_id: "job-1", cv_id: CV.cv_id });
+    expect(JSON.parse(post!.body)).toEqual({
+      job_id: "job-1",
+      cv_id: CV.cv_id,
+      language: "en",
+    });
   });
 
   it("sends the chosen model, defaulting to the first", async () => {
@@ -145,6 +150,31 @@ describe("TailorDialog", () => {
     await screen.findByText("Status page");
     const post = calls.find((call) => call.method === "POST");
     expect(JSON.parse(post!.body).model_id).toBe("sonnet");
+  });
+
+  it("sends the chosen language and says the changes stay in English", async () => {
+    const calls = server({
+      "GET /api/cvs": () => json([CV]),
+      "GET /api/options": () =>
+        json({
+          models: [],
+          languages: [
+            { id: "en", label: "English" },
+            { id: "fr", label: "French" },
+          ],
+        }),
+      "POST /api/generations": () => json({ generation_id: "g1", status: "queued" }, 201),
+    });
+    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    const picker = await screen.findByRole("combobox", { name: /Which language/, hidden: true });
+    expect(picker).toHaveValue("en");
+    expect(screen.getByText(/changes stays in English/)).toBeInTheDocument();
+    await screen.findByText("cv.tex");
+    await userEvent.selectOptions(picker, "fr");
+    await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
+    await screen.findByText("Status page");
+    const post = calls.find((call) => call.method === "POST");
+    expect(JSON.parse(post!.body).language).toBe("fr");
   });
 
   it("links to the profile when the API says one is missing", async () => {
@@ -635,6 +665,11 @@ describe("GenerationPage", () => {
       "/api/generations/g1/versions/cv/1/files/cv_tex?download=true",
     );
     expect(screen.getByText(/edited by you/)).toBeInTheDocument();
+  });
+
+  it("names French on a French generation", async () => {
+    open({ ...detail, language: "fr" });
+    expect(await screen.findByText(/\/ French/)).toBeInTheDocument();
   });
 
   it("shows no version history or edited label before the first edit", async () => {

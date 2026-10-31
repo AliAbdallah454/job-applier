@@ -596,6 +596,15 @@
             ],
             "title": "Job Url"
           },
+          "language": {
+            "default": "en",
+            "enum": [
+              "en",
+              "fr"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
           "model_id": {
             "title": "Model Id",
             "type": "string"
@@ -734,6 +743,15 @@
             "title": "Keywords",
             "type": "array"
           },
+          "language": {
+            "default": "en",
+            "enum": [
+              "en",
+              "fr"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
           "model_id": {
             "title": "Model Id",
             "type": "string"
@@ -808,6 +826,15 @@
           },
           "job_id": {
             "title": "Job Id",
+            "type": "string"
+          },
+          "language": {
+            "default": "en",
+            "enum": [
+              "en",
+              "fr"
+            ],
+            "title": "Language",
             "type": "string"
           },
           "model_id": {
@@ -1195,7 +1222,7 @@
       },
       "ModelOption": {
         "additionalProperties": false,
-        "description": "A model the user can pick for tailoring.",
+        "description": "A model or language the user can pick for tailoring.",
         "properties": {
           "id": {
             "maxLength": 10000,
@@ -1237,6 +1264,13 @@
             "title": "Demo",
             "type": "boolean"
           },
+          "languages": {
+            "items": {
+              "$ref": "#/components/schemas/ModelOption"
+            },
+            "title": "Languages",
+            "type": "array"
+          },
           "models": {
             "items": {
               "$ref": "#/components/schemas/ModelOption"
@@ -1261,6 +1295,7 @@
           "contract_types",
           "seniorities",
           "models",
+          "languages",
           "user_id",
           "demo"
         ],

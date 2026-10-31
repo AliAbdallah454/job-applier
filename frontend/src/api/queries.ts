@@ -9,6 +9,7 @@ import {
   api,
   type CandidateProfile,
   type Document,
+  type Language,
   ApiError,
   previewUrl,
   type Status,
@@ -129,7 +130,7 @@ export function useGeneration(id: string) {
 export function useStartGeneration() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { job_id: string; cv_id: string; model_id?: string }) =>
+    mutationFn: (body: { job_id: string; cv_id: string; model_id?: string; language: Language }) =>
       unwrap(api.POST("/api/generations", { body })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
   });

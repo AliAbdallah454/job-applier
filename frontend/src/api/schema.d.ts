@@ -463,6 +463,12 @@ export interface components {
             job_title: string;
             /** Job Url */
             job_url?: string | null;
+            /**
+             * Language
+             * @default en
+             * @enum {string}
+             */
+            language: "en" | "fr";
             /** Model Id */
             model_id: string;
             /** Review Required */
@@ -503,6 +509,12 @@ export interface components {
             job_url?: string | null;
             /** Keywords */
             keywords: string[];
+            /**
+             * Language
+             * @default en
+             * @enum {string}
+             */
+            language: "en" | "fr";
             /** Model Id */
             model_id: string;
             /** Previous Versions */
@@ -531,6 +543,12 @@ export interface components {
             cv_id: string;
             /** Job Id */
             job_id: string;
+            /**
+             * Language
+             * @default en
+             * @enum {string}
+             */
+            language: "en" | "fr";
             /** Model Id */
             model_id?: string | null;
         };
@@ -615,7 +633,7 @@ export interface components {
         };
         /**
          * ModelOption
-         * @description A model the user can pick for tailoring.
+         * @description A model or language the user can pick for tailoring.
          */
         ModelOption: {
             /** Id */
@@ -631,6 +649,8 @@ export interface components {
             contract_types: string[];
             /** Demo */
             demo: boolean;
+            /** Languages */
+            languages: components["schemas"]["ModelOption"][];
             /** Models */
             models: components["schemas"]["ModelOption"][];
             /** Seniorities */

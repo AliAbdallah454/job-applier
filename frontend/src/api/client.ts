@@ -11,6 +11,7 @@ export type GenerationDetail = Schemas["GenerationDetail"];
 export type CandidateProfile = Schemas["CandidateProfile"];
 export type Status = Generation["status"];
 export type Document = Schemas["DocumentVersion"]["document"];
+export type Language = NonNullable<Schemas["GenerationRequest"]["language"]>;
 
 export const api = createClient<paths>({
   baseUrl: window.location.origin,

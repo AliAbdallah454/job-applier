@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { ApiError, type Job } from "../api/client";
+import { ApiError, type Job, type Language } from "../api/client";
 import { useCvs, useOptions, useStartGeneration, useUploadCv } from "../api/queries";
 import { Button, ErrorNote, Eyebrow, formatDate } from "./ui";
 
@@ -11,9 +11,12 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
   const cvs = useCvs();
   const upload = useUploadCv();
   const start = useStartGeneration();
-  const models = useOptions().data?.models ?? [];
+  const options = useOptions().data;
+  const models = options?.models ?? [];
+  const languages = options?.languages ?? [];
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedModel, setPickedModel] = useState<string | null>(null);
+  const [language, setLanguage] = useState<Language>("en");
   const selected = picked ?? cvs.data?.[0]?.cv_id ?? null;
   const model = pickedModel ?? models[0]?.id;
 
@@ -91,6 +94,26 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
         </label>
       )}
 
+      {languages.length > 0 && (
+        <label className="mt-5 block text-sm font-medium">
+          Which language?
+          <select
+            className="mt-2 block w-full border border-rule bg-paper p-2 font-normal"
+            value={language}
+            onChange={(event) => setLanguage(event.target.value as Language)}
+          >
+            {languages.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs font-normal text-muted">
+            For the CV and both letters. The list of changes stays in English.
+          </span>
+        </label>
+      )}
+
       <div className="mt-4 flex flex-col gap-2">
         <ErrorNote error={cvs.error ?? upload.error ?? start.error} />
         {needsProfile && (
@@ -108,7 +131,7 @@ export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }
           onClick={() =>
             selected &&
             start.mutate(
-              { job_id: job.job_id, cv_id: selected, model_id: model },
+              { job_id: job.job_id, cv_id: selected, model_id: model, language },
               { onSuccess: (generation) => navigate(`/generations/${generation.generation_id}`) },
             )
           }

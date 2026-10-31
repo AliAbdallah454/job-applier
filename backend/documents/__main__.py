@@ -54,6 +54,7 @@ def main():
     jobs.add_argument("--job-file", help="JSON with title, description, optional company/job_id")
     parser.add_argument("--cv-file", help="Your LaTeX CV to tailor")
     parser.add_argument("--model", help="Model ID; defaults to the first configured model")
+    parser.add_argument("--language", choices=["en", "fr"], default="en")
     parser.add_argument("--force", action="store_true", help="Create a new generation revision")
     args = parser.parse_args()
     if args.command == "generate" and not ((args.job_id or args.job_file) and args.cv_file):

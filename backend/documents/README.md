@@ -1,7 +1,10 @@
 # Documents
 
 Tailors your own LaTeX CV to one job and writes a motivation letter (why you want the role)
-and a cover letter (why you fit it). The model does
+and a cover letter (why you fit it), in English or French. In French the CV is translated too,
+while the model's list of changes stays in English for your review. A French CV compiled with
+pdfLaTeX and without `fontenc` also gets `\usepackage[T1]{fontenc}` and `lmodern` after
+`\documentclass`; the default encoding builds é from two glyphs, which reads as ´e in the PDF text. The model does
 not build a CV from scratch: it rewrites the body of the CV you supply, using the job
 description and your profile as extra facts. Any LaTeX template works.
 

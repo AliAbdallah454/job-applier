@@ -108,6 +108,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["user_id"], "ali")
         self.assertEqual(body["seniorities"], ["entry", "junior", "mid", "senior"])
         self.assertFalse(body["demo"])
+        self.assertEqual([language["id"] for language in body["languages"]], ["en", "fr"])
 
     def test_jobs_filter_and_invalid_values_return_400(self):
         self.add_job("job-2", "senior")
@@ -223,6 +224,37 @@ class ApiTests(unittest.TestCase):
             ],
         )
         self.assertFalse(body["retryable"])
+
+    def test_tailoring_in_french_is_frozen_with_the_generation_and_kept_on_regenerate(self):
+        self.client.put("/api/profile", json=PROFILE)
+        cv_id = self.upload().json()["cv_id"]
+        request = {"job_id": "job-1", "cv_id": cv_id}
+        english = self.client.post("/api/generations", json=request).json()
+        french = self.client.post("/api/generations", json={**request, "language": "fr"}).json()
+        self.assertEqual(english["language"], "en")
+        self.assertEqual(french["language"], "fr")
+        self.assertNotEqual(english["generation_id"], french["generation_id"])
+
+        self.process(french["generation_id"])
+        again = self.client.post(f"/api/generations/{french['generation_id']}/regenerate").json()
+        self.assertEqual(again["language"], "fr")
+        record = self.context.generations.get("ali", again["generation_id"])
+        frozen = json.loads(self.context.generations.read_file(record["input"]))
+        self.assertEqual(frozen["language"], "fr")
+
+    def test_an_unknown_language_is_rejected_and_old_records_read_as_english(self):
+        self.client.put("/api/profile", json=PROFILE)
+        cv_id = self.upload().json()["cv_id"]
+        request = {"job_id": "job-1", "cv_id": cv_id, "language": "de"}
+        self.assertEqual(self.client.post("/api/generations", json=request).status_code, 422)
+        generation_id = self.tailor().json()["generation_id"]
+        self.context.generations.table.update_item(
+            Key={"user_id": "ali", "generation_id": generation_id},
+            UpdateExpression="REMOVE #language",
+            ExpressionAttributeNames={"#language": "language"},
+        )
+        body = self.client.get(f"/api/generations/{generation_id}").json()
+        self.assertEqual(body["language"], "en")
 
     def test_tailoring_uses_the_chosen_model_and_rejects_unknown_ones(self):
         self.assertEqual(

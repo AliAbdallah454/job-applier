@@ -72,6 +72,7 @@ class GenerationStore:
                 "job_created": f"{request.job.job_id}#{created}#{generation_id}",
                 "profile_version": request.profile.version,
                 "model_id": request.model_id,
+                "language": request.language,
                 "prompt_version": request.prompt_version,
                 "input_hash": digest,
                 "input": snapshot,

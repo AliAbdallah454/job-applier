@@ -7,12 +7,32 @@ import tempfile
 from pathlib import Path, PurePosixPath
 
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import engine, escape, rewrite_cv
+from backend.documents.latex import engine, escape, rewrite_cv, with_accented_text
 from backend.documents.models import GenerationInput, TailoredCv
+
+LETTER_WORDING = {
+    "en": {
+        "application": "Application: ",
+        "recipient": "Hiring team",
+        "greeting": "Dear Hiring Team,",
+        "closing": "Yours sincerely,",
+        "layout": "",
+    },
+    "fr": {
+        "application": "Candidature : ",
+        "recipient": "Équipe de recrutement",
+        "greeting": "Madame, Monsieur,",
+        "closing": "Je vous prie d'agréer, Madame, Monsieur, "
+        "l'expression de mes salutations distinguées.",
+        # The worker has no French hyphenation patterns, and English ones split words wrongly.
+        "layout": r"\raggedright\hyphenpenalty=10000",
+    },
+}
 
 
 def render_letter(request: GenerationInput, paragraphs):
     profile = request.profile
+    wording = LETTER_WORDING[request.language]
     contact = escape(" | ".join(filter(None, [profile.location, profile.email, profile.phone])))
     return "\n".join(
         [
@@ -25,13 +45,14 @@ def render_letter(request: GenerationInput, paragraphs):
             r"\setlength{\parindent}{0pt}",
             r"\setlength{\parskip}{10pt}",
             r"\begin{document}",
+            wording["layout"],
             r"\textbf{" + escape(profile.full_name) + r"}\par",
             contact + r"\par",
-            r"\textbf{Application: " + escape(request.job.title) + r"}\par",
-            escape(request.job.company or "Hiring team") + r"\par",
-            "Dear Hiring Team,",
+            r"\textbf{" + wording["application"] + escape(request.job.title) + r"}\par",
+            escape(request.job.company or wording["recipient"]) + r"\par",
+            wording["greeting"],
             *(escape(paragraph) + r"\par" for paragraph in paragraphs),
-            "Yours sincerely," + r"\par",
+            wording["closing"] + r"\par",
             escape(profile.full_name),
             r"\end{document}",
         ]
@@ -39,8 +60,9 @@ def render_letter(request: GenerationInput, paragraphs):
 
 
 def render_sources(request: GenerationInput, content: TailoredCv):
+    cv = rewrite_cv(request.cv_latex, content.cv_body)
     return {
-        "cv.tex": rewrite_cv(request.cv_latex, content.cv_body).encode(),
+        "cv.tex": (with_accented_text(cv) if request.language == "fr" else cv).encode(),
         "motivation_letter.tex": render_letter(
             request, content.motivation_letter_paragraphs
         ).encode(),

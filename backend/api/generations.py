@@ -16,7 +16,7 @@ from backend.api.deps import AppContext, CurrentUser
 from backend.api.profile import load_profile
 from backend.documents.errors import DocumentCompilationError
 from backend.documents.latex import validate_cv
-from backend.documents.models import PROMPT_VERSION, GenerationInput, Job
+from backend.documents.models import PROMPT_VERSION, GenerationInput, Job, Language
 from backend.documents.render import compile_source
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
@@ -36,6 +36,7 @@ class GenerationRequest(BaseModel):
     job_id: str
     cv_id: str
     model_id: str | None = None  # The first configured model when left out.
+    language: Language = "en"
 
 
 class Change(BaseModel):
@@ -77,6 +78,7 @@ class Generation(BaseModel):
     company: str | None = None
     job_url: str | None = None
     model_id: str
+    language: Language = "en"  # Records from before languages have no value.
     status: Status
     created_at: str
     updated_at: str
@@ -218,6 +220,7 @@ def create_generation(
         profile=profile,
         job=load_job(context, body.job_id),
         model_id=body.model_id or models[0],
+        language=body.language,
         cv_latex=read_cv(context, user, body.cv_id),
     )
     return summary(context, submit(context, request))

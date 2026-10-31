@@ -97,6 +97,7 @@ export function GenerationPage() {
               Tailored CVs
             </Link>{" "}
             / {formatDate(data.created_at)} / {data.model_id}
+            {data.language === "fr" && " / French"}
             {isEdited(data) && " / edited by you"}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>

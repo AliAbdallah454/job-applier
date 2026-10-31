@@ -7,8 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
-PROMPT_VERSION = 8
+PROMPT_VERSION = 9
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
+Language = Literal["en", "fr"]
 
 
 class StrictModel(BaseModel):
@@ -18,7 +19,7 @@ class StrictModel(BaseModel):
 
 
 class ModelOption(StrictModel):
-    """A model the user can pick for tailoring."""
+    """A model or language the user can pick for tailoring."""
 
     id: Text
     label: Text
@@ -31,6 +32,9 @@ DOCUMENT_MODELS = (
     ModelOption(id="us.anthropic.claude-opus-4-6-v1", label="Claude Opus 4.6"),
     ModelOption(id="us.amazon.nova-pro-v1:0", label="Nova Pro"),
 )
+
+
+LANGUAGES = (ModelOption(id="en", label="English"), ModelOption(id="fr", label="French"))
 
 
 class Job(StrictModel):
@@ -51,7 +55,8 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    prompt_version: Literal[5, 6, 7, 8] = PROMPT_VERSION
+    prompt_version: Literal[5, 6, 7, 8, 9] = PROMPT_VERSION
+    language: Language = "en"  # Of the CV and letters; the change list is always in English.
 
 
 class CvChange(StrictModel):

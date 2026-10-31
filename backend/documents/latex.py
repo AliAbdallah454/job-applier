@@ -49,6 +49,22 @@ def engine(source):
     return "xelatex" if uses_fontspec or "\\setmainfont" in source else "pdflatex"
 
 
+def with_accented_text(source):
+    """Give a pdfLaTeX CV an encoding with accented glyphs, or its PDF text reads ´e to an ATS.
+
+    After \\documentclass, so that a font the CV chooses still wins over Latin Modern.
+    """
+    if engine(source) == "xelatex" or "{fontenc}" in source:
+        return source
+    packages = "\n\\usepackage[T1]{fontenc}\n\\usepackage{lmodern}"
+    return re.sub(
+        r"\\documentclass\s*(\[[^\]]*\])?\s*\{[^}]*\}",
+        lambda match: match[0] + packages,
+        source,
+        count=1,
+    )
+
+
 def unescaped(text, characters):
     return len(re.findall(r"(?<!\\)[" + re.escape(characters) + "]", text))
 

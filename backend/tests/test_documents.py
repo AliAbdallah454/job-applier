@@ -18,9 +18,17 @@ from moto import mock_aws
 from pydantic import ValidationError
 
 from backend.documents.__main__ import main as cli_main
-from backend.documents.bedrock import BedrockGenerator, tool_schema
+from backend.documents.bedrock import SYSTEM, BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
-from backend.documents.latex import cv_body, diff_cv, engine, escape, rewrite_cv, validate_cv
+from backend.documents.latex import (
+    cv_body,
+    diff_cv,
+    engine,
+    escape,
+    rewrite_cv,
+    validate_cv,
+    with_accented_text,
+)
 from backend.documents.models import GenerationInput, Job, TailoredCv
 from backend.documents.render import compile_pdf, read_synctex, render_sources, source_line
 from backend.documents.service import DocumentService
@@ -140,6 +148,36 @@ class CvRewriteTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def test_a_french_cv_gets_an_encoding_only_when_it_needs_one(self):
+        added = with_accented_text("\\documentclass[11pt]{article}\n\\usepackage{x}")
+        self.assertEqual(
+            added.split("\n")[:3],
+            [
+                "\\documentclass[11pt]{article}",
+                "\\usepackage[T1]{fontenc}",
+                "\\usepackage{lmodern}",
+            ],
+        )
+        for source in (
+            "\\documentclass{article}\n\\usepackage[T1]{fontenc}",
+            "\\documentclass{article}\n\\usepackage{fontspec}",
+        ):
+            self.assertEqual(with_accented_text(source), source)
+        french = request().model_copy(update={"language": "fr"})
+        with patch("backend.documents.render.with_accented_text", return_value="encoded"):
+            self.assertEqual(render_sources(french, content())["cv.tex"], b"encoded")
+            self.assertNotEqual(render_sources(request(), content())["cv.tex"], b"encoded")
+
+    def test_a_french_generation_gets_french_letter_wording(self):
+        french = request().model_copy(update={"language": "fr"})
+        letter = render_sources(french, content())["cover_letter.tex"].decode()
+        self.assertIn("Madame, Monsieur,", letter)
+        self.assertIn("salutations distinguées", letter)
+        self.assertIn("Candidature : ", letter)
+        self.assertNotIn("Dear Hiring Team", letter)
+        english = render_sources(request(), content())["cover_letter.tex"].decode()
+        self.assertIn("Dear Hiring Team,", english)
+
     def test_each_letter_gets_its_own_paragraphs(self):
         sources = render_sources(request(), content())
         self.assertIn(b"I want to build tools.", sources["motivation_letter.tex"])
@@ -611,6 +649,10 @@ class GenerationTests(unittest.TestCase):
         self.request.model_id = "us.anthropic.claude-sonnet-4-6"
         self.assertEqual(self.service.process(self.submit()), "ready")
 
+    def test_the_prompt_keeps_changes_in_english_and_bans_em_dashes(self):
+        self.assertIn("changes are always in English", SYSTEM)
+        self.assertIn("Never use an em dash", SYSTEM)
+
     def test_bedrock_sends_cv_but_not_profile_contact_details(self):
         client = Mock()
         client.converse.return_value = {
@@ -633,6 +675,12 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn("email", prompt["candidate_facts"])
         self.assertNotIn("full_name", prompt["candidate_facts"])
         self.assertNotIn("previous_attempt", prompt)
+        self.assertEqual(prompt["output_language"], "English")
+        french = self.request.model_copy(update={"language": "fr"})
+        with self.assertRaises(ValueError):
+            BedrockGenerator(client)(french)
+        prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["output_language"], "French")
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(self.request, {"error": "Fix this"})
         prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
