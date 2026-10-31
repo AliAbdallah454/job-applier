@@ -1,6 +1,7 @@
 import { diffWordsWithSpace } from "diff";
 
 import type { Change } from "../api/client";
+import { LatexCode } from "./LatexCode";
 
 export function EditDiff({ change }: { change: Change }) {
   const parts = diffWordsWithSpace(change.before, change.after);
@@ -22,7 +23,7 @@ export function EditDiff({ change }: { change: Change }) {
               </del>
             );
           }
-          return <span key={index}>{part.value}</span>;
+          return <LatexCode key={index} text={part.value} />;
         })}
       </pre>
     </article>

@@ -59,7 +59,9 @@ latest CV: its id and date stay the same. The letter, keywords and the model's l
 kept, and the diff compares the original CV with your version. If it does not compile, nothing is
 saved and your draft stays open beside the error. If the same CV was saved elsewhere after your draft
 began, you get a 409, the page shows that newer CV, your draft stays, and saving again replaces it. A
-draft that was not saved is lost when the page is left.
+draft that was not saved is lost when the page is left. The source is coloured by `LatexCode.tsx`:
+a textarea can't colour its text, so a coloured copy sits behind its transparent text, and both
+must keep the same box, font and wrapping.
 
 The CV preview is drawn with PDF.js (the letter stays in the browser's viewer). Double-clicking it
 opens **Edit LaTeX** with the matching line selected: SyncTeX gives a line near the text, which can

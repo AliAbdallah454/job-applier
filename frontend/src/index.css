@@ -10,6 +10,10 @@
   --muted: light-dark(#6b6b6b, #9a9a9a);
   --rule: light-dark(#e2e2e2, #2a2a2a);
   --wash: light-dark(#f4f4f4, #171717);
+  --tex-command: light-dark(#0550ae, #79c0ff);
+  --tex-environment: light-dark(#7a3fd1, #d2a8ff);
+  --tex-math: light-dark(#116329, #7ee787);
+  --tex-bracket: light-dark(#953800, #ffa657);
   color-scheme: light dark;
 }
 :root[data-theme="light"] {
@@ -25,6 +29,10 @@
   --color-muted: var(--muted);
   --color-rule: var(--rule);
   --color-wash: var(--wash);
+  --color-tex-command: var(--tex-command);
+  --color-tex-environment: var(--tex-environment);
+  --color-tex-math: var(--tex-math);
+  --color-tex-bracket: var(--tex-bracket);
   --font-sans: "Schibsted Grotesk Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
 }

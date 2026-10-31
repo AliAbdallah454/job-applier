@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { ApiError, type GenerationDetail } from "../api/client";
 import { useCvSource, useEditCv } from "../api/queries";
+import { LatexCode } from "./LatexCode";
 import { refineLine } from "./sourceLine";
 import { Button, ErrorNote, Skeleton } from "./ui";
+
+// Both layers need the same box and wrapping, or the colours drift off the letters.
+const SOURCE_TEXT =
+  "absolute inset-0 size-full p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap [scrollbar-gutter:stable]";
 
 /** Selects a 1-based line and scrolls to it; long lines wrap, so it measures rather than counts. */
 function selectLine(textarea: HTMLTextAreaElement, line: number) {
@@ -48,6 +53,7 @@ export function CvEditor({
   const text = draft?.text ?? source.data ?? "";
   const base = draft?.base ?? generation.updated_at;
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const colored = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     const element = textarea.current;
@@ -61,15 +67,29 @@ export function CvEditor({
       <label className="sr-only" htmlFor="cv-source">
         CV LaTeX source
       </label>
-      <textarea
-        ref={textarea}
-        id="cv-source"
-        value={text}
-        spellCheck={false}
-        readOnly={save.isPending}
-        onChange={(event) => setDraft({ text: event.target.value, base })}
-        className="h-[60dvh] w-full flex-1 resize-none border border-rule bg-wash p-3 font-mono text-xs leading-relaxed outline-none focus:border-ink lg:h-auto"
-      />
+      {/* A textarea can't colour text, so the coloured copy shows through its transparent text. */}
+      <div className="relative h-[60dvh] w-full border border-rule bg-wash focus-within:border-ink lg:h-auto lg:flex-1">
+        <pre
+          ref={colored}
+          aria-hidden
+          className={`pointer-events-none overflow-hidden ${SOURCE_TEXT}`}
+        >
+          <LatexCode text={text} />
+          {"\n"}
+        </pre>
+        <textarea
+          ref={textarea}
+          id="cv-source"
+          value={text}
+          spellCheck={false}
+          readOnly={save.isPending}
+          onChange={(event) => setDraft({ text: event.target.value, base })}
+          onScroll={(event) => {
+            if (colored.current) colored.current.scrollTop = event.currentTarget.scrollTop;
+          }}
+          className={`resize-none bg-transparent text-transparent caret-ink outline-none ${SOURCE_TEXT}`}
+        />
+      </div>
       <div>
         <Button
           disabled={save.isPending || source.data === undefined || text === source.data}
