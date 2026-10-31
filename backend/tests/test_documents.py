@@ -652,6 +652,7 @@ class GenerationTests(unittest.TestCase):
     def test_the_prompt_keeps_changes_in_english_and_bans_em_dashes(self):
         self.assertIn("changes are always in English", SYSTEM)
         self.assertIn("Never use an em dash", SYSTEM)
+        self.assertIn("never\n  move an experience entry", SYSTEM)
 
     def test_bedrock_sends_cv_but_not_profile_contact_details(self):
         client = Mock()

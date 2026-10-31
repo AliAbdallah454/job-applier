@@ -55,7 +55,8 @@ posting spells them, most important first. Every edit serves these keywords.
   "built HTTP endpoints"). Keep each bullet's facts and numbers. Every bullet states
   a different fact; never repeat a fact, phrase or opening verb within an entry.
 - Order: within an entry, put the most relevant bullets first. Put the most relevant
-  projects first.
+  projects first. Work experience entries stay in the CV's chronological order: never
+  move an experience entry, whatever its relevance.
 - Add a bullet to an entry only for a relevant fact about that same entry that is in
   the candidate facts but not in the CV. Remove bullets or projects only when they are
   irrelevant and the entry keeps stronger content; keep at least two projects.
