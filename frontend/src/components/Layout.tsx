@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { isActive, useGenerations, useOptions } from "../api/queries";
+import { ThemeToggle } from "./ThemeToggle";
 
 const LINKS = [
   { to: "/", label: "Jobs" },
@@ -107,6 +108,7 @@ export function Layout() {
               demo data
             </span>
           )}
+          <ThemeToggle />
         </span>
       </header>
       <main key={pathname} className="rise flex min-h-0 flex-1 flex-col">

@@ -5,6 +5,9 @@ the result. React, TypeScript, Vite and Tailwind talk to the FastAPI app in `bac
 Both run on your machine. Nothing here is deployed, and the API has no login, so it only
 binds to localhost and refuses writes from other sites.
 
+The app follows the system's light or dark setting until you use the toggle in the top bar.
+That choice is saved in the browser.
+
 ## Start
 
 Two terminals, from the repository root:
