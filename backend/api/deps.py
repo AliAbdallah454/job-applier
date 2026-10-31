@@ -11,7 +11,7 @@ from fastapi import Depends, Request
 from backend.api.catalogue import JobCatalogue
 from backend.documents.__main__ import stack_outputs
 from backend.documents.models import DOCUMENT_MODELS, ModelOption
-from backend.documents.render import compile_pdf
+from backend.documents.render import compile_pdf, source_line
 from backend.documents.storage import GenerationStore
 
 
@@ -26,6 +26,7 @@ class Settings:
     document_queue_url: str
     document_models: tuple[ModelOption, ...] = DOCUMENT_MODELS
     compile_document: Callable = compile_pdf
+    find_source_line: Callable = source_line
     demo: bool = False
 
 

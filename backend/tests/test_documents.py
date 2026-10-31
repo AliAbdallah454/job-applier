@@ -2,6 +2,7 @@
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,7 +22,7 @@ from backend.documents.bedrock import BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
 from backend.documents.latex import cv_body, diff_cv, engine, escape, rewrite_cv, validate_cv
 from backend.documents.models import GenerationInput, Job, TailoredCv
-from backend.documents.render import compile_pdf, render_sources
+from backend.documents.render import compile_pdf, read_synctex, render_sources, source_line
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.profiles.models import CandidateProfile
@@ -57,6 +58,23 @@ def content(body=BODY):
         changes=[{"change": "Named FastAPI in a bullet", "reason": "FastAPI"}],
         letter_paragraphs=["I am interested in the role.", "I built Python tools."],
     )
+
+
+@unittest.skipUnless(shutil.which("synctex"), "needs TeX Live")
+class SourceLineTests(unittest.TestCase):
+    def test_a_position_on_the_page_finds_the_line_that_wrote_it(self):
+        source = (
+            "\\documentclass{article}\n\\begin{document}\nFirst\n\n"
+            "\\vspace{9cm}\n\nLast\n\\end{document}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "cv.tex"
+            path.write_text(source)
+            compile_pdf(path)
+            synctex = read_synctex(path)
+        self.assertEqual(source_line(synctex, 1, 150, 128), 3)  # Near the top of the page.
+        self.assertIn(source_line(synctex, 1, 150, 400), (5, 7))
+        self.assertIsNone(source_line(synctex, 9, 150, 128))
 
 
 class CvRewriteTests(unittest.TestCase):
@@ -256,6 +274,15 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("a hand-edited endpoint", changes["diff"][0]["after"])
         self.assertEqual(len(changes["explanations"]), 1)
         self.assertEqual(self.store.get(edited["user_id"], edited["generation_id"]), edited)
+
+    def test_an_edit_replaces_the_position_data_of_the_cv_it_replaces(self):
+        message = self.submit()
+        self.service.process(message)
+        source = self.request.cv_latex.replace("a prediction endpoint", "a hand-edited endpoint")
+        edited = self.store.save_edit(self.store.get(**message), source, b"%PDF-1", b"positions")
+        self.assertEqual(self.store.read_file(edited["artifacts"]["cv_synctex"]), b"positions")
+        again = self.store.save_edit(edited, source, b"%PDF-2")
+        self.assertNotIn("cv_synctex", again["artifacts"])
 
     def test_each_edit_keeps_the_replaced_cv_and_diffs_against_the_original(self):
         message = self.submit()

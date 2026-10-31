@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from backend.documents.errors import DocumentCompilationError, DocumentError, error_detail
 from backend.documents.latex import cv_body, diff_cv
 from backend.documents.models import PROMPT_VERSION, GenerationInput, TailoredCv
-from backend.documents.render import compile_pdf, render_sources
+from backend.documents.render import compile_pdf, read_synctex, render_sources
 from backend.documents.storage import encode, timestamp
 
 LOG = logging.getLogger(__name__)
@@ -26,13 +26,15 @@ class DocumentService:
         self.compile_document = compile_document
 
     def compile_all(self, sources, prefix, failure_artifacts):
-        pdfs = {}
+        pdfs, synctex = {}, None
         with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
             for name, source in sources.items():
                 path = Path(directory) / name
                 path.write_bytes(source)
                 try:
                     pdfs[name] = self.compile_document(path)
+                    if name == "cv.tex":
+                        synctex = read_synctex(path)
                 except DocumentCompilationError as exc:
                     # Save before TemporaryDirectory removes the failed compilation files.
                     try:
@@ -48,7 +50,7 @@ class DocumentService:
                             type(upload_error).__name__,
                         )
                     raise
-        return pdfs
+        return pdfs, synctex
 
     def process(self, message):
         record, token = self.store.claim(
@@ -87,7 +89,7 @@ class DocumentService:
                     stage = "rendering_documents"
                     sources = render_sources(request, content)
                     stage = "compiling_pdf"
-                    pdfs = self.compile_all(sources, prefix, failure_artifacts)
+                    pdfs, synctex = self.compile_all(sources, prefix, failure_artifacts)
                     break
                 except (DocumentError, ValidationError) as exc:
                     if attempt == MAX_ATTEMPTS:
@@ -113,6 +115,10 @@ class DocumentService:
                 )
                 artifacts[stem + "_pdf"] = self.store.put_file(
                     f"{prefix}/{stem}.pdf", pdfs[name], "application/pdf"
+                )
+            if synctex:
+                artifacts["cv_synctex"] = self.store.put_file(
+                    f"{prefix}/cv.synctex.gz", synctex, "application/gzip"
                 )
             # The diff is computed so it cannot miss a change; the explanations come from the
             # model. The rewrite is checked structurally, not fact-checked.

@@ -63,6 +63,10 @@ class CvVersion(BaseModel):
     saved_at: str
 
 
+class SourceLine(BaseModel):
+    line: int
+
+
 class Generation(BaseModel):
     generation_id: str
     job_id: str
@@ -274,16 +278,39 @@ def edit_cv(
         raise HTTPException(409, CHANGED_ELSEWHERE)
     validate_cv(body.cv_latex)
     try:
-        pdf = compile_source(body.cv_latex, context.settings.compile_document)
+        pdf, synctex = compile_source(body.cv_latex, context.settings.compile_document)
     except DocumentCompilationError as exc:
         # The compiler's output quotes this user's own source, and only goes back to them.
         raise HTTPException(422, exc.feedback) from None
     except RuntimeError as exc:  # TeX is not installed where the API runs.
         raise HTTPException(503, str(exc)) from None
-    saved = context.generations.save_edit(record, body.cv_latex, pdf)
+    saved = context.generations.save_edit(record, body.cv_latex, pdf, synctex)
     if saved is None:
         raise HTTPException(409, CHANGED_ELSEWHERE)
     return detail(context, saved)
+
+
+@router.get("/{generation_id}/source-line")
+def find_source_line(
+    generation_id: str,
+    page: Annotated[int, Query(ge=1)],
+    x: Annotated[float, Query(ge=0)],
+    y: Annotated[float, Query(ge=0)],
+    context: AppContext,
+    user: CurrentUser,
+) -> SourceLine:
+    """The line of the CV source at a position in its PDF, in points from the top left."""
+    reference = downloads(load(context, user, generation_id)).get("cv_synctex")
+    if reference is None:
+        raise HTTPException(404, "This CV has no position data yet. Save an edit to add it.")
+    synctex = context.generations.read_file(reference)
+    try:
+        line = context.settings.find_source_line(synctex, page, x, y)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from None
+    if line is None:
+        raise HTTPException(404, "No LaTeX source was found at that spot.")
+    return SourceLine(line=line)
 
 
 def file_response(context, record, reference, *, download, cache_control):

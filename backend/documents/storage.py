@@ -93,7 +93,7 @@ class GenerationStore:
             self.enqueue(sqs, queue_url, user_id, generation_id)
         return record
 
-    def save_edit(self, record, source, pdf):
+    def save_edit(self, record, source, pdf, synctex=None):
         """Put the user's compiled CV on the record, or None if it changed since it was read.
 
         The CV it replaces goes to cv_versions, oldest first; the letter and input stay the same.
@@ -115,6 +115,11 @@ class GenerationStore:
                 f"{prefix}/changes.json", encode(changes), "application/json"
             ),
         }
+        artifacts.pop("cv_synctex", None)  # It describes the replaced PDF.
+        if synctex:
+            artifacts["cv_synctex"] = self.put_file(
+                f"{prefix}/cv.synctex.gz", synctex, "application/gzip"
+            )
         replaced = {
             "saved_at": record["updated_at"],
             "files": {

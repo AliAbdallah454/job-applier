@@ -4,7 +4,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from backend.documents.errors import DocumentCompilationError, DocumentError
 from backend.documents.latex import engine, escape, rewrite_cv
@@ -39,11 +39,45 @@ def render_sources(request: GenerationInput, content: TailoredCv):
     return {"cv.tex": cv.encode(), "motivation_letter.tex": letter.encode()}
 
 
+def read_synctex(source: Path):
+    """The file linking the PDF back to source lines, if this compiler wrote one."""
+    output = source.with_suffix(".synctex.gz")
+    return output.read_bytes() if output.exists() else None
+
+
 def compile_source(source: str, compile_document):
     with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
         path = Path(directory) / "cv.tex"
         path.write_text(source, encoding="utf-8")
-        return compile_document(path)
+        return compile_document(path), read_synctex(path)
+
+
+def source_line(synctex: bytes, page: int, x: float, y: float, *, timeout=10):
+    """The cv.tex line at a PDF position in points from the page's top left, or None."""
+    tool = shutil.which("synctex")
+    if not tool:
+        raise RuntimeError("synctex is required; install TeX Live")
+    with tempfile.TemporaryDirectory(prefix="job-documents-") as directory:
+        (Path(directory) / "cv.synctex.gz").write_bytes(synctex)
+        try:
+            result = subprocess.run(
+                [tool, "edit", "-o", f"{page}:{x:.2f}:{y:.2f}:cv.pdf"],
+                cwd=directory,
+                check=True,
+                capture_output=True,
+                timeout=timeout,
+                env={"PATH": os.environ.get("PATH", ""), "HOME": directory, "LANG": "C.UTF-8"},
+            )
+        except subprocess.SubprocessError as exc:
+            raise RuntimeError("synctex could not read this CV's position data") from exc
+    # Package files can also appear in the results, and the user can only edit cv.tex.
+    current = ""
+    for row in result.stdout.decode("utf-8", "replace").splitlines():
+        if row.startswith("Input:"):
+            current = row.removeprefix("Input:")
+        elif row.startswith("Line:") and PurePosixPath(current).name == "cv.tex":
+            return int(row.removeprefix("Line:"))
+    return None
 
 
 def compile_pdf(source: Path, *, timeout=60):
@@ -65,6 +99,7 @@ def compile_pdf(source: Path, *, timeout=60):
                 "-no-shell-escape",
                 "-interaction=nonstopmode",
                 "-halt-on-error",
+                "-synctex=1",
                 source.name,
             ],
             cwd=source.parent,

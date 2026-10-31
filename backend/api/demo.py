@@ -153,7 +153,12 @@ def fake_compile(path):
             b"                {Example compile failure}\n",
         )
     size = f"Source length: {len(source)} characters."  # Shows that an edit was compiled.
+    path.with_suffix(".synctex.gz").write_bytes(b"demo")
     return example_pdf(path.stem, ["Example document produced by demo mode.", size])
+
+
+def fake_source_line(synctex, page, x, y):
+    return 1 + int(y / 20)
 
 
 def run_worker(context):
@@ -291,6 +296,7 @@ def start_demo(user_id):
                 ModelOption(id="demo-strong", label="Demo strong model"),
             ),
             compile_document=fake_compile,
+            find_source_line=fake_source_line,
             demo=True,
         ),
         region=REGION,

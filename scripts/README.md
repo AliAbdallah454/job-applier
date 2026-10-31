@@ -6,9 +6,24 @@ not import these scripts or include their fixtures in runtime images.
 
 ```text
 scripts/
+├── clear_generations.py
 ├── seed_profiles.py
-└── tests/test_seed_profiles.py
+└── tests/
 ```
+
+## Clear generated documents
+
+Deletes every record in the document generations table and every version of the
+files under `users/<id>/generations/`, for all users. Uploaded CVs and profiles stay.
+It only reports the counts unless you pass `--yes`, and the deletion cannot be undone:
+
+```sh
+uv run python -m scripts.clear_generations --stack Application --region us-east-1
+uv run python -m scripts.clear_generations --stack Application --region us-east-1 --yes
+```
+
+Run it while no generation is queued or running: a message left on the queue fails
+once its record is gone and ends up in the DLQ. Rerun it after an interrupted run.
 
 ## Seed or reset demo profiles
 

@@ -58,6 +58,11 @@ the second gets a 409 instead of dropping a version. A compile failure saves not
 `regenerate` does not use edits: it makes a separate generation from the frozen inputs, with
 no version history.
 
+Compiling with `-synctex=1` also writes a file linking PDF positions to source lines, stored as
+the `cv_synctex` artifact for the current CV. `GET /api/generations/{id}/source-line` runs the
+`synctex` tool on it, so that tool must be installed where the API runs. A CV compiled before this
+has no such file until its next edit.
+
 The edited CV is compiled with pdfLaTeX, or with XeLaTeX when it uses `fontspec`
 (the letter always uses XeLaTeX). The file must be self-contained: multi-file Overleaf
 projects (`\input`, custom `.cls`, images) are not supported yet.

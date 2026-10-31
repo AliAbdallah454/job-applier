@@ -44,6 +44,7 @@ class ApiTests(unittest.TestCase):
         )
         self.sqs = self.session.client("sqs")
         self.queue = self.sqs.create_queue(QueueName="documents")["QueueUrl"]
+        self.find_line = Mock()
         self.compiler = Mock(return_value=example_pdf("edited", []))
         self.settings = Settings(
             user_id="ali",
@@ -58,6 +59,7 @@ class ApiTests(unittest.TestCase):
                 ModelOption(id="other-model", label="Other model"),
             ),
             compile_document=self.compiler,
+            find_source_line=self.find_line,
         )
         self.context = Context(self.settings, region="us-east-1")
         self.client = TestClient(create_app(self.context), base_url="http://localhost")
@@ -452,6 +454,24 @@ class ApiTests(unittest.TestCase):
         )
         self.assertTrue(response.headers["content-type"].startswith("text/plain"))
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def test_a_position_in_the_pdf_finds_its_source_line(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        url = f"/api/generations/{original}/source-line?page=1&x=20.5&y=30"
+        self.assertIn("position data", self.client.get(url).json()["detail"])
+
+        def compile_with_positions(path):
+            path.with_suffix(".synctex.gz").write_bytes(b"positions")
+            return example_pdf("x", [])
+
+        self.compiler.side_effect = compile_with_positions
+        self.edit(original, self.added_by_hand(original, "Edit"))
+        self.find_line.return_value = None
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.find_line.return_value = 12
+        self.assertEqual(self.client.get(url).json(), {"line": 12})
+        self.find_line.assert_called_with(b"positions", 1, 20.5, 30.0)
 
     def test_an_edit_that_does_not_compile_returns_the_error_and_saves_nothing(self):
         original = self.tailor().json()["generation_id"]
