@@ -61,6 +61,12 @@ saved and your draft stays open beside the error. If the same CV was saved elsew
 began, you get a 409, the page shows that newer CV, your draft stays, and saving again replaces it. A
 draft that was not saved is lost when the page is left.
 
+The CV preview is drawn with PDF.js (the letter stays in the browser's viewer). Double-clicking it
+opens **Edit LaTeX** with the matching line selected: SyncTeX gives a line near the text, which can
+be a few lines late inside multi-line macros, and `sourceLine.ts` then picks the line within ten
+of it that holds most of the clicked words. With no match, it stays on the SyncTeX line. Text cannot be selected and
+links cannot be followed in this preview; the downloaded PDF has both.
+
 Each CV an edit replaces appears under **Previous versions** in the review list, newest first, with
 its PDF and `.tex`. Version 1 is the model's, unless the entry came from the old edit flow, which
 gave each edit its own entry. Old versions can be opened but not restored.
@@ -77,6 +83,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
 | `POST /api/generations/{id}/edit` | Compile `cv_latex` and save it over the current CV. Must carry the `updated_at` the draft started from, or it returns 409; 422 with the error if it does not compile |
+| `GET /api/generations/{id}/source-line?page=&x=&y=` | The CV source line at a position in the PDF, in points from the page's top left; 404 if there is none |
 | `GET /api/generations/{id}/files/{name}` | Current PDF, source or log; add `?download=true` to save it under a name from the job title. An edit changes what this URL returns, so it is sent as `no-cache`, and previews and CV downloads add `v=<updated_at>` |
 | `GET /api/generations/{id}/versions/{number}/files/{name}` | `cv_pdf`, `cv_tex` or `changes_json` of a replaced CV, from number 1; takes `?download=true` too, and these never change, so they can be cached |
 

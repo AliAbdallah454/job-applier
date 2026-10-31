@@ -12,6 +12,26 @@ import { GenerationPage } from "../pages/Generation";
 import { History } from "../pages/History";
 import { Jobs } from "../pages/Jobs";
 
+// PDF.js cannot draw in jsdom; PdfPreview has its own tests, and this keeps what pages depend on.
+vi.mock("../components/PdfPreview", () => ({
+  PdfPreview: ({
+    title,
+    url,
+    onLocate,
+  }: {
+    title: string;
+    url: string;
+    onLocate: (position: { page: number; x: number; y: number }, text: string) => void;
+  }) => (
+    <>
+      <iframe title={title} src={url} />
+      <button type="button" onClick={() => onLocate({ page: 1, x: 200, y: 100 }, "")}>
+        Double-click the CV
+      </button>
+    </>
+  ),
+}));
+
 const JOB: Job = {
   job_id: "job-1",
   title: "Junior Engineer",
@@ -332,6 +352,39 @@ describe("GenerationPage", () => {
     expect(editor).toHaveValue("new text");
     expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
     expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g1");
+  });
+
+  it("opens the editor on the line a double-click in the CV points to", async () => {
+    const user = userEvent.setup();
+    const calls = open(detail, {
+      "GET /api/generations/g1/source-line": () => json({ line: 2 }),
+      "GET /api/generations/g1/files/cv_tex": () => new Response("first\nsecond\nthird"),
+    });
+    await user.click(await screen.findByRole("button", { name: "Double-click the CV" }));
+
+    const editor = await screen.findByLabelText("CV LaTeX source");
+    await waitFor(() => expect(editor).toHaveFocus());
+    expect(screen.getByRole("tab", { name: "Edit LaTeX" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const textarea = editor as HTMLTextAreaElement;
+    expect(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd)).toBe("second");
+    expect(calls.find(({ path }) => path.endsWith("/source-line"))?.search).toBe(
+      "?page=1&x=200&y=100",
+    );
+  });
+
+  it("stays on the review and says why when a CV has no position data", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "GET /api/generations/g1/source-line": () =>
+        json({ detail: "This CV has no position data yet. Save an edit to add it." }, 404),
+    });
+    await user.click(await screen.findByRole("button", { name: "Double-click the CV" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("no position data");
+    expect(screen.getByRole("tab", { name: "Review" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("shows the CV that got there first after a 409, then saves over it", async () => {

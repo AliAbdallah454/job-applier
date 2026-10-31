@@ -8,10 +8,11 @@ import {
   previewUrl,
   versionFileUrl,
 } from "../api/client";
-import { useGeneration, useRegenerate, useRetry } from "../api/queries";
+import { useFindSourceLine, useGeneration, useRegenerate, useRetry } from "../api/queries";
 import { CvEditor } from "../components/CvEditor";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
+import { PdfPreview } from "../components/PdfPreview";
 import { Celebration, Joke, Mascot, Snip } from "../components/Silly";
 import {
   Button,
@@ -194,6 +195,8 @@ function Failure({ generation }: { generation: GenerationDetail }) {
 function Review({ generation }: { generation: GenerationDetail }) {
   const [document, setDocument] = useState<"cv_pdf" | "motivation_letter_pdf">("cv_pdf");
   const [panel, setPanel] = useState<"review" | "edit">("review");
+  const [jump, setJump] = useState<{ line: number; text: string } | null>(null);
+  const findLine = useFindSourceLine(generation.generation_id);
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
       <section className="flex min-w-0 flex-col border-b border-rule lg:border-r lg:border-b-0">
@@ -216,12 +219,32 @@ function Review({ generation }: { generation: GenerationDetail }) {
             </button>
           ))}
         </div>
-        <iframe
-          key={`${document}-${generation.updated_at}`}
-          title={document === "cv_pdf" ? "CV preview" : "Letter preview"}
-          src={previewUrl(generation.generation_id, document, generation.updated_at)}
-          className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
-        />
+        {document === "cv_pdf" ? (
+          <PdfPreview
+            title="CV preview"
+            url={previewUrl(generation.generation_id, document, generation.updated_at)}
+            onLocate={(position, text) =>
+              findLine.mutate(position, {
+                onSuccess: ({ line }) => {
+                  setPanel("edit");
+                  setJump({ line, text });
+                },
+              })
+            }
+          />
+        ) : (
+          <iframe
+            key={generation.updated_at}
+            title="Letter preview"
+            src={previewUrl(generation.generation_id, document, generation.updated_at)}
+            className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
+          />
+        )}
+        {document === "cv_pdf" && findLine.error && (
+          <div className="px-4 sm:px-6">
+            <ErrorNote error={findLine.error} />
+          </div>
+        )}
       </section>
       <section className="flex min-w-0 flex-col">
         <div className="flex gap-5 px-4 pt-3 text-sm sm:px-6" role="tablist">
@@ -245,7 +268,7 @@ function Review({ generation }: { generation: GenerationDetail }) {
         </div>
         {/* Hidden rather than removed, so switching tabs keeps an unsaved draft. */}
         <div hidden={panel !== "edit"} className="min-h-0 flex-1">
-          <CvEditor generation={generation} />
+          <CvEditor generation={generation} jump={jump} />
         </div>
         <div hidden={panel !== "review"} className="min-h-0 flex-1 lg:overflow-y-auto">
           <ReviewList generation={generation} />

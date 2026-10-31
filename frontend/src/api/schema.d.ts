@@ -154,6 +154,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generations/{generation_id}/source-line": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find Source Line
+         * @description The line of the CV source at a position in its PDF, in points from the top left.
+         */
+        get: operations["find_source_line_api_generations__generation_id__source_line_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generations/{generation_id}/versions/{number}/files/{name}": {
         parameters: {
             query?: never;
@@ -639,6 +659,11 @@ export interface components {
             /** Proficiency */
             proficiency?: string | null;
         };
+        /** SourceLine */
+        SourceLine: {
+            /** Line */
+            line: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -957,6 +982,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Generation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    find_source_line_api_generations__generation_id__source_line_get: {
+        parameters: {
+            query: {
+                page: number;
+                x: number;
+                y: number;
+            };
+            header?: never;
+            path: {
+                generation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceLine"];
                 };
             };
             /** @description Validation Error */

@@ -172,6 +172,17 @@ export function useCvSource(id: string, updatedAt: string) {
   });
 }
 
+export function useFindSourceLine(id: string) {
+  return useMutation({
+    mutationFn: (position: { page: number; x: number; y: number }) =>
+      unwrap(
+        api.GET("/api/generations/{generation_id}/source-line", {
+          params: { path: { generation_id: id }, query: position },
+        }),
+      ),
+  });
+}
+
 export function useEditCv(id: string) {
   const client = useQueryClient();
   return useMutation({
