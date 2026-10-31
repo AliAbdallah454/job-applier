@@ -31,6 +31,7 @@ LinkedinId = Annotated[str, Path(pattern=r"^[0-9]{6,20}$")]
 class MailStatus(BaseModel):
     problem: Literal["credentials", "table"] | None
     syncing: bool
+    tracking_since: str | None = None  # Mail from before this is never read.
     last_synced_at: str | None = None
     last_error: str | None = None
 
@@ -145,6 +146,7 @@ def mail_status(context: AppContext, user: CurrentUser) -> MailStatus:
     return MailStatus(
         problem=None if context.settings.open_mailbox else "credentials",
         syncing=syncing,
+        tracking_since=state.get("tracking_started_at"),
         last_synced_at=state.get("last_synced_at"),
         last_error=state.get("last_error"),
     )

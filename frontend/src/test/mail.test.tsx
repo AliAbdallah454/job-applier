@@ -166,6 +166,25 @@ describe("Applications", () => {
     expect(screen.getByText("Nothing matches.")).toBeInTheDocument();
   });
 
+  it("says from when mail is followed", async () => {
+    server({
+      "GET /api/mail/status": () =>
+        json({ ...OK_STATUS, tracking_since: "2026-10-01T10:00:00Z" }),
+      "GET /api/applications": () => json([]),
+    });
+    mount(<Applications />);
+    expect(await screen.findByText(/Following mail received since/)).toBeInTheDocument();
+  });
+
+  it("explains that older mail is not read before the first check", async () => {
+    server({
+      "GET /api/mail/status": () => json({ problem: null, syncing: false }),
+      "GET /api/applications": () => json([]),
+    });
+    mount(<Applications />);
+    expect(await screen.findByText(/older mail is not read/)).toBeInTheDocument();
+  });
+
   it("says how to connect a mailbox and offers no sync until it is set up", async () => {
     server({
       "GET /api/mail/status": () => json({ ...OK_STATUS, problem: "credentials" }),
@@ -203,7 +222,7 @@ describe("Applications", () => {
         </MemoryRouter>
       </QueryClientProvider>,
     );
-    await screen.findByText(/Last checked/);
+    await screen.findByText(/last checked/);
     const before = calls.filter((call) => call.path === "/api/applications").length;
     status = { ...OK_STATUS, last_synced_at: "2026-10-03T10:00:00Z" };
     await client.invalidateQueries({ queryKey: ["mail-status"] });

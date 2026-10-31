@@ -363,6 +363,16 @@ def seed(session, user_id):
         Key=f"users/{user_id}/cvs/{uuid.uuid4().hex}/example_cv.tex",
         Body=(ROOT / "data/cv-examples/jake_cv.tex").read_bytes(),
     )
+    # Tracking began before the demo inbox's messages, which all count as new.
+    session.resource("dynamodb").Table("mail").put_item(
+        Item={
+            "user_id": user_id,
+            "item_id": "sync",
+            "tracking_started_at": (datetime.now(UTC) - timedelta(days=30)).isoformat(),
+            "uid_validity": DemoMailbox.validity,
+            "last_uid": 0,
+        }
+    )
     # Job posts opened earlier: the first matches an email, and the second has none yet.
     now = datetime.now(UTC)
     mail = session.resource("dynamodb").Table("mail")

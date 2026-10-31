@@ -2,16 +2,15 @@
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import date
 
 from backend.mail.classifier import visible_text
 from backend.mail.linkedin import parse_alert
 from backend.mail.matching import find_application, find_interest
-from backend.mail.storage import apply_status, digest
+from backend.mail.storage import apply_status, digest, timestamp
 from backend.mail.triage import triage
 
 LOG = logging.getLogger(__name__)
-FIRST_SYNC_DAYS = 45
 UNKNOWN_COMPANY = "Unknown company"
 
 
@@ -69,11 +68,27 @@ def handle(store, user_id, mailbox, classify, header, key, kind, result):
         result.updates += 1
 
 
-def sync_mailbox(store, user_id, mailbox, classify, *, today=None):
+def start_tracking(store, user_id, mailbox, started_at):
+    """Note where the inbox ends now; everything already in it stays unread."""
+    store.save_sync_state(
+        user_id,
+        tracking_started_at=started_at,
+        uid_validity=mailbox.validity,
+        last_uid=mailbox.next_uid - 1,
+    )
+
+
+def sync_mailbox(store, user_id, mailbox, classify):
     state = store.sync_state(user_id)
+    started_at = state.get("tracking_started_at")
+    if started_at is None:
+        start_tracking(store, user_id, mailbox, timestamp())
+        return SyncResult()
+
     same_folder = state.get("uid_validity") == mailbox.validity
-    last_uid = int(state["last_uid"]) if same_folder and "last_uid" in state else None
-    since = (today or datetime.now(UTC).date()) - timedelta(days=FIRST_SYNC_DAYS)
+    last_uid = int(state["last_uid"]) if same_folder else None
+    # After the server renumbers the folder, only dates can tell what came after the start.
+    since = date.fromisoformat(started_at[:10])
     result = SyncResult()
 
     def save_position(uid):
@@ -81,7 +96,7 @@ def sync_mailbox(store, user_id, mailbox, classify, *, today=None):
 
     newest = last_uid
     for header in mailbox.new_headers(after_uid=last_uid, since=since):
-        kind = triage(header.sender, header.subject)
+        kind = header.received_at >= started_at and triage(header.sender, header.subject)
         key = message_key(header)
         if kind and not store.seen(user_id, key):
             try:

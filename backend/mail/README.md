@@ -33,13 +33,16 @@ revoke the app password.
 
 1. The sync opens `INBOX` read-only, so it cannot change, delete or mark anything. Mail that
    Gmail filters skip the inbox for is not seen.
-2. It reads the sender, subject and date of mail since the last sync, or of the last 45 days on
-   the first sync. `triage.py` decides from those alone which messages are worth opening. Other
-   mail is never downloaded.
-3. Possible application mail is sent to Amazon Bedrock (Claude Haiku), at most 6,000 characters
+2. **Tracking starts at the first sync.** That sync reads nothing: it notes when it ran and where
+   the inbox ends, and mail already there is never read, even if the mail server later renumbers
+   the folder. The Applications and Job emails pages show that date. An application from before
+   then appears only when a new email about it arrives, at whatever stage that email gives.
+3. Each later sync reads the sender, subject and date of new mail. `triage.py` decides from those
+   alone which messages are worth opening. Other mail is never downloaded.
+4. Possible application mail is sent to Amazon Bedrock (Claude Haiku), at most 6,000 characters
    of it, and the model says whether it is about an application, and its employer, role and
    stage. Email is treated as untrusted data; the model can only return those fields.
-4. Job alerts are parsed in `linkedin.py`, with no model involved.
+5. Job alerts are parsed in `linkedin.py`, with no model involved.
 
 **Message bodies are never stored.** The table keeps the subject, date and stage of
 each application event, the jobs listed in alerts and a hash of each message read.

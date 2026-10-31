@@ -1561,6 +1561,17 @@
           "syncing": {
             "title": "Syncing",
             "type": "boolean"
+          },
+          "tracking_since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracking Since"
           }
         },
         "required": [

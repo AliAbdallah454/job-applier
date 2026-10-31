@@ -90,6 +90,7 @@ class ImapMailbox:
         self.connect = connect
         self.imap = None
         self.validity = None
+        self.next_uid = None
 
     def __enter__(self):
         try:
@@ -106,6 +107,7 @@ class ImapMailbox:
             raise MailboxError("The mailbox could not open INBOX.")
         # The folder's UIDs only mean anything while this value stays the same.
         self.validity = self.imap.response("UIDVALIDITY")[1][0].decode()
+        self.next_uid = int(self.imap.response("UIDNEXT")[1][0])
         return self
 
     def __exit__(self, *_):

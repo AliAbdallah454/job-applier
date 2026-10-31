@@ -7,8 +7,22 @@ not import these scripts or include their fixtures in runtime images.
 ```text
 scripts/
 ├── clear_generations.py
+├── clear_mail.py
 ├── seed_profiles.py
 └── tests/
+```
+
+## Clear mail tracking
+
+Removes applications, job emails and the sync position from the mail table, so tracking starts
+again from the next sync. Job posts you opened stay, and so do jobs with a saved description,
+which tailored CVs refer to. Your mailbox is not touched. It only reports the counts unless you
+pass `--yes`, and the deletion cannot be undone. Stop the API first, so a running sync cannot
+write while it clears:
+
+```sh
+uv run python -m scripts.clear_mail --stack Application --region us-east-1
+uv run python -m scripts.clear_mail --stack Application --region us-east-1 --yes
 ```
 
 ## Clear generated documents

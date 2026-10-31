@@ -107,7 +107,8 @@ as the new current version, with no queue and no AI model involved.
 
 ### Mail tracking
 
-The app connects to your inbox read-only and looks at the sender and subject of new mail. Only
+The app connects to your inbox read-only and follows mail from the moment it is connected;
+older mail is never read. It looks at the sender and subject of each new message. Only
 messages that look job-related are opened: application emails go to a small AI model that
 reports the employer, role and stage, and LinkedIn alerts are read for their jobs. Email
 content is not stored. A job's full description is read from its public page only when you

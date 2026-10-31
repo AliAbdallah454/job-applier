@@ -35,9 +35,10 @@ export function MailBar() {
           {syncing ? "Reading your mail…" : "Check mail now"}
         </Button>
         <span aria-live="polite" className="text-sm text-muted">
-          {data?.last_synced_at
-            ? `Last checked ${formatDate(data.last_synced_at)}`
-            : "Not checked yet"}
+          {data?.tracking_since
+            ? `Following mail received since ${formatDate(data.tracking_since)}`
+            : "Follows mail received from the first check on; older mail is not read"}
+          {data?.last_synced_at && ` / last checked ${formatDate(data.last_synced_at)}`}
         </span>
       </div>
       {data?.last_error && <p className="border-l-2 border-ink pl-3 text-sm">{data.last_error}</p>}

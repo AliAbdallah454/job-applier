@@ -93,6 +93,7 @@ def header(uid, sender="jobs@greenhouse-mail.io", subject="Thanks for applying",
 
 class FakeMailbox:
     validity = "7"
+    next_uid = 1
 
     def __init__(self, headers, bodies=None):
         self.headers = headers
@@ -184,6 +185,7 @@ class MailboxTests(unittest.TestCase):
         imap = FakeImap({5: raw_email()})
         with self.open(imap) as mailbox:
             self.assertEqual(mailbox.validity, "99")
+            self.assertEqual(mailbox.next_uid, 99)
             list(mailbox.new_headers(since=date(2026, 3, 9)))
             mailbox.body(5)
         self.assertIs(imap.readonly, True)
@@ -439,9 +441,13 @@ class SyncTests(unittest.TestCase):
             is_application=True, company="Acme", role="Engineer", status="applied"
         )
         self.classify = Mock(return_value=self.verdict)
+        # Tracking started before the mail in these tests, unless a test clears this.
+        self.store.save_sync_state(
+            "ali", tracking_started_at="2026-09-01T00:00:00+00:00", uid_validity="7", last_uid=0
+        )
 
-    def sync(self, mailbox, **options):
-        return sync_mailbox(self.store, "ali", mailbox, self.classify, **options)
+    def sync(self, mailbox):
+        return sync_mailbox(self.store, "ali", mailbox, self.classify)
 
     def test_only_likely_mail_is_opened_and_bodies_are_not_stored(self):
         mailbox = FakeMailbox(
@@ -457,15 +463,63 @@ class SyncTests(unittest.TestCase):
         self.assertNotIn("A very private body", str(items))
         self.assertEqual(len(self.store.applications("ali")), 1)
 
-    def test_the_first_sync_looks_back_and_the_next_continues_after_the_last_uid(self):
+    def fresh_start(self):
+        self.store.table.delete_item(Key={"user_id": "ali", "item_id": "sync"})
+
+    def test_the_first_sync_reads_nothing_already_in_the_inbox(self):
+        self.fresh_start()
         mailbox = FakeMailbox([header(1), header(2)])
-        self.sync(mailbox, today=date(2026, 10, 31))
-        self.assertEqual(mailbox.asked, (None, date(2026, 9, 16)))
+        mailbox.next_uid = 3
+        self.sync(mailbox)
+        self.assertEqual(mailbox.opened, [])
+        self.assertIsNone(mailbox.asked)
+        self.classify.assert_not_called()
+        self.assertEqual(self.store.applications("ali"), [])
+        self.assertEqual(self.store.sync_state("ali")["last_uid"], 2)
+
+        self.sync(mailbox)
+        self.assertEqual(mailbox.asked[0], 2)
+        self.assertEqual(mailbox.opened, [])
+
+    def test_mail_arriving_after_the_start_is_tracked(self):
+        self.fresh_start()
+        mailbox = FakeMailbox([header(1)])
+        mailbox.next_uid = 2
+        self.sync(mailbox)
+        started = self.store.sync_state("ali")["tracking_started_at"]
+        new = MailHeader(2, "<2@x>", "jobs@greenhouse-mail.io", "Thanks for applying", started)
+        mailbox.headers.append(new)
+        self.sync(mailbox)
+        self.assertEqual(mailbox.opened, [2])
+        self.assertEqual(len(self.store.applications("ali")), 1)
+
+    def test_an_empty_inbox_starts_at_the_beginning(self):
+        self.fresh_start()
+        self.sync(FakeMailbox([]))
+        self.assertEqual(self.store.sync_state("ali")["last_uid"], 0)
+
+    def test_the_next_sync_continues_after_the_last_uid(self):
+        mailbox = FakeMailbox([header(1), header(2)])
+        self.sync(mailbox)
         self.sync(mailbox)
         self.assertEqual(mailbox.asked[0], 2)
 
-    def test_a_new_folder_validity_starts_again_without_duplicating_events(self):
-        mailbox = FakeMailbox([header(1)])
+    def test_a_renumbered_folder_does_not_bring_back_mail_from_before_the_start(self):
+        old = header(1, day=1)
+        mailbox = FakeMailbox([old], {})
+        self.store.save_sync_state("ali", tracking_started_at="2026-10-05T00:00:00+00:00")
+        mailbox.validity = "8"
+        mailbox.headers = [
+            MailHeader(1, "<old@x>", old.sender, old.subject, "2026-10-04T23:00:00+00:00"),
+            header(2, day=6),
+        ]
+        self.sync(mailbox)
+        self.assertEqual(mailbox.asked, (None, date(2026, 10, 5)))
+        self.assertEqual(mailbox.opened, [2])
+        self.assertEqual(len(self.store.applications("ali")), 1)
+
+    def test_a_new_folder_validity_does_not_duplicate_events(self):
+        mailbox = FakeMailbox([header(1, day=2)])
         self.sync(mailbox)
         mailbox.validity = "8"
         self.sync(mailbox)
@@ -641,6 +695,7 @@ class MailApiTests(unittest.TestCase):
         self.synced()
         state = self.client.get("/api/mail/status").json()
         self.assertIsNotNone(state["last_synced_at"])
+        self.assertIsNotNone(state["tracking_since"])
         self.assertIsNone(state["last_error"])
 
         def refuse():

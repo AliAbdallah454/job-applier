@@ -904,6 +904,8 @@ export interface components {
             problem: ("credentials" | "table") | null;
             /** Syncing */
             syncing: boolean;
+            /** Tracking Since */
+            tracking_since?: string | null;
         };
         /**
          * ModelOption
