@@ -31,6 +31,16 @@ invent experience, skills or numbers. Every rewrite is checked before it is acce
 the app shows you exactly what changed in the CV, along with the model's reasons in English.
 Nothing is fact-checked automatically, so the final review is yours.
 
+**Follows your applications.** Connect your mailbox and the app recognises application
+emails, in English or French, and keeps track of each one, from applied through interview to
+offer or rejection. Job posts you open are kept as jobs you are interested in, so an email can
+be linked to the right job even if you never tailored a CV, and the app asks "Did you apply?"
+when no email arrives. Each entry shows its history and links to its job and CV. You can
+correct any status yourself.
+
+**Brings in suggested jobs.** LinkedIn job alert emails become groups of jobs in the app, one
+group per email, and you can tailor your CV to any of them.
+
 **Lets you finish the job.** You can edit the LaTeX of the CV and both letters directly in
 the web app and see the compiled PDF beside the code. Double-clicking the CV preview jumps to
 the matching line of code. Each job keeps one entry showing your latest version, and earlier
@@ -38,8 +48,8 @@ versions stay in its history.
 
 ## How it works
 
-The system has two independent parts, a job pipeline and a document pipeline, with a web app
-on top of both.
+The system has a job pipeline, a document pipeline and mail tracking, with a web app on top of
+all three.
 
 ```mermaid
 flowchart TD
@@ -61,10 +71,16 @@ flowchart TD
         Compile --> Store[("Your documents")]
     end
 
+    subgraph Mail["Mail tracking"]
+        Inbox["Your inbox"] --> Reader["Read-only mail sync"]
+        Reader --> Tracked[("Applications and job alerts")]
+    end
+
     Catalogue --> Web
     Labels --> Web
     Web -- "tailor this job" --> Queue
     Store --> Web
+    Tracked --> Web
 ```
 
 ### Job pipeline
@@ -89,9 +105,17 @@ against your user and the job.
 Your own edits skip all of this. The app compiles what you wrote straight away and saves it
 as the new current version, with no queue and no AI model involved.
 
+### Mail tracking
+
+The app connects to your inbox read-only and looks at the sender and subject of new mail. Only
+messages that look job-related are opened: application emails go to a small AI model that
+reports the employer, role and stage, and LinkedIn alerts are read for their jobs. Email
+content is not stored. A job's full description is read from its public page only when you
+choose to tailor your CV to it.
+
 ### Web app
 
-The app is a browser interface backed by an API that reads from both pipelines. It currently
+The app is a browser interface backed by an API that reads from all of this. It currently
 runs locally, with one user, while the pipelines run on AWS.
 
 ### Built with
@@ -111,7 +135,6 @@ Job Applier is being built step by step. These are not implemented yet:
 - Job recommendations for each user
 - User accounts and a hosted version of the app
 - Submitting applications
-- Connecting a mailbox to track responses
 - Overleaf sync
 - Automatic scheduled collection
 

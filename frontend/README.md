@@ -87,6 +87,11 @@ gave each edit its own entry. Old versions can be opened but not restored.
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
+| `GET /api/mail/status`, `POST /api/mail/sync` | Whether the mailbox is connected, the last check, and starting one; see the [mail guide](../backend/mail/README.md) |
+| `GET /api/applications`, `PATCH`/`DELETE /api/applications/{id}` | Tracked applications, correcting a status, and removing an entry |
+| `POST`/`GET /api/applications/interests`, `POST .../{job_id}/applied`, `DELETE .../{job_id}` | Note an opened job post, list those to ask about, and answer "Did you apply?" |
+| `GET /api/mail/alerts` | LinkedIn job emails with their jobs |
+| `POST /api/mail/jobs/{number}/description` | Read a job's description from LinkedIn, or save a pasted one |
 | `POST /api/generations/{id}/edit` | Compile `latex` and save it over `document` (`cv`, `motivation_letter` or `cover_letter`). Must carry the `revision` of that document the draft started from, or it returns 409; 422 with the error if it does not compile |
 | `GET /api/generations/{id}/source-line?page=&x=&y=` | The CV source line at a position in the PDF, in points from the page's top left; 404 if there is none |
 | `GET /api/generations/{id}/files/{name}` | Current PDF, source or log; add `?download=true` to save it under a name from the job title. An edit changes what this URL returns, so it is sent as `no-cache`, and previews and CV downloads add `v=<updated_at>` |

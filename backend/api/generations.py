@@ -18,6 +18,8 @@ from backend.documents.errors import DocumentCompilationError
 from backend.documents.latex import validate_cv
 from backend.documents.models import PROMPT_VERSION, GenerationInput, Job, Language
 from backend.documents.render import compile_source
+from backend.mail.linkedin import job_url
+from backend.mail.storage import MAIL_JOB_PREFIX
 
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 
@@ -121,8 +123,26 @@ def revisions(record):
     }
 
 
+def mail_job_links(context, user_id, job_ids):
+    """Jobs from alert emails are not in the catalogue, so their links come from the mail table."""
+    wanted = [job_id for job_id in job_ids if job_id.startswith(MAIL_JOB_PREFIX)]
+    if not wanted or context.mail is None:
+        return {}
+    saved = context.mail.jobs(user_id)
+    links = {}
+    for job_id in wanted:
+        linkedin_id = job_id.removeprefix(MAIL_JOB_PREFIX)
+        if linkedin_id in saved:
+            company = saved[linkedin_id].get("company") or None
+            links[job_id] = {"company": company, "job_url": job_url(linkedin_id)}
+    return links
+
+
 def summaries(context, records):
-    links = context.catalogue.links(record["job_id"] for record in records)
+    job_ids = [record["job_id"] for record in records]
+    links = context.catalogue.links(job_ids)
+    if records:
+        links |= mail_job_links(context, records[0]["user_id"], job_ids)
     return [
         Generation.model_validate(
             {**record, **links.get(record["job_id"], {}), "files": sorted(downloads(record))}
@@ -183,6 +203,20 @@ def load(context, user, generation_id):
     return record
 
 
+def load_mail_job(context, user, job_id):
+    linkedin_id = job_id.removeprefix(MAIL_JOB_PREFIX)
+    job = context.mail.job(user, linkedin_id) if context.mail else None
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    if not job.get("description"):
+        raise HTTPException(409, "This job needs its description before tailoring")
+    fields = {key: job[key] for key in ("title", "description", "company") if job.get(key)}
+    try:
+        return Job(job_id=job_id, **fields)
+    except ValidationError:
+        raise HTTPException(422, "This job has no usable title or description") from None
+
+
 def load_job(context, job_id):
     item = context.jobs.get_item(Key={"job_id": job_id}, ConsistentRead=True).get("Item")
     if item is None:
@@ -193,6 +227,12 @@ def load_job(context, job_id):
         return Job(job_id=job_id, **fields)
     except ValidationError:
         raise HTTPException(422, "This job has no usable title or description") from None
+
+
+def job_for(context, user, job_id):
+    if job_id.startswith(MAIL_JOB_PREFIX):
+        return load_mail_job(context, user, job_id)
+    return load_job(context, job_id)
 
 
 def model_ids(context):
@@ -218,7 +258,7 @@ def create_generation(
         raise HTTPException(422, "Unknown model")
     request = GenerationInput(
         profile=profile,
-        job=load_job(context, body.job_id),
+        job=job_for(context, user, body.job_id),
         model_id=body.model_id or models[0],
         language=body.language,
         cv_latex=read_cv(context, user, body.cv_id),

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from backend.api import cvs, generations, jobs, profile
+from backend.api import cvs, generations, jobs, mail, profile
 from backend.documents.errors import DocumentError
 
 LOG = logging.getLogger(__name__)
@@ -55,6 +55,6 @@ def create_app(context=None):
     for error in (BotoCoreError, ClientError, RuntimeError):
         app.add_exception_handler(error, aws_unavailable)
 
-    for feature in (jobs, profile, cvs, generations):
+    for feature in (jobs, profile, cvs, generations, mail):
         app.include_router(feature.router)
     return app

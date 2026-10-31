@@ -4,6 +4,7 @@ import json
 import threading
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import boto3
@@ -16,6 +17,9 @@ from backend.documents.models import CvChange, ModelOption, TailoredCv
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.jobs.classification.models import input_hash
+from backend.mail.classifier import MailVerdict
+from backend.mail.linkedin import JobPageError
+from backend.mail.mailbox import MailHeader
 from backend.profiles.models import CandidateProfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,6 +169,85 @@ def fake_source_line(synctex, page, x, y):
     return 1 + int(y / 20)
 
 
+class DemoMailbox:
+    """A fixed inbox with the same shape as the real one, so the mail pages can be tried."""
+
+    validity = "1"
+
+    def __init__(self):
+        self.messages = demo_messages()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return None
+
+    def new_headers(self, *, after_uid=None, since=None):
+        return [item[0] for item in self.messages if item[0].uid > (after_uid or 0)]
+
+    def body(self, uid):
+        return next(item[1] for item in self.messages if item[0].uid == uid)
+
+
+def demo_messages():
+    now = datetime.now(UTC)
+    alert = """Your job alert for software engineer in Paris
+
+Junior Backend Engineer
+Example Labs · Paris, France
+View job: https://www.linkedin.com/comm/jobs/view/1000000001/?trackingId=abc
+
+---------------------------------------------------------
+Graduate Data Engineer
+Northwind · Lyon, France
+View job: https://www.linkedin.com/comm/jobs/view/1000000002/?trackingId=abc
+
+---------------------------------------------------------
+Software Engineer, Platform
+Contoso · Remote
+View job: https://www.linkedin.com/comm/jobs/view/1000000003/?trackingId=abc
+"""
+    rows = [
+        ("no-reply@greenhouse-mail.io", "Thanks for applying to Example Labs", 6, ""),
+        ("jobalerts-noreply@linkedin.com", "3 new jobs for software engineer", 5, alert),
+        ("talent@northwind.example", "Your application to Northwind", 4, ""),
+        ("no-reply@greenhouse-mail.io", "Interview with Example Labs", 2, ""),
+        ("hello@newsletter.example", "This week's best deals", 1, ""),
+        ("talent@northwind.example", "Your application to Northwind: an update", 1, ""),
+    ]
+    return [
+        (
+            MailHeader(
+                uid, f"<{uid}@demo>", sender, subject, (now - timedelta(days=days)).isoformat()
+            ),
+            (body, ""),
+        )
+        for uid, (sender, subject, days, body) in enumerate(rows, start=1)
+    ]
+
+
+class DemoClassifier:
+    def __init__(self, client):
+        pass
+
+    def __call__(self, sender, subject, body):
+        company = "Example Labs" if "Example Labs" in subject else "Northwind"
+        role = "Junior Backend Engineer" if company == "Example Labs" else "Graduate Data Engineer"
+        status = "applied"
+        if "Interview" in subject:
+            status = "interview"
+        elif "update" in subject:
+            status = "rejected"
+        return MailVerdict(is_application=True, company=company, role=role, status=status)
+
+
+def fake_fetch_job(job_id):
+    if job_id == "1000000003":  # Shows what happens when LinkedIn refuses.
+        raise JobPageError("LinkedIn would not show this job right now.")
+    return {"description": "Build and run backend services with Python, SQL and AWS."}
+
+
 def run_worker(context):
     settings = context.settings
     session = boto3.Session(region_name=REGION)
@@ -223,6 +306,7 @@ def create_tables(db):
 
     table("jobs", ["job_id"])
     table("profiles", ["user_id"])
+    table("mail", ["user_id", "item_id"])
     table(
         "classifications",
         ["job_id"],
@@ -279,6 +363,21 @@ def seed(session, user_id):
         Key=f"users/{user_id}/cvs/{uuid.uuid4().hex}/example_cv.tex",
         Body=(ROOT / "data/cv-examples/jake_cv.tex").read_bytes(),
     )
+    # Job posts opened earlier: the first matches an email, and the second has none yet.
+    now = datetime.now(UTC)
+    mail = session.resource("dynamodb").Table("mail")
+    for index, (title, company, *_) in enumerate(JOBS[:2]):
+        mail.put_item(
+            Item={
+                "user_id": user_id,
+                "item_id": f"interest#demo-{index}",
+                "job_id": f"demo-{index}",
+                "title": title,
+                "company": company,
+                "url": "https://example.com",
+                "opened_at": (now - timedelta(days=8 if index == 0 else 2)).isoformat(),
+            }
+        )
     return session.client("sqs").create_queue(QueueName="documents")["QueueUrl"]
 
 
@@ -301,6 +400,10 @@ def start_demo(user_id):
             ),
             compile_document=fake_compile,
             find_source_line=fake_source_line,
+            mail_table="mail",
+            open_mailbox=DemoMailbox,
+            classify_mail=DemoClassifier,
+            fetch_job=fake_fetch_job,
             demo=True,
         ),
         region=REGION,

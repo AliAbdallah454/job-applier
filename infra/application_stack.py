@@ -66,6 +66,21 @@ class ApplicationStack(Stack):
             sort_key=dynamodb.Attribute(name="job_created", type=dynamodb.AttributeType.STRING),
         )
 
+        # Read and written by the API, which runs locally; no worker uses it.
+        self.mail = dynamodb.Table(
+            self,
+            "Mail",
+            partition_key=dynamodb.Attribute(name="user_id", type=dynamodb.AttributeType.STRING),
+            sort_key=dynamodb.Attribute(name="item_id", type=dynamodb.AttributeType.STRING),
+            billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
+            encryption=dynamodb.TableEncryption.AWS_MANAGED,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True
+            ),
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+        CfnOutput(self, "MailTable", value=self.mail.table_name)
+
         raw_maximum = self.node.try_get_context("maxDocumentWorkers")
         raw_timeout = self.node.try_get_context("documentTimeoutSeconds")
         maximum = int(2 if raw_maximum is None else raw_maximum)

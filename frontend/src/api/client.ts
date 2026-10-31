@@ -11,6 +11,11 @@ export type GenerationDetail = Schemas["GenerationDetail"];
 export type CandidateProfile = Schemas["CandidateProfile"];
 export type Status = Generation["status"];
 export type Document = Schemas["DocumentVersion"]["document"];
+export type Application = Schemas["Application"];
+export type ApplicationStatus = Application["status"];
+export type Interest = Schemas["Interest"];
+export type AlertJob = Schemas["AlertJob"];
+export type JobAlert = Schemas["JobAlert"];
 export type Language = NonNullable<Schemas["GenerationRequest"]["language"]>;
 
 export const api = createClient<paths>({

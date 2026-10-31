@@ -7,6 +7,8 @@ import { ThemeToggle } from "./ThemeToggle";
 const LINKS = [
   { to: "/", label: "Jobs" },
   { to: "/generations", label: "Tailored CVs" },
+  { to: "/applications", label: "Applications" },
+  { to: "/job-emails", label: "Job emails" },
   { to: "/cvs", label: "CVs" },
   { to: "/profile", label: "Profile" },
 ];
@@ -70,7 +72,7 @@ export function Layout() {
         </Link>
         <nav
           ref={nav}
-          className="relative order-last flex w-full border border-rule p-0.5 text-sm md:order-none md:w-auto"
+          className="relative order-last flex w-full overflow-x-auto border border-rule p-0.5 text-sm md:order-none md:w-auto"
         >
           {marker && (
             <span

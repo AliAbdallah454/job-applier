@@ -9,7 +9,13 @@ import {
   previewUrl,
   versionFileUrl,
 } from "../api/client";
-import { useFindSourceLine, useGeneration, useRegenerate, useRetry } from "../api/queries";
+import {
+  useApplicationStatuses,
+  useFindSourceLine,
+  useGeneration,
+  useRegenerate,
+  useRetry,
+} from "../api/queries";
 import { DocumentEditor } from "../components/DocumentEditor";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
@@ -64,6 +70,7 @@ export function GenerationPage() {
   const previous = useRef(status);
   const [celebrating, setCelebrating] = useState(false);
   const stopCelebrating = useCallback(() => setCelebrating(false), []);
+  const application = useApplicationStatuses().get(id);
 
   useEffect(() => {
     // Only for a run seen finishing here, not for reopening an old one.
@@ -98,6 +105,7 @@ export function GenerationPage() {
             </Link>{" "}
             / {formatDate(data.created_at)} / {data.model_id}
             {data.language === "fr" && " / French"}
+            {application && ` / application: ${label(application)}`}
             {isEdited(data) && " / edited by you"}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>

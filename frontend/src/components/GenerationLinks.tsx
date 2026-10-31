@@ -1,4 +1,5 @@
 import { downloadUrl, type Generation } from "../api/client";
+import { useNoteJobOpened } from "../api/queries";
 import { ACTION, DownloadIcon, LeaveIcon } from "./ui";
 
 const DOWNLOADS = [
@@ -16,6 +17,7 @@ export function GenerationLinks({
   posting?: boolean;
 }) {
   const { generation_id: id, job_title: title, job_url: url } = generation;
+  const noteOpened = useNoteJobOpened(generation.job_id);
   return (
     <span className="flex flex-wrap gap-1.5">
       {DOWNLOADS.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
@@ -36,6 +38,7 @@ export function GenerationLinks({
           rel="noreferrer"
           aria-label={`Job posting for ${title}`}
           className={ACTION}
+          {...noteOpened}
         >
           Job posting
           <LeaveIcon />

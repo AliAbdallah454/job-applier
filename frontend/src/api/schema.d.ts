@@ -4,6 +4,102 @@
  */
 
 export interface paths {
+    "/api/applications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Applications */
+        get: operations["list_applications_api_applications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Interests
+         * @description Opened jobs to ask about: no email has matched them, and one would have arrived by now.
+         */
+        get: operations["list_interests_api_applications_interests_get"];
+        put?: never;
+        /**
+         * Note Opened Job
+         * @description Interest, not an application: an email or the user has to say that they applied.
+         */
+        post: operations["note_opened_job_api_applications_interests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/interests/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Dismiss Interest */
+        delete: operations["dismiss_interest_api_applications_interests__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/interests/{job_id}/applied": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Applied */
+        post: operations["mark_applied_api_applications_interests__job_id__applied_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/applications/{application_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Application
+         * @description Only the entry goes: its emails stay marked as read, so a sync will not bring it back.
+         */
+        delete: operations["delete_application_api_applications__application_id__delete"];
+        options?: never;
+        head?: never;
+        /** Change Application */
+        patch: operations["change_application_api_applications__application_id__patch"];
+        trace?: never;
+    };
     "/api/cvs": {
         parameters: {
             query?: never;
@@ -228,6 +324,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mail/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Alerts */
+        get: operations["list_alerts_api_mail_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/jobs/{linkedin_id}/description": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Load Job Description
+         * @description Called once for a job the user wants to tailor to; other jobs are never fetched.
+         */
+        post: operations["load_job_description_api_mail_jobs__linkedin_id__description_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Mail Status */
+        get: operations["mail_status_api_mail_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Sync */
+        post: operations["start_sync_api_mail_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/options": {
         parameters: {
             query?: never;
@@ -267,6 +434,65 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AlertJob */
+        AlertJob: {
+            /** Company */
+            company?: string | null;
+            /** Has Description */
+            has_description: boolean;
+            /** Job Id */
+            job_id: string;
+            /** Location */
+            location?: string | null;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /** Application */
+        Application: {
+            /** Application Id */
+            application_id: string;
+            /** Company */
+            company: string;
+            /** Events */
+            events: components["schemas"]["ApplicationEvent"][];
+            /** Generation Id */
+            generation_id?: string | null;
+            /** Job Id */
+            job_id?: string | null;
+            /** Job Url */
+            job_url?: string | null;
+            /** Role */
+            role?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "in_review" | "assessment" | "interview" | "offer" | "rejected";
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ApplicationChange */
+        ApplicationChange: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "in_review" | "assessment" | "interview" | "offer" | "rejected";
+        };
+        /** ApplicationEvent */
+        ApplicationEvent: {
+            /** Received At */
+            received_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "applied" | "in_review" | "assessment" | "interview" | "offer" | "rejected";
+            /** Subject */
+            subject: string;
+        };
         /** Body_upload_cv_api_cvs_post */
         Body_upload_cv_api_cvs_post: {
             /** File */
@@ -557,6 +783,43 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * Interest
+         * @description A job post you opened, kept so a later email can be matched to it.
+         */
+        Interest: {
+            /** Company */
+            company?: string | null;
+            /** Job Id */
+            job_id: string;
+            /** Opened At */
+            opened_at: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url?: string | null;
+        };
+        /** JobAlert */
+        JobAlert: {
+            /** Alert Id */
+            alert_id: string;
+            /** Jobs */
+            jobs: components["schemas"]["AlertJob"][];
+            /** Received At */
+            received_at: string;
+            /** Subject */
+            subject: string;
+        };
+        /** JobDescription */
+        JobDescription: {
+            /** Description */
+            description?: string | null;
+        };
+        /** JobOpened */
+        JobOpened: {
+            /** Job Id */
+            job_id: string;
+        };
         /** JobPage */
         JobPage: {
             /** Jobs */
@@ -630,6 +893,17 @@ export interface components {
              * Format: uri
              */
             url: string;
+        };
+        /** MailStatus */
+        MailStatus: {
+            /** Last Error */
+            last_error?: string | null;
+            /** Last Synced At */
+            last_synced_at?: string | null;
+            /** Problem */
+            problem: ("credentials" | "table") | null;
+            /** Syncing */
+            syncing: boolean;
         };
         /**
          * ModelOption
@@ -720,6 +994,201 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_applications_api_applications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"][];
+                };
+            };
+        };
+    };
+    list_interests_api_applications_interests_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Interest"][];
+                };
+            };
+        };
+    };
+    note_opened_job_api_applications_interests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobOpened"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_interest_api_applications_interests__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_applied_api_applications_interests__job_id__applied_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_application_api_applications__application_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_application_api_applications__application_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                application_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplicationChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Application"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_cvs_api_cvs_get: {
         parameters: {
             query?: never;
@@ -1163,6 +1632,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_alerts_api_mail_alerts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobAlert"][];
+                };
+            };
+        };
+    };
+    load_job_description_api_mail_jobs__linkedin_id__description_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                linkedin_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JobDescription"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mail_status_api_mail_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailStatus"];
+                };
+            };
+        };
+    };
+    start_sync_api_mail_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailStatus"];
                 };
             };
         };

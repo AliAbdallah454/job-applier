@@ -2,9 +2,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 
 import type { Generation, Status } from "../api/client";
-import { isActive, useGenerations } from "../api/queries";
+import { isActive, useApplicationStatuses, useGenerations } from "../api/queries";
 import { GenerationLinks } from "../components/GenerationLinks";
-import { Empty, ErrorNote, formatDate, Skeleton, StatusTag, TAB } from "../components/ui";
+import { Empty, ErrorNote, formatDate, label, Skeleton, StatusTag, TAB } from "../components/ui";
 
 const STATUSES: (Status | "all")[] = ["all", "queued", "processing", "ready", "failed"];
 
@@ -82,6 +82,7 @@ export function History() {
 }
 
 function Row({ generation, index }: { generation: Generation; index: number }) {
+  const application = useApplicationStatuses().get(generation.generation_id);
   const created = new Date(generation.created_at);
   const review = `/generations/${generation.generation_id}`;
   return (
@@ -111,6 +112,11 @@ function Row({ generation, index }: { generation: Generation; index: number }) {
           <span className="text-ink">
             <StatusTag status={generation.status} />
           </span>
+          {application && (
+            <Link to="/applications" className="text-ink underline-offset-4 hover:underline">
+              Application: {label(application)}
+            </Link>
+          )}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 lg:justify-end">

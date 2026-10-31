@@ -5,7 +5,13 @@ import { ApiError, type Job, type Language } from "../api/client";
 import { useCvs, useOptions, useStartGeneration, useUploadCv } from "../api/queries";
 import { Button, ErrorNote, Eyebrow, formatDate } from "./ui";
 
-export function TailorDialog({ job, onClose }: { job: Job; onClose: () => void }) {
+export function TailorDialog({
+  job,
+  onClose,
+}: {
+  job: Pick<Job, "job_id" | "title" | "company">;
+  onClose: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const navigate = useNavigate();
   const cvs = useCvs();

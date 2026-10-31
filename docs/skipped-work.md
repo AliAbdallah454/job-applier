@@ -57,5 +57,13 @@ A cold start of such a large image will make the first save after an idle period
 
 ## Application
 
-Authentication and the profile API, application submission, mailbox integration, per-user
-recommendations and Overleaf sync remain unimplemented (see the root README).
+Authentication and the profile API, application submission, per-user recommendations and
+Overleaf sync remain unimplemented (see the root README).
+
+## Mail
+
+- Mail sync runs inside the local API, so nothing is read while the API is off. A deployed version
+  would need its own scheduled task and a different way to hold the mailbox credentials.
+- IMAP with an app password fits one user. Several users would need Gmail and Microsoft OAuth,
+  and Gmail's restricted scope needs a Google security review.
+- Only `INBOX` is read, and only LinkedIn alert emails become job groups.

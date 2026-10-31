@@ -7,6 +7,7 @@ import {
 
 import {
   api,
+  type ApplicationStatus,
   type CandidateProfile,
   type Document,
   type Language,
@@ -206,5 +207,133 @@ export function useEditDocument(id: string, document: Document) {
     },
     // After a 409 the page must show the CV that got there first, as saving again replaces it.
     onError: () => client.invalidateQueries({ queryKey: ["generation", id] }),
+  });
+}
+
+export function useMailStatus() {
+  return useQuery({
+    queryKey: ["mail-status"],
+    queryFn: () => unwrap(api.GET("/api/mail/status")),
+    // Syncs also run in the background, so a page left open still notices them.
+    refetchInterval: (query) => (query.state.data?.syncing ? 1500 : 60000),
+  });
+}
+
+export function useSyncMail() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST("/api/mail/sync")),
+    onSuccess: (status) => client.setQueryData(["mail-status"], { ...status, syncing: true }),
+  });
+}
+
+export function useApplications() {
+  return useQuery({
+    queryKey: ["applications"],
+    queryFn: () => unwrap(api.GET("/api/applications")),
+  });
+}
+
+/** The application each tailored CV belongs to, for marking it where the CV is shown. */
+export function useApplicationStatuses() {
+  const applications = useApplications().data ?? [];
+  return new Map(
+    applications
+      .filter((item) => item.generation_id)
+      .map((item) => [item.generation_id as string, item.status]),
+  );
+}
+
+/** The same, for marking a job wherever it is listed. */
+export function useJobApplicationStatuses() {
+  const applications = useApplications().data ?? [];
+  return new Map(
+    applications
+      .filter((item) => item.job_id)
+      .map((item) => [item.job_id as string, item.status]),
+  );
+}
+
+/** Link props that note an opened job post; failing to note one must not get in the way. */
+export function useNoteJobOpened(jobId: string) {
+  const note = useMutation({
+    mutationFn: () => api.POST("/api/applications/interests", { body: { job_id: jobId } }),
+  });
+  const opened = () => note.mutate();
+  return { onClick: opened, onAuxClick: opened };
+}
+
+export function useInterests() {
+  return useQuery({
+    queryKey: ["interests"],
+    queryFn: () => unwrap(api.GET("/api/applications/interests")),
+  });
+}
+
+export function useAnswerInterest(jobId: string) {
+  const client = useQueryClient();
+  const path = { params: { path: { job_id: jobId } } };
+  return useMutation({
+    mutationFn: async (applied: boolean) => {
+      if (applied) {
+        await unwrap(api.POST("/api/applications/interests/{job_id}/applied", path));
+        return;
+      }
+      const { error, response } = await api.DELETE("/api/applications/interests/{job_id}", path);
+      if (!response.ok) throw toApiError(response.status, error);
+    },
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: ["interests"] }),
+        client.invalidateQueries({ queryKey: ["applications"] }),
+      ]),
+  });
+}
+
+export function useChangeApplication() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: ApplicationStatus }) =>
+      unwrap(
+        api.PATCH("/api/applications/{application_id}", {
+          params: { path: { application_id: id } },
+          body: { status },
+        }),
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["applications"] }),
+  });
+}
+
+export function useRemoveApplication() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error, response } = await api.DELETE("/api/applications/{application_id}", {
+        params: { path: { application_id: id } },
+      });
+      if (!response.ok) throw toApiError(response.status, error);
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: ["applications"] }),
+  });
+}
+
+export function useJobAlerts() {
+  return useQuery({
+    queryKey: ["job-alerts"],
+    queryFn: () => unwrap(api.GET("/api/mail/alerts")),
+  });
+}
+
+export function useLoadAlertJob(jobId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (description?: string) =>
+      unwrap(
+        api.POST("/api/mail/jobs/{linkedin_id}/description", {
+          params: { path: { linkedin_id: jobId.replace(/^linkedin-/, "") } },
+          body: { description },
+        }),
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["job-alerts"] }),
   });
 }

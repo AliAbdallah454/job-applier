@@ -1,13 +1,17 @@
 """Run the local API. Binds to localhost and has no login; it is not deployed."""
 
 import argparse
+import os
 
 import boto3
 import uvicorn
 from botocore.exceptions import BotoCoreError, ClientError
+from dotenv import dotenv_values
 
 from backend.api.app import create_app
 from backend.api.deps import Context, resolve_settings
+from backend.api.mail import start_auto_sync
+from backend.mail.mailbox import configured_mailbox
 
 
 def main():
@@ -35,11 +39,14 @@ def main():
                 args.user_id,
                 application_stack=args.application_stack,
                 jobs_stack=args.jobs_stack,
+                # Only these settings are taken from .env, so it cannot change anything else.
+                open_mailbox=configured_mailbox({**dotenv_values(".env"), **os.environ}),
             )
         except (BotoCoreError, ClientError, KeyError) as exc:
             parser.error(f"Cannot resolve stack outputs: {exc}")
         context = Context(settings, profile=args.profile, region=args.region)
 
+    start_auto_sync(context, args.user_id)
     uvicorn.run(create_app(context), host="127.0.0.1", port=args.port, log_level="info")
 
 

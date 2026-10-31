@@ -10,6 +10,7 @@ For a new contributor or LLM session, start with [AGENTS.md](../AGENTS.md) and [
 | [CI/CD](ci-cd.md) | GitHub Actions deploy, image push and one-time AWS setup | Written, not yet run |
 | [Skipped work](skipped-work.md) | Deliberately unimplemented items, including scheduled collection | Living list |
 | [Documents guide](../backend/documents/README.md) | Tailoring your LaTeX CV and letter generation, retries and review | Current implementation |
+| [Mail guide](../backend/mail/README.md) | Mailbox setup, application tracking and LinkedIn job emails | Current implementation |
 | [Fetcher guide](fetchers.md) | Employer-board adapter behavior and limitations | Feature reference |
 | [Web app guide](../frontend/README.md) | Run the local API and React app; hosting plan | Current implementation; local only, not deployed |
 | [Development scripts](../scripts/README.md) | Profile fixtures and reset behavior | Current implementation |

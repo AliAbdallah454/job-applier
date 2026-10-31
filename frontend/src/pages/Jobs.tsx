@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import type { Generation, Job } from "../api/client";
-import { type JobQuery, useGenerations, useJobs, useOptions } from "../api/queries";
+import {
+  type JobQuery,
+  useGenerations,
+  useJobApplicationStatuses,
+  useJobs,
+  useNoteJobOpened,
+  useOptions,
+} from "../api/queries";
 import { GenerationLinks } from "../components/GenerationLinks";
 import { TailorDialog } from "../components/TailorDialog";
 import {
@@ -287,6 +294,8 @@ function JobDetail({ job, generations }: { job: Job; generations?: Generation[] 
   const [tailoring, setTailoring] = useState(false);
   const past = generations?.filter((item) => item.job_id === job.job_id) ?? [];
   const url = job.application_url ?? job.posting_url;
+  const noteOpened = useNoteJobOpened(job.job_id);
+  const application = useJobApplicationStatuses().get(job.job_id);
   const facts = [
     ["Level", label(job.seniority)],
     ["Contract", label(job.contract_type)],
@@ -305,10 +314,15 @@ function JobDetail({ job, generations }: { job: Job; generations?: Generation[] 
           Tailor my CV
         </Button>
         {url && (
-          <a href={url} target="_blank" rel="noreferrer" className={ACTION}>
+          <a href={url} target="_blank" rel="noreferrer" className={ACTION} {...noteOpened}>
             Job posting
             <LeaveIcon />
           </a>
+        )}
+        {application && (
+          <Link to="/applications" className="line text-sm text-muted hover:text-ink">
+            Application: {label(application)}
+          </Link>
         )}
       </div>
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-rule py-4 lg:grid-cols-4">

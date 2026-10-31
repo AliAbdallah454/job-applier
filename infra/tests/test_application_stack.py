@@ -16,7 +16,7 @@ class ApplicationStackTests(unittest.TestCase):
         cls.template = Template.from_stack(ApplicationStack(App(), "TestApplication"))
 
     def test_profile_table_is_retained_on_demand_and_keyed_by_user(self):
-        self.template.resource_count_is("AWS::DynamoDB::Table", 2)
+        self.template.resource_count_is("AWS::DynamoDB::Table", 3)
         self.template.has_resource(
             "AWS::DynamoDB::Table",
             {

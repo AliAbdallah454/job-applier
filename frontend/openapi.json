@@ -1,6 +1,196 @@
 {
   "components": {
     "schemas": {
+      "AlertJob": {
+        "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "has_description": {
+            "title": "Has Description",
+            "type": "boolean"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "title",
+          "url",
+          "has_description"
+        ],
+        "title": "AlertJob",
+        "type": "object"
+      },
+      "Application": {
+        "properties": {
+          "application_id": {
+            "title": "Application Id",
+            "type": "string"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
+          "job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Id"
+          },
+          "job_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Job Url"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "in_review",
+              "assessment",
+              "interview",
+              "offer",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "application_id",
+          "company",
+          "status",
+          "updated_at",
+          "events"
+        ],
+        "title": "Application",
+        "type": "object"
+      },
+      "ApplicationChange": {
+        "properties": {
+          "status": {
+            "enum": [
+              "applied",
+              "in_review",
+              "assessment",
+              "interview",
+              "offer",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ApplicationChange",
+        "type": "object"
+      },
+      "ApplicationEvent": {
+        "properties": {
+          "received_at": {
+            "title": "Received At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "applied",
+              "in_review",
+              "assessment",
+              "interview",
+              "offer",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "subject",
+          "received_at"
+        ],
+        "title": "ApplicationEvent",
+        "type": "object"
+      },
       "Body_upload_cv_api_cvs_post": {
         "properties": {
           "file": {
@@ -869,6 +1059,115 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "Interest": {
+        "description": "A job post you opened, kept so a later email can be matched to it.",
+        "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "opened_at": {
+            "title": "Opened At",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "job_id",
+          "title",
+          "opened_at"
+        ],
+        "title": "Interest",
+        "type": "object"
+      },
+      "JobAlert": {
+        "properties": {
+          "alert_id": {
+            "title": "Alert Id",
+            "type": "string"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/AlertJob"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "received_at": {
+            "title": "Received At",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alert_id",
+          "subject",
+          "received_at",
+          "jobs"
+        ],
+        "title": "JobAlert",
+        "type": "object"
+      },
+      "JobDescription": {
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "title": "JobDescription",
+        "type": "object"
+      },
+      "JobOpened": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "JobOpened",
+        "type": "object"
+      },
       "JobPage": {
         "properties": {
           "jobs": {
@@ -1220,6 +1519,57 @@
         "title": "Link",
         "type": "object"
       },
+      "MailStatus": {
+        "properties": {
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "last_synced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced At"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "enum": [
+                  "credentials",
+                  "table"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "syncing": {
+            "title": "Syncing",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "problem",
+          "syncing"
+        ],
+        "title": "MailStatus",
+        "type": "object"
+      },
       "ModelOption": {
         "additionalProperties": false,
         "description": "A model or language the user can pick for tailoring.",
@@ -1492,6 +1842,253 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/applications": {
+      "get": {
+        "operationId": "list_applications_api_applications_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Application"
+                  },
+                  "title": "Response List Applications Api Applications Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Applications",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/applications/interests": {
+      "get": {
+        "description": "Opened jobs to ask about: no email has matched them, and one would have arrived by now.",
+        "operationId": "list_interests_api_applications_interests_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Interest"
+                  },
+                  "title": "Response List Interests Api Applications Interests Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Interests",
+        "tags": [
+          "mail"
+        ]
+      },
+      "post": {
+        "description": "Interest, not an application: an email or the user has to say that they applied.",
+        "operationId": "note_opened_job_api_applications_interests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobOpened"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Note Opened Job",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/applications/interests/{job_id}": {
+      "delete": {
+        "operationId": "dismiss_interest_api_applications_interests__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Interest",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/applications/interests/{job_id}/applied": {
+      "post": {
+        "operationId": "mark_applied_api_applications_interests__job_id__applied_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark Applied",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/applications/{application_id}": {
+      "delete": {
+        "description": "Only the entry goes: its emails stay marked as read, so a sync will not bring it back.",
+        "operationId": "delete_application_api_applications__application_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Application",
+        "tags": [
+          "mail"
+        ]
+      },
+      "patch": {
+        "operationId": "change_application_api_applications__application_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "application_id",
+            "required": true,
+            "schema": {
+              "title": "Application Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Application"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Application",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
     "/api/cvs": {
       "get": {
         "operationId": "list_cvs_api_cvs_get",
@@ -2241,6 +2838,127 @@
         "summary": "Get Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/mail/alerts": {
+      "get": {
+        "operationId": "list_alerts_api_mail_alerts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobAlert"
+                  },
+                  "title": "Response List Alerts Api Mail Alerts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Alerts",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/mail/jobs/{linkedin_id}/description": {
+      "post": {
+        "description": "Called once for a job the user wants to tailor to; other jobs are never fetched.",
+        "operationId": "load_job_description_api_mail_jobs__linkedin_id__description_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "linkedin_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9]{6,20}$",
+              "title": "Linkedin Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobDescription"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Load Job Description",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/mail/status": {
+      "get": {
+        "operationId": "mail_status_api_mail_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Mail Status",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/mail/sync": {
+      "post": {
+        "operationId": "start_sync_api_mail_sync_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Sync",
+        "tags": [
+          "mail"
         ]
       }
     },

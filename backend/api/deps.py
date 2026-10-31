@@ -13,6 +13,9 @@ from backend.documents.__main__ import stack_outputs
 from backend.documents.models import DOCUMENT_MODELS, ModelOption
 from backend.documents.render import compile_pdf, source_line
 from backend.documents.storage import GenerationStore
+from backend.mail.classifier import MailClassifier
+from backend.mail.linkedin import fetch_job
+from backend.mail.storage import MailStore
 
 
 @dataclass(frozen=True)
@@ -27,11 +30,20 @@ class Settings:
     document_models: tuple[ModelOption, ...] = DOCUMENT_MODELS
     compile_document: Callable = compile_pdf
     find_source_line: Callable = source_line
+    mail_table: str | None = None  # None until the stack with the table is deployed.
+    open_mailbox: Callable | None = None  # None until the mailbox settings are in .env.
+    classify_mail: Callable = MailClassifier
+    fetch_job: Callable = fetch_job
     demo: bool = False
 
 
 def resolve_settings(
-    session, user_id, *, application_stack="Application", jobs_stack="JobPipeline"
+    session,
+    user_id,
+    *,
+    application_stack="Application",
+    jobs_stack="JobPipeline",
+    open_mailbox=None,
 ):
     application = stack_outputs(session, application_stack)
     jobs = stack_outputs(session, jobs_stack)
@@ -43,6 +55,8 @@ def resolve_settings(
         generations_table=application["DocumentGenerationsTable"],
         documents_bucket=application["DocumentsBucketName"],
         document_queue_url=application["DocumentQueueUrl"],
+        mail_table=application.get("MailTable"),
+        open_mailbox=open_mailbox,
     )
 
 
@@ -54,6 +68,7 @@ class Context:
         self.profile = profile
         self.region = region
         self.local = threading.local()
+        self.mail_sync_lock = threading.Lock()
 
     def session(self):
         if not hasattr(self.local, "session"):
@@ -95,6 +110,12 @@ class Context:
             self.s3,
             self.settings.documents_bucket,
         )
+
+    @property
+    def mail(self):
+        if self.settings.mail_table is None:
+            return None
+        return MailStore(self.dynamodb.Table(self.settings.mail_table))
 
 
 def get_context(request: Request) -> Context:
