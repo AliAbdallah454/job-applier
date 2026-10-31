@@ -77,9 +77,11 @@ describe("downloadUrl", () => {
 
 describe("versionFileUrl", () => {
   it("adds the download flag only when asked", () => {
-    expect(versionFileUrl("abc", 2, "cv_pdf")).toBe("/api/generations/abc/versions/2/files/cv_pdf");
-    expect(versionFileUrl("abc", 1, "cv_tex", true)).toBe(
-      "/api/generations/abc/versions/1/files/cv_tex?download=true",
+    expect(versionFileUrl("abc", "cv", 2, "cv_pdf")).toBe(
+      "/api/generations/abc/versions/cv/2/files/cv_pdf",
+    );
+    expect(versionFileUrl("abc", "cover_letter", 1, "cover_letter_tex", true)).toBe(
+      "/api/generations/abc/versions/cover_letter/1/files/cover_letter_tex?download=true",
     );
   });
 });

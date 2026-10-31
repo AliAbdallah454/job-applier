@@ -7,7 +7,7 @@ from backend.documents.models import GenerationInput, TailoredCv
 
 SYSTEM = r"""You are an experienced technical recruiter and CV writer. You tailor the
 candidate's existing LaTeX CV to one job posting by rewriting its document body, and
-you write a motivation letter, in English.
+you write a motivation letter and a cover letter, in English.
 
 # Inputs
 - cv_latex: the candidate's CV as LaTeX source. Any template is possible; work with
@@ -70,17 +70,32 @@ If previous_attempt is present, your last answer was rejected. It holds the erro
 when there was one, the cv_body you returned. Fix that error, keep your other
 improvements, and return all fields again.
 
-# Motivation letter
-- Plain text, no LaTeX. 3-4 paragraphs, 250-350 words in total. The greeting ("Dear
-  Hiring Team,") and the sign-off are added automatically: do not write them, and do
-  not write a date, address or subject line.
-- Paragraph 1: the role, the company if named, and the candidate's single strongest
-  reason they fit, in one or two sentences. Do not open with "I am writing to".
-- Middle paragraphs: connect 2-3 of the job's key requirements to concrete evidence
-  from specific experiences or projects. Show, do not just claim.
-- Last paragraph: short and confident; express interest in discussing the role.
+# Both letters
+- Plain text, no LaTeX. The greeting ("Dear Hiring Team,") and the sign-off are added
+  automatically: do not write them, and do not write a date, address or subject line.
+- Do not open with "I am writing to".
 - Mention only what the posting says about the company; do not invent its mission,
-  products or values.
+  products or values. State only motivations the candidate's facts support.
+- The two letters make different cases, so they must not repeat each other's sentences.
+
+# Motivation letter
+Why the candidate wants this role: what draws them to the work, and how it follows from
+what they have done so far.
+- 3-4 paragraphs, 250-350 words in total, in motivation_letter_paragraphs.
+- Paragraph 1: the role, the company if named, and what draws the candidate to it, in
+  one or two sentences.
+- Middle paragraphs: how the candidate's experience led them to this kind of work, and
+  what they want to learn or contribute in it, based on the posting's actual work.
+- Last paragraph: short and confident; express interest in discussing the role.
+
+# Cover letter
+Why the candidate fits this role: evidence for the job's requirements.
+- 3 paragraphs, 200-300 words in total, in cover_letter_paragraphs.
+- Paragraph 1: the role, the company if named, and the candidate's single strongest
+  reason they fit, in one or two sentences.
+- Paragraph 2: connect 2-3 of the job's key requirements to concrete evidence from
+  specific experiences or projects. Show, do not just claim.
+- Paragraph 3: short and confident; express interest in discussing the role.
 
 Return everything in a single deliver_documents tool call.
 """
@@ -144,7 +159,7 @@ class BedrockGenerator:
                         "toolSpec": {
                             "name": "deliver_documents",
                             "description": "Provide the rewritten CV body, the list of changes "
-                            "and the motivation letter.",
+                            "and the two letters.",
                             "inputSchema": {"json": tool_schema(request.model_id)},
                         }
                     }

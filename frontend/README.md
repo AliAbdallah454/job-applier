@@ -52,24 +52,27 @@ The generation page shows the model's list of edits and a diff computed from the
 sources. Rewrites are checked for structure but not fact-checked, so read each change before
 sending a CV.
 
-**Edit LaTeX** beside the preview edits the whole CV source. Saving compiles it in the API and
+**Edit LaTeX** beside the preview edits the source of the document shown there: the CV, the
+motivation letter or the cover letter. Each keeps its own draft and **Previous versions**. Saving
+compiles it in the API and
 updates the same generation straight away, with no queue, worker or Bedrock call, so the machine
 running the API needs TeX Live (`--demo` does not). The job keeps one entry, which always holds your
-latest CV: its id and date stay the same. The letter, keywords and the model's list of edits are
-kept, and the diff compares the original CV with your version. If it does not compile, nothing is
+latest documents: its id and date stay the same. Everything you did not edit is kept, and for the
+CV the diff compares the original CV with your version. If it does not compile, nothing is
 saved and your draft stays open beside the error. If the same CV was saved elsewhere after your draft
 began, you get a 409, the page shows that newer CV, your draft stays, and saving again replaces it. A
 draft that was not saved is lost when the page is left. The source is coloured by `LatexCode.tsx`:
 a textarea can't colour its text, so a coloured copy sits behind its transparent text, and both
 must keep the same box, font and wrapping.
 
-The CV preview is drawn with PDF.js (the letter stays in the browser's viewer). Double-clicking it
+The CV preview is drawn with PDF.js (the letters stay in the browser's viewer). Double-clicking it
 opens **Edit LaTeX** with the matching line selected: SyncTeX gives a line near the text, which can
 be a few lines late inside multi-line macros, and `sourceLine.ts` then picks the line within ten
 of it that holds most of the clicked words. With no match, it stays on the SyncTeX line. Text cannot be selected and
 links cannot be followed in this preview; the downloaded PDF has both.
 
-Each CV an edit replaces appears under **Previous versions** in the review list, newest first, with
+Each CV or letter an edit replaces appears under **Previous versions** in the review list while that
+document is shown, newest first, with
 its PDF and `.tex`. Version 1 is the model's, unless the entry came from the old edit flow, which
 gave each edit its own entry. Old versions can be opened but not restored.
 
@@ -84,7 +87,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
 | `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
-| `POST /api/generations/{id}/edit` | Compile `cv_latex` and save it over the current CV. Must carry the `updated_at` the draft started from, or it returns 409; 422 with the error if it does not compile |
+| `POST /api/generations/{id}/edit` | Compile `latex` and save it over `document` (`cv`, `motivation_letter` or `cover_letter`). Must carry the `revision` of that document the draft started from, or it returns 409; 422 with the error if it does not compile |
 | `GET /api/generations/{id}/source-line?page=&x=&y=` | The CV source line at a position in the PDF, in points from the page's top left; 404 if there is none |
 | `GET /api/generations/{id}/files/{name}` | Current PDF, source or log; add `?download=true` to save it under a name from the job title. An edit changes what this URL returns, so it is sent as `no-cache`, and previews and CV downloads add `v=<updated_at>` |
 | `GET /api/generations/{id}/versions/{number}/files/{name}` | `cv_pdf`, `cv_tex` or `changes_json` of a replaced CV, from number 1; takes `?download=true` too, and these never change, so they can be cached |
@@ -92,7 +95,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 Search filters one scanned page at a time, so a page can be empty while more remain; the
 app keeps loading automatically, up to ten empty pages in a row. The count is loaded
 matches, not a total. History reads all of your generations and sorts them in the API. The
-Tailored CVs page offers the CV, the motivation letter and the job posting on each row, so
+Tailored CVs page offers the CV, both letters and the job posting on each row, so
 nothing needs opening first. The job link and company are read from the Jobs table when
 listing, so a removed job has neither.
 

@@ -135,7 +135,11 @@ def fake_generate(request, previous=None):
                     reason="Automated tests are a stated requirement",
                 ),
             ],
-            letter_paragraphs=[
+            cover_letter_paragraphs=[
+                "My projects match what this role asks for.",
+                "This example cover letter was written by the demo, not by a model.",
+            ],
+            motivation_letter_paragraphs=[
                 f"I am applying for the {request.job.title} role.",
                 "This example letter was written by the demo, not by a model.",
             ],

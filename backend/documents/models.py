@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
-PROMPT_VERSION = 7
+PROMPT_VERSION = 8
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 
 
@@ -51,7 +51,7 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    prompt_version: Literal[5, 6, 7] = PROMPT_VERSION
+    prompt_version: Literal[5, 6, 7, 8] = PROMPT_VERSION
 
 
 class CvChange(StrictModel):
@@ -62,7 +62,7 @@ class CvChange(StrictModel):
 
 
 class TailoredCv(StrictModel):
-    """The rewritten CV body, what changed in it, and the motivation letter."""
+    """The rewritten CV body, what changed in it, and the two letters."""
 
     # Not rendered: listing the keywords first steers the rewrite that follows.
     job_keywords: list[Text] = Field(
@@ -74,8 +74,15 @@ class TailoredCv(StrictModel):
     changes: list[CvChange] = Field(
         max_length=40, description="Each change made to the CV and the job requirement it serves"
     )
-    letter_paragraphs: list[Text] = Field(
+    motivation_letter_paragraphs: list[Text] = Field(
         min_length=2,
         max_length=6,
-        description="3-4 letter body paragraphs; no greeting, sign-off, date or address",
+        description="3-4 body paragraphs on why the candidate wants this role; "
+        "no greeting, sign-off, date or address",
+    )
+    cover_letter_paragraphs: list[Text] = Field(
+        min_length=2,
+        max_length=6,
+        description="3 body paragraphs on the evidence that the candidate fits this role; "
+        "no greeting, sign-off, date or address",
     )

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-import { ApiError, type GenerationDetail } from "../api/client";
-import { useCvSource, useEditCv } from "../api/queries";
+import { ApiError, type Document, type GenerationDetail } from "../api/client";
+import { useEditDocument, useSource } from "../api/queries";
 import { LatexCode } from "./LatexCode";
 import { refineLine } from "./sourceLine";
 import { Button, ErrorNote, Skeleton } from "./ui";
@@ -37,21 +37,26 @@ function selectLine(textarea: HTMLTextAreaElement, line: number) {
   mirror.remove();
 }
 
-/** Saving compiles and replaces the CV; a compile error keeps the draft open beside it. */
-export function CvEditor({
+/** Saving compiles and replaces the document; a compile error keeps the draft open beside it. */
+export function DocumentEditor({
   generation,
-  jump,
+  document: name,
+  label,
+  jump = null,
 }: {
   generation: GenerationDetail;
-  jump: { line: number; text: string } | null;
+  document: Document;
+  label: string;
+  jump?: { line: number; text: string } | null;
 }) {
   const id = generation.generation_id;
-  const source = useCvSource(id, generation.updated_at);
-  const save = useEditCv(id);
-  // A draft keeps the state it started from, so a newer CV is not replaced without a word.
-  const [draft, setDraft] = useState<{ text: string; base: string | null } | null>(null);
+  const revision = generation.revisions[name];
+  const source = useSource(id, name, revision);
+  const save = useEditDocument(id, name);
+  // A draft keeps the state it started from, so a newer version is not replaced without a word.
+  const [draft, setDraft] = useState<{ text: string; base: number | null } | null>(null);
   const text = draft?.text ?? source.data ?? "";
-  const base = draft?.base ?? generation.updated_at;
+  const base = draft?.base ?? revision;
   const textarea = useRef<HTMLTextAreaElement>(null);
   const colored = useRef<HTMLPreElement>(null);
 
@@ -64,8 +69,8 @@ export function CvEditor({
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 sm:px-6">
-      <label className="sr-only" htmlFor="cv-source">
-        CV LaTeX source
+      <label className="sr-only" htmlFor={`${name}-source`}>
+        {label} LaTeX source
       </label>
       {/* A textarea can't colour text, so the coloured copy shows through its transparent text. */}
       <div className="relative h-[60dvh] w-full border border-rule bg-wash focus-within:border-ink lg:h-auto lg:flex-1">
@@ -79,7 +84,7 @@ export function CvEditor({
         </pre>
         <textarea
           ref={textarea}
-          id="cv-source"
+          id={`${name}-source`}
           value={text}
           spellCheck={false}
           readOnly={save.isPending}
@@ -95,10 +100,10 @@ export function CvEditor({
           disabled={save.isPending || source.data === undefined || text === source.data}
           onClick={() =>
             save.mutate(
-              { cvLatex: text, updatedAt: base },
+              { latex: text, revision: base },
               {
                 onSuccess: () => setDraft(null),
-                // The page now shows the newer CV, so saving again replaces it knowingly.
+                // The page now shows the newer version, so saving again replaces it knowingly.
                 onError: (error) => {
                   if (error instanceof ApiError && error.status === 409) {
                     setDraft({ text, base: null });

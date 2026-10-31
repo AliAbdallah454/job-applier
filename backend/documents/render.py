@@ -1,4 +1,4 @@
-"""Put the rewritten body into the user's LaTeX CV, build the letter and compile to PDF."""
+"""Put the rewritten body into the user's LaTeX CV, build the letters and compile to PDF."""
 
 import os
 import shutil
@@ -11,16 +11,16 @@ from backend.documents.latex import engine, escape, rewrite_cv
 from backend.documents.models import GenerationInput, TailoredCv
 
 
-def render_sources(request: GenerationInput, content: TailoredCv):
+def render_letter(request: GenerationInput, paragraphs):
     profile = request.profile
-    cv = rewrite_cv(request.cv_latex, content.cv_body)
     contact = escape(" | ".join(filter(None, [profile.location, profile.email, profile.phone])))
-    letter = "\n".join(
+    return "\n".join(
         [
             r"\documentclass[11pt,a4paper]{article}",
             r"\usepackage[margin=2.4cm]{geometry}",
             r"\usepackage{fontspec}",
-            r"\setmainfont{DejaVu Sans}",
+            # A user's edit compiles where the API runs, and a Mac does not have DejaVu.
+            r"\IfFontExistsTF{DejaVu Sans}{\setmainfont{DejaVu Sans}}{\setmainfont{Helvetica}}",
             r"\pagestyle{empty}",
             r"\setlength{\parindent}{0pt}",
             r"\setlength{\parskip}{10pt}",
@@ -30,13 +30,22 @@ def render_sources(request: GenerationInput, content: TailoredCv):
             r"\textbf{Application: " + escape(request.job.title) + r"}\par",
             escape(request.job.company or "Hiring team") + r"\par",
             "Dear Hiring Team,",
-            *(escape(paragraph) + r"\par" for paragraph in content.letter_paragraphs),
+            *(escape(paragraph) + r"\par" for paragraph in paragraphs),
             "Yours sincerely," + r"\par",
             escape(profile.full_name),
             r"\end{document}",
         ]
     )
-    return {"cv.tex": cv.encode(), "motivation_letter.tex": letter.encode()}
+
+
+def render_sources(request: GenerationInput, content: TailoredCv):
+    return {
+        "cv.tex": rewrite_cv(request.cv_latex, content.cv_body).encode(),
+        "motivation_letter.tex": render_letter(
+            request, content.motivation_letter_paragraphs
+        ).encode(),
+        "cover_letter.tex": render_letter(request, content.cover_letter_paragraphs).encode(),
+    }
 
 
 def read_synctex(source: Path):
@@ -90,7 +99,7 @@ def compile_pdf(source: Path, *, timeout=60):
     if not compiler:
         raise RuntimeError(f"{name} is required; use the document worker image or install TeX Live")
 
-    # The CV is the user's LaTeX with a checked model rewrite of its body; the letter is escaped.
+    # The CV is the user's LaTeX with a checked model rewrite of its body; letters are escaped.
     # Restrict file I/O and do not pass AWS credentials to the compiler process.
     try:
         subprocess.run(

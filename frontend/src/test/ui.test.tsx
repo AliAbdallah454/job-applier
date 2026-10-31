@@ -217,6 +217,7 @@ describe("GenerationPage", () => {
     changes: [],
     explanations: [],
     previous_versions: [],
+    revisions: { cv: 0, motivation_letter: 0, cover_letter: 0 },
     starts_from_edit: false,
   };
 
@@ -238,6 +239,8 @@ describe("GenerationPage", () => {
     const calls = server({
       "GET /api/generations/g1": () => json(generation),
       "GET /api/generations/g1/files/cv_tex": () => new Response("\\section{Old}"),
+      "GET /api/generations/g1/files/motivation_letter_tex": () => new Response("\\section{Why}"),
+      "GET /api/generations/g1/files/cover_letter_tex": () => new Response("\\section{Fit}"),
       ...routes,
     });
     render(
@@ -280,7 +283,7 @@ describe("GenerationPage", () => {
   function postedStates(calls: ReturnType<typeof server>) {
     return calls
       .filter((call) => call.method === "POST")
-      .map((call) => JSON.parse(call.body).updated_at);
+      .map((call) => JSON.parse(call.body).revision);
   }
 
   it("cannot save an unchanged source", async () => {
@@ -295,7 +298,8 @@ describe("GenerationPage", () => {
   const saved = {
     ...detail,
     updated_at: SAVED_AT,
-    previous_versions: [{ number: 1, saved_at: detail.updated_at }],
+    previous_versions: [{ document: "cv", number: 1, saved_at: detail.updated_at }],
+    revisions: { ...detail.revisions, cv: 1 },
   };
 
   it("updates the CV in place and stays on the Edit LaTeX tab", async () => {
@@ -309,7 +313,7 @@ describe("GenerationPage", () => {
     await saveEdit(user);
     expect(await screen.findByText(/edited by you/)).toBeInTheDocument();
     expect(calls.find((call) => call.method === "POST")?.body).toBe(
-      JSON.stringify({ cv_latex: "new text", updated_at: detail.updated_at }),
+      JSON.stringify({ document: "cv", latex: "new text", revision: 0 }),
     );
 
     expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g1");
@@ -329,23 +333,81 @@ describe("GenerationPage", () => {
     ).toHaveLength(1);
   });
 
+  it("edits the document shown in the preview and keeps each one's draft", async () => {
+    const user = userEvent.setup();
+    const calls = open(detail, {
+      "POST /api/generations/g1/edit": () =>
+        json({ ...detail, revisions: { ...detail.revisions, cover_letter: 1 } }),
+    });
+    await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
+    const cv = await screen.findByLabelText("CV LaTeX source");
+    await waitFor(() => expect(cv).toHaveValue("\\section{Old}"));
+    await user.clear(cv);
+    await user.type(cv, "cv draft");
+
+    await user.click(screen.getByRole("tab", { name: "Cover letter" }));
+    expect(screen.getByTitle("Cover letter preview")).toHaveAttribute(
+      "src",
+      `/api/generations/g1/files/cover_letter_pdf?v=${encodeURIComponent(detail.updated_at)}`,
+    );
+    const letter = screen.getByLabelText("Cover letter LaTeX source");
+    expect(letter).toBeVisible();
+    expect(cv).not.toBeVisible();
+    await waitFor(() => expect(letter).toHaveValue("\\section{Fit}"));
+    await user.clear(letter);
+    await user.type(letter, "letter text");
+    const buttons = screen.getAllByRole("button", { name: "Save changes" });
+    await user.click(buttons[buttons.length - 1]);
+
+    await waitFor(() =>
+      expect(calls.find((call) => call.method === "POST")?.body).toBe(
+        JSON.stringify({ document: "cover_letter", latex: "letter text", revision: 0 }),
+      ),
+    );
+    await user.click(screen.getByRole("tab", { name: "CV" }));
+    expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("cv draft");
+  });
+
+  it("lists the previous versions of the document being shown", async () => {
+    const user = userEvent.setup();
+    open({
+      ...detail,
+      previous_versions: [
+        { document: "motivation_letter", number: 1, saved_at: "2026-01-02T10:00:00Z" },
+      ],
+      revisions: { ...detail.revisions, motivation_letter: 1 },
+    });
+    await screen.findByTitle("CV preview");
+    expect(screen.queryByRole("heading", { name: "Previous versions" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Motivation letter" }));
+    expect(screen.getByRole("link", { name: "Open the PDF of version 1" })).toHaveAttribute(
+      "href",
+      "/api/generations/g1/versions/motivation_letter/1/files/motivation_letter_pdf",
+    );
+  });
+
+  it("offers no cover letter on a generation from before they existed", async () => {
+    open({ ...detail, revisions: { cv: 0, motivation_letter: 0 } });
+    expect(await screen.findByRole("tab", { name: "Motivation letter" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Cover letter" })).not.toBeInTheDocument();
+  });
+
   it("asks for the CV source of the generation's current state", async () => {
     const user = userEvent.setup();
-    const calls = open({ ...detail, updated_at: SAVED_AT });
+    const calls = open(saved);
     await user.click(await screen.findByRole("tab", { name: "Edit LaTeX" }));
     await waitFor(() =>
       expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Old}"),
     );
-    expect(calls.find((call) => call.path.endsWith("/cv_tex"))?.search).toBe(
-      `?v=${encodeURIComponent(SAVED_AT)}`,
-    );
+    expect(calls.find((call) => call.path.endsWith("/cv_tex"))?.search).toBe("?v=1");
   });
 
   it("keeps the draft and says why when another save got there first", async () => {
     const user = userEvent.setup();
     open(detail, {
       "POST /api/generations/g1/edit": () =>
-        json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409),
+        json({ detail: "This document was changed elsewhere. Save again to replace it." }, 409),
     });
     const editor = await saveEdit(user);
     expect(await screen.findByRole("alert")).toHaveTextContent("changed elsewhere");
@@ -395,9 +457,9 @@ describe("GenerationPage", () => {
       "GET /api/generations/g1": () => json(current),
       "POST /api/generations/g1/edit": () => {
         posts += 1;
-        if (posts > 1) return json({ ...saved, updated_at: "2026-01-03T00:00:00+00:00" });
+        if (posts > 1) return json({ ...saved, revisions: { ...detail.revisions, cv: 2 }, updated_at: "2026-01-03T00:00:00+00:00" });
         current = saved;
-        return json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409);
+        return json({ detail: "This document was changed elsewhere. Save again to replace it." }, 409);
       },
     });
     await saveEdit(user);
@@ -413,7 +475,7 @@ describe("GenerationPage", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(postedStates(calls)).toEqual([detail.updated_at, SAVED_AT]));
+    await waitFor(() => expect(postedStates(calls)).toEqual([0, 1]));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -423,7 +485,7 @@ describe("GenerationPage", () => {
     const calls = open(detail, {
       "GET /api/generations/g1": () => json(current),
       "POST /api/generations/g1/edit": () =>
-        json({ detail: "This CV was changed elsewhere. Save again to replace it." }, 409),
+        json({ detail: "This document was changed elsewhere. Save again to replace it." }, 409),
     });
     await typeDraft(user);
     current = saved;
@@ -432,7 +494,7 @@ describe("GenerationPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
     await user.click(screen.getByRole("button", { name: "Save changes" }));
     await screen.findByRole("alert");
-    expect(postedStates(calls)).toEqual([detail.updated_at]);
+    expect(postedStates(calls)).toEqual([0]);
   });
 
   it("does not let a read from before the save bring the old CV back", async () => {
@@ -468,7 +530,7 @@ describe("GenerationPage", () => {
     await saveEdit(user);
     await screen.findByText(/edited by you/);
     await settle();
-    current = { ...saved, updated_at: "2026-01-03T00:00:00+00:00" };
+    current = { ...saved, revisions: { ...detail.revisions, cv: 2 }, updated_at: "2026-01-03T00:00:00+00:00" };
     comeBackToTheTab();
     await waitFor(() =>
       expect(screen.getByLabelText("CV LaTeX source")).toHaveValue("\\section{Newer}"),
@@ -553,8 +615,8 @@ describe("GenerationPage", () => {
     open({
       ...detail,
       previous_versions: [
-        { number: 1, saved_at: "2026-01-02T10:00:00Z" },
-        { number: 2, saved_at: "2026-01-03T10:00:00Z" },
+        { document: "cv", number: 1, saved_at: "2026-01-02T10:00:00Z" },
+        { document: "cv", number: 2, saved_at: "2026-01-03T10:00:00Z" },
       ],
     });
     const heading = await screen.findByRole("heading", { name: "Previous versions" });
@@ -566,11 +628,11 @@ describe("GenerationPage", () => {
     expect(rows[1]).toHaveTextContent("Version 1 (the model's version)");
     expect(rows[1]).toHaveTextContent(formatDate("2026-01-02T10:00:00Z"));
     const pdf = screen.getByRole("link", { name: "Open the PDF of version 2" });
-    expect(pdf).toHaveAttribute("href", "/api/generations/g1/versions/2/files/cv_pdf");
+    expect(pdf).toHaveAttribute("href", "/api/generations/g1/versions/cv/2/files/cv_pdf");
     expect(pdf).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: "Download the .tex of version 1" })).toHaveAttribute(
       "href",
-      "/api/generations/g1/versions/1/files/cv_tex?download=true",
+      "/api/generations/g1/versions/cv/1/files/cv_tex?download=true",
     );
     expect(screen.getByText(/edited by you/)).toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ export type Generation = Schemas["Generation"];
 export type GenerationDetail = Schemas["GenerationDetail"];
 export type CandidateProfile = Schemas["CandidateProfile"];
 export type Status = Generation["status"];
+export type Document = Schemas["DocumentVersion"]["document"];
 
 export const api = createClient<paths>({
   baseUrl: window.location.origin,
@@ -61,8 +62,8 @@ export function fileUrl(generationId: string, name: string, download = false) {
 }
 
 /** An edit changes what fileUrl returns, so previews and downloads name the state they want. */
-export function previewUrl(generationId: string, name: string, updatedAt: string) {
-  return `${fileUrl(generationId, name)}?v=${encodeURIComponent(updatedAt)}`;
+export function previewUrl(generationId: string, name: string, state: string) {
+  return `${fileUrl(generationId, name)}?v=${encodeURIComponent(state)}`;
 }
 
 export function downloadUrl(generationId: string, name: string, updatedAt: string) {
@@ -71,10 +72,11 @@ export function downloadUrl(generationId: string, name: string, updatedAt: strin
 
 export function versionFileUrl(
   generationId: string,
+  document: Document,
   number: number,
   name: string,
   download = false,
 ) {
-  const path = `/api/generations/${encodeURIComponent(generationId)}/versions/${number}/files/${name}`;
+  const path = `/api/generations/${encodeURIComponent(generationId)}/versions/${document}/${number}/files/${name}`;
   return download ? `${path}?download=true` : path;
 }

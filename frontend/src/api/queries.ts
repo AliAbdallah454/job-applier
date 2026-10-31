@@ -8,6 +8,7 @@ import {
 import {
   api,
   type CandidateProfile,
+  type Document,
   ApiError,
   previewUrl,
   type Status,
@@ -160,15 +161,15 @@ export function useRegenerate(id: string) {
   });
 }
 
-export function useCvSource(id: string, updatedAt: string) {
+export function useSource(id: string, document: Document, revision: number) {
   return useQuery({
-    queryKey: ["cv-source", id, updatedAt],
+    queryKey: ["source", id, document, revision],
     queryFn: async () => {
-      const response = await fetch(previewUrl(id, "cv_tex", updatedAt));
+      const response = await fetch(previewUrl(id, `${document}_tex`, String(revision)));
       if (!response.ok) throw toApiError(response.status, await response.json());
       return response.text();
     },
-    staleTime: Infinity, // The key names one saved state of the CV.
+    staleTime: Infinity, // The key names one saved state of the document.
   });
 }
 
@@ -183,22 +184,22 @@ export function useFindSourceLine(id: string) {
   });
 }
 
-export function useEditCv(id: string) {
+export function useEditDocument(id: string, document: Document) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ cvLatex, updatedAt }: { cvLatex: string; updatedAt: string }) =>
+    mutationFn: ({ latex, revision }: { latex: string; revision: number }) =>
       unwrap(
         api.POST("/api/generations/{generation_id}/edit", {
           params: { path: { generation_id: id } },
-          body: { cv_latex: cvLatex, updated_at: updatedAt },
+          body: { document, latex, revision },
         }),
       ),
-    onSuccess: async (saved, { cvLatex }) => {
+    onSuccess: async (saved, { latex }) => {
       // A read from before the save would otherwise land afterwards and bring the old CV back.
       await client.cancelQueries({ queryKey: ["generation", id] });
       // Already known, so the page shows the saved CV without a loading state. The source goes
-      // first because the generation's new updated_at is what makes the editor ask for it.
-      client.setQueryData(["cv-source", id, saved.updated_at], cvLatex);
+      // first because the generation's new revision is what makes the editor ask for it.
+      client.setQueryData(["source", id, document, saved.revisions[document]], latex);
       client.setQueryData(["generation", id], saved);
       return client.invalidateQueries({ queryKey: ["generations"] });
     },

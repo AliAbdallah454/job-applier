@@ -4,7 +4,7 @@ import json
 import re
 import time
 from pathlib import PurePosixPath
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from boto3.dynamodb.conditions import Key
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -22,13 +22,14 @@ from backend.documents.render import compile_source
 router = APIRouter(prefix="/api/generations", tags=["generations"])
 
 Status = Literal["queued", "processing", "ready", "failed"]
+Document = Literal["cv", "motivation_letter", "cover_letter"]
 CONTENT_TYPES = {
     ".pdf": "application/pdf",
     ".json": "application/json",
     ".tex": "text/plain; charset=utf-8",
     ".log": "text/plain; charset=utf-8",
 }
-CHANGED_ELSEWHERE = "This CV was changed elsewhere. Save again to replace it."
+CHANGED_ELSEWHERE = "This document was changed elsewhere. Save again to replace it."
 
 
 class GenerationRequest(BaseModel):
@@ -51,14 +52,16 @@ class Explanation(BaseModel):
     reason: str
 
 
-class CvEdit(BaseModel):
-    cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    updated_at: str  # The saved state the draft started from.
+class DocumentEdit(BaseModel):
+    document: Document
+    latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
+    revision: int  # The document's saved state the draft started from.
 
 
-class CvVersion(BaseModel):
-    """A CV that a later edit replaced; number 1 is the oldest."""
+class DocumentVersion(BaseModel):
+    """A CV or letter that a later edit replaced; number 1 is that document's oldest."""
 
+    document: Document
     number: int
     saved_at: str
 
@@ -90,7 +93,9 @@ class GenerationDetail(Generation):
     changes: list[Change]
     explanations: list[Explanation]
     compilation_log: str | None = None
-    previous_versions: list[CvVersion]
+    previous_versions: list[DocumentVersion]
+    # Each document's own count of saves, so saving one leaves drafts of the others valid.
+    revisions: dict[str, int]
     # The old edit flow gave each edit its own record, so the first CV on one is the user's.
     starts_from_edit: bool
 
@@ -103,6 +108,15 @@ def retryable(record):
 def downloads(record):
     ready = record.get("artifacts", {}) if record["status"] == "ready" else {}
     return {**ready, **record.get("failure_artifacts", {})}
+
+
+def revisions(record):
+    """The documents this generation has; older ones have no cover letter."""
+    return {
+        document: len(record.get(f"{document}_versions", []))
+        for document in get_args(Document)
+        if f"{document}_tex" in downloads(record)
+    }
 
 
 def summaries(context, records):
@@ -151,9 +165,11 @@ def detail(context, record):
         explanations=explanations,
         compilation_log=log,
         previous_versions=[
-            CvVersion(number=number, saved_at=version["saved_at"])
-            for number, version in enumerate(record.get("cv_versions", []), start=1)
+            DocumentVersion(document=document, number=number, saved_at=version["saved_at"])
+            for document in get_args(Document)
+            for number, version in enumerate(record.get(f"{document}_versions", []), start=1)
         ],
+        revisions=revisions(record),
         starts_from_edit="edited_from" in record,
     )
 
@@ -267,24 +283,27 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
 
 
 @router.post("/{generation_id}/edit")
-def edit_cv(
-    generation_id: str, body: CvEdit, context: AppContext, user: CurrentUser
+def edit_document(
+    generation_id: str, body: DocumentEdit, context: AppContext, user: CurrentUser
 ) -> GenerationDetail:
-    """Compile the user's CV source here and save it over the current CV; nothing is queued."""
+    """Compile the user's source here and save it over the current document; nothing is queued."""
     record = load(context, user, generation_id)
     if record["status"] != "ready":
         raise HTTPException(409, f"A {record['status']} generation cannot be edited")
-    if record["updated_at"] != body.updated_at:
+    saved_revisions = revisions(record)
+    if body.document not in saved_revisions:
+        raise HTTPException(404, "This generation does not have that document")
+    if saved_revisions[body.document] != body.revision:
         raise HTTPException(409, CHANGED_ELSEWHERE)
-    validate_cv(body.cv_latex)
+    validate_cv(body.latex)
     try:
-        pdf, synctex = compile_source(body.cv_latex, context.settings.compile_document)
+        pdf, synctex = compile_source(body.latex, context.settings.compile_document)
     except DocumentCompilationError as exc:
         # The compiler's output quotes this user's own source, and only goes back to them.
         raise HTTPException(422, exc.feedback) from None
     except RuntimeError as exc:  # TeX is not installed where the API runs.
         raise HTTPException(503, str(exc)) from None
-    saved = context.generations.save_edit(record, body.cv_latex, pdf, synctex)
+    saved = context.generations.save_edit(record, body.latex, pdf, synctex, document=body.document)
     if saved is None:
         raise HTTPException(409, CHANGED_ELSEWHERE)
     return detail(context, saved)
@@ -348,18 +367,19 @@ def get_file(
     )
 
 
-@router.get("/{generation_id}/versions/{number}/files/{name}")
+@router.get("/{generation_id}/versions/{document}/{number}/files/{name}")
 def get_version_file(
     generation_id: str,
+    document: Document,
     number: int,
     name: str,
     context: AppContext,
     user: CurrentUser,
     download: bool = False,
 ) -> Response:
-    """A file of a CV that an edit replaced; those never change, so it can be cached."""
+    """A file of a document that an edit replaced; those never change, so it can be cached."""
     record = load(context, user, generation_id)
-    versions = record.get("cv_versions", [])
+    versions = record.get(f"{document}_versions", [])
     # Numbers start at 1, and without the check a negative one would count from the end.
     files = versions[number - 1]["files"] if 1 <= number <= len(versions) else {}
     if name not in files:

@@ -4,6 +4,7 @@ import { ACTION, DownloadIcon, LeaveIcon } from "./ui";
 const DOWNLOADS = [
   ["cv_pdf", "CV"],
   ["motivation_letter_pdf", "Motivation letter"],
+  ["cover_letter_pdf", "Cover letter"],
 ];
 
 /** Each button appears once its file or link exists, so a running generation shows none yet. */

@@ -272,29 +272,48 @@
         "title": "Cv",
         "type": "object"
       },
-      "CvEdit": {
+      "DocumentEdit": {
         "properties": {
-          "cv_latex": {
-            "maxLength": 200000,
-            "minLength": 1,
-            "title": "Cv Latex",
+          "document": {
+            "enum": [
+              "cv",
+              "motivation_letter",
+              "cover_letter"
+            ],
+            "title": "Document",
             "type": "string"
           },
-          "updated_at": {
-            "title": "Updated At",
+          "latex": {
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Latex",
             "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
           }
         },
         "required": [
-          "cv_latex",
-          "updated_at"
+          "document",
+          "latex",
+          "revision"
         ],
-        "title": "CvEdit",
+        "title": "DocumentEdit",
         "type": "object"
       },
-      "CvVersion": {
-        "description": "A CV that a later edit replaced; number 1 is the oldest.",
+      "DocumentVersion": {
+        "description": "A CV or letter that a later edit replaced; number 1 is that document's oldest.",
         "properties": {
+          "document": {
+            "enum": [
+              "cv",
+              "motivation_letter",
+              "cover_letter"
+            ],
+            "title": "Document",
+            "type": "string"
+          },
           "number": {
             "title": "Number",
             "type": "integer"
@@ -305,10 +324,11 @@
           }
         },
         "required": [
+          "document",
           "number",
           "saved_at"
         ],
-        "title": "CvVersion",
+        "title": "DocumentVersion",
         "type": "object"
       },
       "Education": {
@@ -720,7 +740,7 @@
           },
           "previous_versions": {
             "items": {
-              "$ref": "#/components/schemas/CvVersion"
+              "$ref": "#/components/schemas/DocumentVersion"
             },
             "title": "Previous Versions",
             "type": "array"
@@ -732,6 +752,13 @@
           "review_required": {
             "title": "Review Required",
             "type": "boolean"
+          },
+          "revisions": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Revisions",
+            "type": "object"
           },
           "starts_from_edit": {
             "title": "Starts From Edit",
@@ -767,6 +794,7 @@
           "changes",
           "explanations",
           "previous_versions",
+          "revisions",
           "starts_from_edit"
         ],
         "title": "GenerationDetail",
@@ -1688,8 +1716,8 @@
     },
     "/api/generations/{generation_id}/edit": {
       "post": {
-        "description": "Compile the user's CV source here and save it over the current CV; nothing is queued.",
-        "operationId": "edit_cv_api_generations__generation_id__edit_post",
+        "description": "Compile the user's source here and save it over the current document; nothing is queued.",
+        "operationId": "edit_document_api_generations__generation_id__edit_post",
         "parameters": [
           {
             "in": "path",
@@ -1705,7 +1733,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CvEdit"
+                "$ref": "#/components/schemas/DocumentEdit"
               }
             }
           },
@@ -1733,7 +1761,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Edit Cv",
+        "summary": "Edit Document",
         "tags": [
           "generations"
         ]
@@ -1957,10 +1985,10 @@
         ]
       }
     },
-    "/api/generations/{generation_id}/versions/{number}/files/{name}": {
+    "/api/generations/{generation_id}/versions/{document}/{number}/files/{name}": {
       "get": {
-        "description": "A file of a CV that an edit replaced; those never change, so it can be cached.",
-        "operationId": "get_version_file_api_generations__generation_id__versions__number__files__name__get",
+        "description": "A file of a document that an edit replaced; those never change, so it can be cached.",
+        "operationId": "get_version_file_api_generations__generation_id__versions__document___number__files__name__get",
         "parameters": [
           {
             "in": "path",
@@ -1968,6 +1996,20 @@
             "required": true,
             "schema": {
               "title": "Generation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "document",
+            "required": true,
+            "schema": {
+              "enum": [
+                "cv",
+                "motivation_letter",
+                "cover_letter"
+              ],
+              "title": "Document",
               "type": "string"
             }
           },

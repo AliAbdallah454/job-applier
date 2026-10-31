@@ -1,6 +1,7 @@
 # Documents
 
-Tailors your own LaTeX CV to one job and writes a motivation letter. The model does
+Tailors your own LaTeX CV to one job and writes a motivation letter (why you want the role)
+and a cover letter (why you fit it). The model does
 not build a CV from scratch: it rewrites the body of the CV you supply, using the job
 description and your profile as extra facts. Any LaTeX template works.
 
@@ -43,7 +44,7 @@ problem. A failed `retry` that has a saved rewrite tries that one first.
 A user can also edit the CV source of a ready generation (`POST /api/generations/{id}/edit`).
 The API compiles it and `save_edit` updates the same record directly: no queue, worker or
 model. The generation id, `created_at` and `job_created` stay the same, so the job still has
-one entry. It keeps the letter, keywords and the model's explanations, and none of the checks
+one entry. It keeps the letters, keywords and the model's explanations, and none of the checks
 above apply, since the compiler decides. The new files go under `edits/<uuid>/`, and `diff` is
 always computed against the frozen original CV.
 
@@ -58,13 +59,19 @@ the second gets a 409 instead of dropping a version. A compile failure saves not
 `regenerate` does not use edits: it makes a separate generation from the frozen inputs, with
 no version history.
 
+The letters are edited the same way, through the same endpoint with `document` set to
+`motivation_letter` or `cover_letter`. A letter edit replaces only that letter, and its old files
+go to `<document>_versions`. `revision` is that document's own count of saves, so saving one
+document does not invalidate a draft of another. A letter generated before the font fallback names
+DejaVu Sans directly, so editing it needs that font where the API runs.
+
 Compiling with `-synctex=1` also writes a file linking PDF positions to source lines, stored as
 the `cv_synctex` artifact for the current CV. `GET /api/generations/{id}/source-line` runs the
 `synctex` tool on it, so that tool must be installed where the API runs. A CV compiled before this
 has no such file until its next edit.
 
 The edited CV is compiled with pdfLaTeX, or with XeLaTeX when it uses `fontspec`
-(the letter always uses XeLaTeX). The file must be self-contained: multi-file Overleaf
+(the letters always use XeLaTeX, with DejaVu Sans or, where that is missing, Helvetica). The file must be self-contained: multi-file Overleaf
 projects (`\input`, custom `.cls`, images) are not supported yet.
 
 ## Review

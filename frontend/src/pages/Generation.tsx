@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
+  type Document,
   downloadUrl,
   fileUrl,
   type GenerationDetail,
@@ -9,7 +10,7 @@ import {
   versionFileUrl,
 } from "../api/client";
 import { useFindSourceLine, useGeneration, useRegenerate, useRetry } from "../api/queries";
-import { CvEditor } from "../components/CvEditor";
+import { DocumentEditor } from "../components/DocumentEditor";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
 import { PdfPreview } from "../components/PdfPreview";
@@ -30,9 +31,15 @@ const WAITING: Record<string, string> = {
   queued: "Waiting for a worker. Workers start from zero, so this can take a few minutes.",
   processing: "A worker is tailoring your CV and compiling the PDFs.",
 };
+const DOCUMENTS = [
+  ["cv", "CV"],
+  ["motivation_letter", "Motivation letter"],
+  ["cover_letter", "Cover letter"],
+] as const;
 const FILES = [
   ["cv_tex", "CV .tex"],
-  ["motivation_letter_tex", "Letter .tex"],
+  ["motivation_letter_tex", "Motivation letter .tex"],
+  ["cover_letter_tex", "Cover letter .tex"],
   ["changes_json", "Changes .json"],
 ];
 
@@ -193,20 +200,18 @@ function Failure({ generation }: { generation: GenerationDetail }) {
 }
 
 function Review({ generation }: { generation: GenerationDetail }) {
-  const [document, setDocument] = useState<"cv_pdf" | "motivation_letter_pdf">("cv_pdf");
+  const [document, setDocument] = useState<Document>("cv");
   const [panel, setPanel] = useState<"review" | "edit">("review");
   const [jump, setJump] = useState<{ line: number; text: string } | null>(null);
   const findLine = useFindSourceLine(generation.generation_id);
+  const documents = DOCUMENTS.filter(([name]) => name in generation.revisions);
+  const label = DOCUMENTS.find(([name]) => name === document)?.[1];
+  const preview = previewUrl(generation.generation_id, `${document}_pdf`, generation.updated_at);
   return (
     <div className="grid min-h-0 flex-1 lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)]">
       <section className="flex min-w-0 flex-col border-b border-rule lg:border-r lg:border-b-0">
         <div className="flex gap-5 px-4 pt-3 text-sm sm:px-6" role="tablist">
-          {(
-            [
-              ["cv_pdf", "CV"],
-              ["motivation_letter_pdf", "Letter"],
-            ] as const
-          ).map(([name, text]) => (
+          {documents.map(([name, text]) => (
             <button
               key={name}
               role="tab"
@@ -219,10 +224,10 @@ function Review({ generation }: { generation: GenerationDetail }) {
             </button>
           ))}
         </div>
-        {document === "cv_pdf" ? (
+        {document === "cv" ? (
           <PdfPreview
             title="CV preview"
-            url={previewUrl(generation.generation_id, document, generation.updated_at)}
+            url={preview}
             onLocate={(position, text) =>
               findLine.mutate(position, {
                 onSuccess: ({ line }) => {
@@ -235,12 +240,12 @@ function Review({ generation }: { generation: GenerationDetail }) {
         ) : (
           <iframe
             key={generation.updated_at}
-            title="Letter preview"
-            src={previewUrl(generation.generation_id, document, generation.updated_at)}
+            title={`${label} preview`}
+            src={preview}
             className="mt-3 h-[70dvh] w-full flex-1 bg-wash lg:h-auto"
           />
         )}
-        {document === "cv_pdf" && findLine.error && (
+        {document === "cv" && findLine.error && (
           <div className="px-4 sm:px-6">
             <ErrorNote error={findLine.error} />
           </div>
@@ -268,17 +273,32 @@ function Review({ generation }: { generation: GenerationDetail }) {
         </div>
         {/* Hidden rather than removed, so switching tabs keeps an unsaved draft. */}
         <div hidden={panel !== "edit"} className="min-h-0 flex-1">
-          <CvEditor generation={generation} jump={jump} />
+          {documents.map(([name, text]) => (
+            <div key={name} hidden={document !== name} className="h-full">
+              <DocumentEditor
+                generation={generation}
+                document={name}
+                label={text}
+                jump={name === "cv" ? jump : null}
+              />
+            </div>
+          ))}
         </div>
         <div hidden={panel !== "review"} className="min-h-0 flex-1 lg:overflow-y-auto">
-          <ReviewList generation={generation} />
+          <ReviewList generation={generation} document={document} />
         </div>
       </section>
     </div>
   );
 }
 
-function ReviewList({ generation }: { generation: GenerationDetail }) {
+function ReviewList({
+  generation,
+  document,
+}: {
+  generation: GenerationDetail;
+  document: Document;
+}) {
   return (
     <div className="p-4 sm:p-6">
       <Eyebrow>Job keywords</Eyebrow>
@@ -327,26 +347,35 @@ function ReviewList({ generation }: { generation: GenerationDetail }) {
           </a>
         ))}
       </div>
-      {generation.previous_versions.length > 0 && <PreviousVersions generation={generation} />}
+      <PreviousVersions generation={generation} document={document} />
     </div>
   );
 }
 
-function PreviousVersions({ generation }: { generation: GenerationDetail }) {
+function PreviousVersions({
+  generation,
+  document,
+}: {
+  generation: GenerationDetail;
+  document: Document;
+}) {
   const id = generation.generation_id;
+  const versions = generation.previous_versions.filter((item) => item.document === document);
+  const startsFromEdit = document === "cv" && generation.starts_from_edit;
+  if (versions.length === 0) return null;
   return (
     <>
       <h2 className="mt-6 text-lg font-semibold tracking-tight">Previous versions</h2>
       <ul className="mt-2 space-y-2">
-        {generation.previous_versions.toReversed().map(({ number, saved_at: savedAt }) => (
+        {versions.toReversed().map(({ number, saved_at: savedAt }) => (
           <li key={number} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <span className="font-medium">
               Version {number}
-              {number === 1 && !generation.starts_from_edit && " (the model's version)"}
+              {number === 1 && !startsFromEdit && " (the model's version)"}
             </span>
             <span className="text-muted">{formatDate(savedAt)}</span>
             <a
-              href={versionFileUrl(id, number, "cv_pdf")}
+              href={versionFileUrl(id, document, number, `${document}_pdf`)}
               target="_blank"
               rel="noreferrer"
               aria-label={`Open the PDF of version ${number}`}
@@ -355,7 +384,7 @@ function PreviousVersions({ generation }: { generation: GenerationDetail }) {
               PDF
             </a>
             <a
-              href={versionFileUrl(id, number, "cv_tex", true)}
+              href={versionFileUrl(id, document, number, `${document}_tex`, true)}
               aria-label={`Download the .tex of version ${number}`}
               className="underline underline-offset-4"
             >

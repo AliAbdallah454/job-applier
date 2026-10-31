@@ -39,7 +39,7 @@ Each run replaces `demo-user-*` profiles and the supplied `ali` seed profile,
 while preserving other users. The profile
 API is not implemented yet.
 
-Generate a tailored CV and motivation letter asynchronously using Bedrock:
+Generate a tailored CV, motivation letter and cover letter asynchronously using Bedrock:
 
 ```sh
 uv run python -m backend.documents generate \
@@ -88,7 +88,7 @@ Employer job boards → Shared job catalogue
                               ↓
                     Per-user filters and ranking
                               ↓
-                    Tailored CV and motivation letter
+                    Tailored CV and letters
                               ↓
                     Review / supported submission
                               ↓

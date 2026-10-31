@@ -212,7 +212,15 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(body["explanations"][0]["reason"])
         self.assertEqual(
             body["files"],
-            ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
+            [
+                "changes_json",
+                "cover_letter_pdf",
+                "cover_letter_tex",
+                "cv_pdf",
+                "cv_tex",
+                "motivation_letter_pdf",
+                "motivation_letter_tex",
+            ],
         )
         self.assertFalse(body["retryable"])
 
@@ -352,16 +360,21 @@ class ApiTests(unittest.TestCase):
         frozen = json.loads(self.context.generations.read_file(record["input"]))
         self.assertNotIn("location", {k for k, v in frozen["profile"].items() if v})
 
-    def edit(self, generation_id, source, updated_at=None):
+    def edit(self, generation_id, source, revision=None, document="cv"):
         url = f"/api/generations/{generation_id}"
-        updated_at = updated_at or self.client.get(url).json().get("updated_at", "")
-        return self.client.post(f"{url}/edit", json={"cv_latex": source, "updated_at": updated_at})
+        if revision is None:
+            revision = self.client.get(url).json().get("revisions", {}).get(document, 0)
+        return self.client.post(
+            f"{url}/edit", json={"document": document, "latex": source, "revision": revision}
+        )
 
     def cv_source(self, generation_id):
         return self.client.get(f"/api/generations/{generation_id}/files/cv_tex").text
 
     def version_file(self, generation_id, number, name="cv_tex"):
-        return self.client.get(f"/api/generations/{generation_id}/versions/{number}/files/{name}")
+        return self.client.get(
+            f"/api/generations/{generation_id}/versions/cv/{number}/files/{name}"
+        )
 
     def added_by_hand(self, generation_id, line):
         source = self.cv_source(generation_id)
@@ -391,7 +404,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(detail["keywords"][0], "Python")
         self.assertEqual(
             detail["files"],
-            ["changes_json", "cv_pdf", "cv_tex", "motivation_letter_pdf", "motivation_letter_tex"],
+            [
+                "changes_json",
+                "cover_letter_pdf",
+                "cover_letter_tex",
+                "cv_pdf",
+                "cv_tex",
+                "motivation_letter_pdf",
+                "motivation_letter_tex",
+            ],
         )
         after = self.context.generations.get("ali", original)
         self.assertEqual(after["job_created"], before["job_created"])
@@ -418,8 +439,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(
             detail["previous_versions"],
             [
-                {"number": 1, "saved_at": ready["updated_at"]},
-                {"number": 2, "saved_at": saved_first["updated_at"]},
+                {"document": "cv", "number": 1, "saved_at": ready["updated_at"]},
+                {"document": "cv", "number": 2, "saved_at": saved_first["updated_at"]},
             ],
         )
         fetched = self.client.get(f"/api/generations/{original}").json()
@@ -446,7 +467,7 @@ class ApiTests(unittest.TestCase):
         self.process(original)
         self.edit(original, self.added_by_hand(original, "Edit"))
         response = self.client.get(
-            f"/api/generations/{original}/versions/1/files/cv_tex?download=true"
+            f"/api/generations/{original}/versions/cv/1/files/cv_tex?download=true"
         )
         self.assertEqual(
             response.headers["content-disposition"],
@@ -515,10 +536,63 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.version_file(original, 2).text, rival)
         self.assertEqual(self.cv_source(original), mine)
 
+    def letter(self, generation_id, name):
+        return self.client.get(f"/api/generations/{generation_id}/files/{name}_tex").text
+
+    def test_a_letter_edit_replaces_that_letter_and_keeps_its_own_history(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        before = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual(before["revisions"], {"cv": 0, "motivation_letter": 0, "cover_letter": 0})
+        model_letter = self.letter(original, "cover_letter")
+        untouched = self.letter(original, "motivation_letter")
+        edited = model_letter.replace("\\begin{document}", "\\begin{document}\nBy hand\n")
+
+        detail = self.edit(original, edited, document="cover_letter").json()
+
+        self.assertEqual(self.letter(original, "cover_letter"), edited)
+        self.assertEqual(self.letter(original, "motivation_letter"), untouched)
+        self.assertEqual(detail["revisions"]["cover_letter"], 1)
+        self.assertEqual(detail["revisions"]["cv"], 0)
+        self.assertEqual(detail["changes"], before["changes"])
+        self.assertEqual(
+            detail["previous_versions"],
+            [{"document": "cover_letter", "number": 1, "saved_at": before["updated_at"]}],
+        )
+        old = self.client.get(
+            f"/api/generations/{original}/versions/cover_letter/1/files/cover_letter_tex"
+        )
+        self.assertEqual(old.text, model_letter)
+        self.assertEqual(self.version_file(original, 1).status_code, 404)
+
+    def test_saving_one_document_leaves_a_draft_of_another_valid(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        letter = self.letter(original, "motivation_letter")
+        self.edit(original, self.added_by_hand(original, "Edit"))
+
+        response = self.edit(original, letter + "%", 0, "motivation_letter")
+
+        self.assertEqual(response.status_code, 200)
+        stale = self.edit(original, letter + "%%", 0, "motivation_letter")
+        self.assertEqual(stale.status_code, 409)
+
+    def test_a_generation_from_before_cover_letters_has_none_to_edit(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.context.generations.table.update_item(
+            Key={"user_id": "ali", "generation_id": original},
+            UpdateExpression="REMOVE artifacts.cover_letter_tex, artifacts.cover_letter_pdf",
+        )
+        detail = self.client.get(f"/api/generations/{original}").json()
+        self.assertNotIn("cover_letter", detail["revisions"])
+        response = self.edit(original, CV.decode(), 0, "cover_letter")
+        self.assertEqual(response.status_code, 404)
+
     def test_a_draft_from_before_another_save_gets_409_and_changes_nothing(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)
-        loaded = self.client.get(f"/api/generations/{original}").json()["updated_at"]
+        loaded = self.client.get(f"/api/generations/{original}").json()["revisions"]["cv"]
         self.edit(original, self.added_by_hand(original, "Saved in another tab"))
         saved = self.context.generations.get("ali", original)
         self.compiler.reset_mock()
@@ -533,7 +607,8 @@ class ApiTests(unittest.TestCase):
         original = self.tailor().json()["generation_id"]
         self.process(original)
         response = self.client.post(
-            f"/api/generations/{original}/edit", json={"cv_latex": self.cv_source(original)}
+            f"/api/generations/{original}/edit",
+            json={"document": "cv", "latex": self.cv_source(original)},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -574,7 +649,7 @@ class ApiTests(unittest.TestCase):
             Settings(**{**self.settings.__dict__, "user_id": "other"}), region="us-east-1"
         )
         client = TestClient(create_app(other), base_url="http://localhost")
-        url = f"/api/generations/{original}/versions/1/files/cv_tex"
+        url = f"/api/generations/{original}/versions/cv/1/files/cv_tex"
         self.assertEqual(self.client.get(url).status_code, 200)
         self.assertEqual(client.get(url).status_code, 404)
 

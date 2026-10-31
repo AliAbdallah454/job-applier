@@ -56,7 +56,8 @@ def content(body=BODY):
         job_keywords=["Python", "APIs", "FastAPI"],
         cv_body=body,
         changes=[{"change": "Named FastAPI in a bullet", "reason": "FastAPI"}],
-        letter_paragraphs=["I am interested in the role.", "I built Python tools."],
+        motivation_letter_paragraphs=["I am interested in the role.", "I want to build tools."],
+        cover_letter_paragraphs=["I fit this role.", "I built Python tools."],
     )
 
 
@@ -139,9 +140,15 @@ class CvRewriteTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def test_each_letter_gets_its_own_paragraphs(self):
+        sources = render_sources(request(), content())
+        self.assertIn(b"I want to build tools.", sources["motivation_letter.tex"])
+        self.assertNotIn(b"I want to build tools.", sources["cover_letter.tex"])
+        self.assertIn(b"I built Python tools.", sources["cover_letter.tex"])
+
     def test_cv_and_letter_are_escaped(self):
         generated = content()
-        generated.letter_paragraphs[0] = r"50% & \input{secret}"
+        generated.motivation_letter_paragraphs[0] = r"50% & \input{secret}"
         sources = render_sources(request(), generated)
         letter = sources["motivation_letter.tex"].decode()
         self.assertIn(r"50\% \& \textbackslash{}input\{secret\}", letter)
@@ -250,7 +257,7 @@ class GenerationTests(unittest.TestCase):
         result = self.store.get(**message)
         self.assertEqual(result["job_id"], "job-1")
         self.assertTrue(result["review_required"])
-        self.assertEqual(len(result["artifacts"]), 5)
+        self.assertEqual(len(result["artifacts"]), 7)
         changes = json.loads(self.store.read_file(result["artifacts"]["changes_json"]))
         self.assertEqual(len(changes["diff"]), 1)
         self.assertIn("a prediction endpoint", changes["diff"][0]["before"])
@@ -283,6 +290,25 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(self.store.read_file(edited["artifacts"]["cv_synctex"]), b"positions")
         again = self.store.save_edit(edited, source, b"%PDF-2")
         self.assertNotIn("cv_synctex", again["artifacts"])
+
+    def test_a_letter_edit_leaves_the_cv_and_its_history_alone(self):
+        message = self.submit()
+        self.service.process(message)
+        before = self.store.get(**message)
+        edited = self.store.save_edit(
+            before, "\\documentclass{article}", b"%PDF-letter", b"unused", document="cover_letter"
+        )
+        for name in ("cv_tex", "cv_pdf", "changes_json", "motivation_letter_pdf"):
+            self.assertEqual(edited["artifacts"][name], before["artifacts"][name])
+        self.assertEqual(
+            self.store.read_file(edited["artifacts"]["cover_letter_pdf"]), b"%PDF-letter"
+        )
+        self.assertNotIn("cv_synctex", edited["artifacts"])
+        self.assertNotIn("cv_versions", edited)
+        self.assertEqual(
+            edited["cover_letter_versions"][0]["files"],
+            {name: before["artifacts"][name] for name in ("cover_letter_tex", "cover_letter_pdf")},
+        )
 
     def test_each_edit_keeps_the_replaced_cv_and_diffs_against_the_original(self):
         message = self.submit()
@@ -391,6 +417,7 @@ class GenerationTests(unittest.TestCase):
             DocumentCompilationError(
                 timed_out=False, diagnostics=b"preamble noise\n! Undefined control sequence.\nl.42"
             ),
+            b"%PDF-test",
             b"%PDF-test",
             b"%PDF-test",
         ]

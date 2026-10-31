@@ -1,1 +1,1 @@
-"""Job-specific CV and motivation-letter generation."""
+"""Job-specific CV, motivation letter and cover letter generation."""

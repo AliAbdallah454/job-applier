@@ -87,10 +87,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Edit Cv
-         * @description Compile the user's CV source here and save it over the current CV; nothing is queued.
+         * Edit Document
+         * @description Compile the user's source here and save it over the current document; nothing is queued.
          */
-        post: operations["edit_cv_api_generations__generation_id__edit_post"];
+        post: operations["edit_document_api_generations__generation_id__edit_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -174,7 +174,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/generations/{generation_id}/versions/{number}/files/{name}": {
+    "/api/generations/{generation_id}/versions/{document}/{number}/files/{name}": {
         parameters: {
             query?: never;
             header?: never;
@@ -183,9 +183,9 @@ export interface paths {
         };
         /**
          * Get Version File
-         * @description A file of a CV that an edit replaced; those never change, so it can be cached.
+         * @description A file of a document that an edit replaced; those never change, so it can be cached.
          */
-        get: operations["get_version_file_api_generations__generation_id__versions__number__files__name__get"];
+        get: operations["get_version_file_api_generations__generation_id__versions__document___number__files__name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -354,18 +354,28 @@ export interface components {
             /** Uploaded At */
             uploaded_at: string;
         };
-        /** CvEdit */
-        CvEdit: {
-            /** Cv Latex */
-            cv_latex: string;
-            /** Updated At */
-            updated_at: string;
+        /** DocumentEdit */
+        DocumentEdit: {
+            /**
+             * Document
+             * @enum {string}
+             */
+            document: "cv" | "motivation_letter" | "cover_letter";
+            /** Latex */
+            latex: string;
+            /** Revision */
+            revision: number;
         };
         /**
-         * CvVersion
-         * @description A CV that a later edit replaced; number 1 is the oldest.
+         * DocumentVersion
+         * @description A CV or letter that a later edit replaced; number 1 is that document's oldest.
          */
-        CvVersion: {
+        DocumentVersion: {
+            /**
+             * Document
+             * @enum {string}
+             */
+            document: "cv" | "motivation_letter" | "cover_letter";
             /** Number */
             number: number;
             /** Saved At */
@@ -496,11 +506,15 @@ export interface components {
             /** Model Id */
             model_id: string;
             /** Previous Versions */
-            previous_versions: components["schemas"]["CvVersion"][];
+            previous_versions: components["schemas"]["DocumentVersion"][];
             /** Retryable */
             retryable: boolean;
             /** Review Required */
             review_required: boolean;
+            /** Revisions */
+            revisions: {
+                [key: string]: number;
+            };
             /** Starts From Edit */
             starts_from_edit: boolean;
             /**
@@ -864,7 +878,7 @@ export interface operations {
             };
         };
     };
-    edit_cv_api_generations__generation_id__edit_post: {
+    edit_document_api_generations__generation_id__edit_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -875,7 +889,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CvEdit"];
+                "application/json": components["schemas"]["DocumentEdit"];
             };
         };
         responses: {
@@ -1030,7 +1044,7 @@ export interface operations {
             };
         };
     };
-    get_version_file_api_generations__generation_id__versions__number__files__name__get: {
+    get_version_file_api_generations__generation_id__versions__document___number__files__name__get: {
         parameters: {
             query?: {
                 download?: boolean;
@@ -1038,6 +1052,7 @@ export interface operations {
             header?: never;
             path: {
                 generation_id: string;
+                document: "cv" | "motivation_letter" | "cover_letter";
                 number: number;
                 name: string;
             };

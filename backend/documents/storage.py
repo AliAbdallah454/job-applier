@@ -93,51 +93,54 @@ class GenerationStore:
             self.enqueue(sqs, queue_url, user_id, generation_id)
         return record
 
-    def save_edit(self, record, source, pdf, synctex=None):
-        """Put the user's compiled CV on the record, or None if it changed since it was read.
+    def save_edit(self, record, source, pdf, synctex=None, *, document="cv"):
+        """Put the user's compiled document on the record, or None if it changed since it was read.
 
-        The CV it replaces goes to cv_versions, oldest first; the letter and input stay the same.
+        The files it replaces go to <document>_versions, oldest first; the rest stays the same.
         """
-        frozen = GenerationInput.model_validate_json(self.read_file(record["input"]))
-        saved = json.loads(self.read_file(record["artifacts"]["changes_json"]))
-        changes = {
-            "diff": diff_cv(cv_body(frozen.cv_latex), cv_body(source)),
-            # Generations from before prompt version 7 stored a list of find/replace edits.
-            "explanations": saved["explanations"] if isinstance(saved, dict) else [],
-        }
-        # A key of its own for each edit, so the references in cv_versions stay valid.
+        # A key of its own for each edit, so the references in the versions stay valid.
         prefix = f"{record['prefix']}/edits/{uuid.uuid4().hex}"
-        artifacts = {
-            **record["artifacts"],
-            "cv_tex": self.put_file(f"{prefix}/cv.tex", source.encode(), "application/x-tex"),
-            "cv_pdf": self.put_file(f"{prefix}/cv.pdf", pdf, "application/pdf"),
-            "changes_json": self.put_file(
-                f"{prefix}/changes.json", encode(changes), "application/json"
+        files = {
+            f"{document}_tex": self.put_file(
+                f"{prefix}/{document}.tex", source.encode(), "application/x-tex"
             ),
+            f"{document}_pdf": self.put_file(f"{prefix}/{document}.pdf", pdf, "application/pdf"),
         }
-        artifacts.pop("cv_synctex", None)  # It describes the replaced PDF.
-        if synctex:
-            artifacts["cv_synctex"] = self.put_file(
-                f"{prefix}/cv.synctex.gz", synctex, "application/gzip"
+        if document == "cv":
+            frozen = GenerationInput.model_validate_json(self.read_file(record["input"]))
+            saved = json.loads(self.read_file(record["artifacts"]["changes_json"]))
+            changes = {
+                "diff": diff_cv(cv_body(frozen.cv_latex), cv_body(source)),
+                # Generations from before prompt version 7 stored a list of find/replace edits.
+                "explanations": saved["explanations"] if isinstance(saved, dict) else [],
+            }
+            files["changes_json"] = self.put_file(
+                f"{prefix}/changes.json", encode(changes), "application/json"
             )
+        artifacts = {**record["artifacts"], **files}
+        if document == "cv":
+            artifacts.pop("cv_synctex", None)  # It describes the replaced PDF.
+            if synctex:
+                artifacts["cv_synctex"] = self.put_file(
+                    f"{prefix}/cv.synctex.gz", synctex, "application/gzip"
+                )
         replaced = {
             "saved_at": record["updated_at"],
-            "files": {
-                name: record["artifacts"][name] for name in ("cv_tex", "cv_pdf", "changes_json")
-            },
+            "files": {name: record["artifacts"][name] for name in files},
         }
+        versions = f"{document}_versions"
         try:
             response = self.table.update_item(
                 Key={"user_id": record["user_id"], "generation_id": record["generation_id"]},
                 UpdateExpression=(
-                    "SET artifacts = :artifacts, cv_versions = :versions, updated_at = :updated"
+                    "SET artifacts = :artifacts, #versions = :versions, updated_at = :updated"
                 ),
                 # Two saves from the same read would otherwise lose one entry of the history.
                 ConditionExpression="#status = :ready AND updated_at = :read",
-                ExpressionAttributeNames={"#status": "status"},
+                ExpressionAttributeNames={"#status": "status", "#versions": versions},
                 ExpressionAttributeValues={
                     ":artifacts": artifacts,
-                    ":versions": [*record.get("cv_versions", []), replaced],
+                    ":versions": [*record.get(versions, []), replaced],
                     ":updated": timestamp(),
                     ":ready": "ready",
                     ":read": record["updated_at"],
