@@ -10,6 +10,7 @@
   --muted: light-dark(#6b6b6b, #9a9a9a);
   --rule: light-dark(#e2e2e2, #2a2a2a);
   --wash: light-dark(#f4f4f4, #171717);
+  --red: light-dark(#d1242f, #ff6b6b);
   --tex-command: light-dark(#0550ae, #79c0ff);
   --tex-environment: light-dark(#7a3fd1, #d2a8ff);
   --tex-math: light-dark(#116329, #7ee787);
@@ -62,7 +63,7 @@ body {
 /* The one signature move: ink floods the control from the left. */
 .flood,
 .fill {
-  background-image: linear-gradient(var(--ink), var(--ink));
+  background-image: linear-gradient(var(--flood, var(--ink)), var(--flood, var(--ink)));
   background-repeat: no-repeat;
   background-size: 0% 100%;
   transition:
@@ -73,6 +74,11 @@ body {
 .fill[aria-current="true"] {
   background-size: 100% 100%;
   color: var(--paper);
+}
+.flood-red {
+  --flood: var(--red);
+  border-color: var(--red);
+  color: var(--red);
 }
 
 /* Navigation and tabs: the same move, as a thin underline. */

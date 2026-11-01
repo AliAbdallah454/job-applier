@@ -123,15 +123,14 @@ function Question({ interest }: { interest: Interest }) {
           >
             I applied
           </Button>
-          <button
-            type="button"
+          <Button
+            className="flood-red"
             disabled={answer.isPending}
             aria-label={`I did not apply to ${name}`}
             onClick={() => answer.mutate(false)}
-            className="line text-sm text-muted hover:text-ink"
           >
             No
-          </button>
+          </Button>
         </div>
       </div>
       <ErrorNote error={answer.error} />
