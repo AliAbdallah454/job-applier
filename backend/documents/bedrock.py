@@ -26,7 +26,8 @@ you write a motivation letter and a cover letter.
   something the job asks for, leave it out; do not hint that they have it.
 - Keep numbers exactly as written. Never add new numbers or percentages.
 - Do not change the name, contact details, headings, employers, job titles, dates or
-  education, except to translate them as the Language section below says.
+  education, except to translate them as the Language section below says, and except for
+  the headline described in Step 2.
 - Never use an em dash (—, \textemdash or ---) in cv_body or the letters, and replace any
   in the CV. Use a comma, colon or full stop instead.
 
@@ -54,6 +55,13 @@ posting spells them, most important first. Every edit serves these keywords.
   facts support them, using the posting's vocabulary (for example "REST APIs" for
   "built HTTP endpoints"). Keep each bullet's facts and numbers. Every bullet states
   a different fact; never repeat a fact, phrase or opening verb within an entry.
+- Headline: if a line near the name lists several professional titles for the candidate
+  (for example "Software Engineer / AI Engineer / Cloud Engineer"), keep only the one
+  closest to this job and remove the others and their separators. Copy that title word for
+  word from the line: never use the job posting's title or any title that is not listed,
+  even when the posting's title differs ("AI Engineer" stays "AI Engineer" for a Machine
+  Learning Engineer job). Keep exactly one, even if none fits well. This applies only to
+  that line, not to the job titles of experience entries.
 - Order: within an entry, put the most relevant bullets first. Put the most relevant
   projects first. Work experience entries stay in the CV's chronological order: never
   move an experience entry, whatever its relevance.

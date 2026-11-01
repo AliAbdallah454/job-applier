@@ -649,9 +649,10 @@ class GenerationTests(unittest.TestCase):
         self.request.model_id = "us.anthropic.claude-sonnet-4-6"
         self.assertEqual(self.service.process(self.submit()), "ready")
 
-    def test_the_prompt_keeps_changes_in_english_and_bans_em_dashes(self):
+    def test_the_prompt_holds_the_rules_the_user_asked_for(self):
         self.assertIn("changes are always in English", SYSTEM)
         self.assertIn("Never use an em dash", SYSTEM)
+        self.assertIn("keep only the one\n  closest to this job", SYSTEM)
         self.assertIn("never\n  move an experience entry", SYSTEM)
 
     def test_bedrock_sends_cv_but_not_profile_contact_details(self):
