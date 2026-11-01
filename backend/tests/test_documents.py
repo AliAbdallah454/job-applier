@@ -652,6 +652,7 @@ class GenerationTests(unittest.TestCase):
     def test_the_prompt_holds_the_rules_the_user_asked_for(self):
         self.assertIn("changes are always in English", SYSTEM)
         self.assertIn("Never use an em dash", SYSTEM)
+        self.assertIn("Everything else in this prompt still applies", SYSTEM)
         self.assertIn("keep only the one\n  closest to this job", SYSTEM)
         self.assertIn("never\n  move an experience entry", SYSTEM)
 
@@ -677,12 +678,18 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn("email", prompt["candidate_facts"])
         self.assertNotIn("full_name", prompt["candidate_facts"])
         self.assertNotIn("previous_attempt", prompt)
+        self.assertNotIn("candidate_instructions", prompt)
         self.assertEqual(prompt["output_language"], "English")
         french = self.request.model_copy(update={"language": "fr"})
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(french)
         prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
         self.assertEqual(prompt["output_language"], "French")
+        guided = self.request.model_copy(update={"instructions": "Lead with AWS"})
+        with self.assertRaises(ValueError):
+            BedrockGenerator(client)(guided)
+        prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["candidate_instructions"], "Lead with AWS")
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(self.request, {"error": "Fix this"})
         prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])

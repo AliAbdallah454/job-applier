@@ -59,6 +59,10 @@ that as `starts_from_edit`, and nothing writes the attribute any more. The reque
 The update is conditional on `status` and that `updated_at`: of two saves from the same read,
 the second gets a 409 instead of dropping a version. A compile failure saves nothing.
 
+`regenerate` can carry the user's `instructions`, frozen in the new generation's input and given
+to the model as `candidate_instructions`. The prompt's rules still win over them, so they cannot
+add unsupported claims, and they apply to that generation only.
+
 `regenerate` does not use edits: it makes a separate generation from the frozen inputs, with
 no version history.
 

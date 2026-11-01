@@ -42,7 +42,9 @@ shows the failure page.
 **Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
 document queue. The generation page polls until a worker finishes. Workers start from zero,
 so a run can stay queued for a few minutes. Identical inputs return the existing generation;
-**Regenerate** makes a new, separate revision from the same frozen inputs, so it starts from
+**Regenerate** can take instructions for the model, such as what to emphasise, and these are shown
+on the new version. They apply once, and the model still may not claim anything your CV and profile
+do not support. It makes a new, separate revision from the same frozen inputs, so it starts from
 your uploaded CV and not from your edits, and **Retry** re-queues a failed run or one whose
 worker died. Each real run calls Bedrock and costs money.
 
@@ -86,7 +88,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 | `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
-| `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision |
+| `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision, with optional `instructions` for the model |
 | `GET /api/mail/status`, `POST /api/mail/sync` | Whether the mailbox is connected, the last check, and starting one; see the [mail guide](../backend/mail/README.md) |
 | `GET /api/applications`, `PATCH`/`DELETE /api/applications/{id}` | Tracked applications, correcting a status, and removing an entry |
 | `POST`/`GET /api/applications/interests`, `POST .../{job_id}/applied`, `DELETE .../{job_id}` | Note an opened job post, list those to ask about, and answer "Did you apply?" |

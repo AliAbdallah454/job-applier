@@ -73,6 +73,7 @@ class GenerationStore:
                 "profile_version": request.profile.version,
                 "model_id": request.model_id,
                 "language": request.language,
+                "instructions": request.instructions,
                 "prompt_version": request.prompt_version,
                 "input_hash": digest,
                 "input": snapshot,

@@ -767,6 +767,17 @@
             "title": "Generation Id",
             "type": "string"
           },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
           "job_id": {
             "title": "Job Id",
             "type": "string"
@@ -906,6 +917,17 @@
           "generation_id": {
             "title": "Generation Id",
             "type": "string"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
           },
           "job_id": {
             "title": "Job Id",
@@ -1753,6 +1775,25 @@
         "title": "Project",
         "type": "object"
       },
+      "Regeneration": {
+        "properties": {
+          "instructions": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          }
+        },
+        "title": "Regeneration",
+        "type": "object"
+      },
       "Skill": {
         "additionalProperties": false,
         "properties": {
@@ -2472,7 +2513,7 @@
     },
     "/api/generations/{generation_id}/regenerate": {
       "post": {
-        "description": "A new revision from the same frozen CV, profile and job.",
+        "description": "A new revision from the same frozen CV, profile and job, with any new instructions.",
         "operationId": "regenerate_api_generations__generation_id__regenerate_post",
         "parameters": [
           {
@@ -2485,6 +2526,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Regeneration",
+                "default": {}
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "content": {

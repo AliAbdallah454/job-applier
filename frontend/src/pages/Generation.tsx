@@ -20,6 +20,7 @@ import { DocumentEditor } from "../components/DocumentEditor";
 import { EditDiff } from "../components/EditDiff";
 import { GenerationLinks } from "../components/GenerationLinks";
 import { PdfPreview } from "../components/PdfPreview";
+import { RegenerateDialog } from "../components/RegenerateDialog";
 import { Celebration, Joke, Mascot, Snip } from "../components/Silly";
 import {
   Button,
@@ -69,6 +70,7 @@ export function GenerationPage() {
   const status = data?.status;
   const previous = useRef(status);
   const [celebrating, setCelebrating] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const stopCelebrating = useCallback(() => setCelebrating(false), []);
   const application = useApplicationStatuses().get(id);
 
@@ -123,21 +125,34 @@ export function GenerationPage() {
           )}
           {(data.status === "ready" || data.status === "failed") && (
             <Button
-              disabled={regenerate.isPending}
-              onClick={() =>
-                regenerate.mutate(undefined, {
-                  onSuccess: (next) => navigate(`/generations/${next.generation_id}`),
-                })
-              }
+              onClick={() => {
+                regenerate.reset();
+                setRegenerating(true);
+              }}
             >
-              {regenerate.isPending ? "Starting…" : "Regenerate"}
+              Regenerate
             </Button>
           )}
         </div>
       </header>
       <div className="px-4 sm:px-6">
-        <ErrorNote error={retry.error ?? regenerate.error} />
+        <ErrorNote error={retry.error} />
       </div>
+      {regenerating && (
+        <RegenerateDialog
+          error={regenerate.error}
+          pending={regenerate.isPending}
+          onClose={() => setRegenerating(false)}
+          onStart={(instructions) =>
+            regenerate.mutate(instructions, {
+              onSuccess: (next) => {
+                setRegenerating(false);
+                navigate(`/generations/${next.generation_id}`);
+              },
+            })
+          }
+        />
+      )}
       {celebrating && <Celebration onDone={stopCelebrating} />}
       {data.status === "ready" && <Review key={data.generation_id} generation={data} />}
       {data.status === "failed" && <Failure generation={data} />}
@@ -310,6 +325,12 @@ function ReviewList({
 }) {
   return (
     <div className="p-4 sm:p-6">
+      {generation.instructions && (
+        <div className="mb-6">
+          <Eyebrow>You asked for</Eyebrow>
+          <p className="mt-1 text-sm break-words whitespace-pre-wrap">{generation.instructions}</p>
+        </div>
+      )}
       <Eyebrow>Job keywords</Eyebrow>
       <ul className="mt-2 flex flex-wrap gap-1">
         {generation.keywords.map((keyword) => (

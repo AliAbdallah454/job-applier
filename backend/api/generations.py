@@ -16,7 +16,13 @@ from backend.api.deps import AppContext, CurrentUser
 from backend.api.profile import load_profile
 from backend.documents.errors import DocumentCompilationError
 from backend.documents.latex import validate_cv
-from backend.documents.models import PROMPT_VERSION, GenerationInput, Job, Language
+from backend.documents.models import (
+    PROMPT_VERSION,
+    GenerationInput,
+    Instructions,
+    Job,
+    Language,
+)
 from backend.documents.render import compile_source
 from backend.mail.linkedin import job_url
 from backend.mail.storage import MAIL_JOB_PREFIX
@@ -39,6 +45,10 @@ class GenerationRequest(BaseModel):
     cv_id: str
     model_id: str | None = None  # The first configured model when left out.
     language: Language = "en"
+
+
+class Regeneration(BaseModel):
+    instructions: Instructions | None = None
 
 
 class Change(BaseModel):
@@ -81,6 +91,7 @@ class Generation(BaseModel):
     job_url: str | None = None
     model_id: str
     language: Language = "en"  # Records from before languages have no value.
+    instructions: str | None = None  # What the user asked for when regenerating.
     status: Status
     created_at: str
     updated_at: str
@@ -310,8 +321,13 @@ def retry_generation(generation_id: str, context: AppContext, user: CurrentUser)
 
 
 @router.post("/{generation_id}/regenerate", status_code=201)
-def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Generation:
-    """A new revision from the same frozen CV, profile and job."""
+def regenerate(
+    generation_id: str,
+    context: AppContext,
+    user: CurrentUser,
+    body: Regeneration = Regeneration(),  # noqa: B008
+) -> Generation:
+    """A new revision from the same frozen CV, profile and job, with any new instructions."""
     record = load(context, user, generation_id)
     frozen = GenerationInput.model_validate_json(context.generations.read_file(record["input"]))
     models = model_ids(context)
@@ -320,6 +336,8 @@ def regenerate(generation_id: str, context: AppContext, user: CurrentUser) -> Ge
             # The same model again, unless it has since been removed from the config.
             "model_id": frozen.model_id if frozen.model_id in models else models[0],
             "prompt_version": PROMPT_VERSION,
+            # Each regeneration says what it wants; earlier instructions do not carry over.
+            "instructions": body.instructions,
         }
     )
     return summary(context, submit(context, request, force=True))

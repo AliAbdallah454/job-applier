@@ -378,6 +378,42 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(self.client.post(url).status_code, 202)
 
+    def regenerate(self, generation_id, instructions=None):
+        body = {"instructions": instructions} if instructions else {}
+        return self.client.post(f"/api/generations/{generation_id}/regenerate", json=body)
+
+    def frozen(self, generation_id):
+        record = self.context.generations.get("ali", generation_id)
+        return json.loads(self.context.generations.read_file(record["input"]))
+
+    def test_regenerating_with_instructions_freezes_them_and_shows_them(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        body = self.regenerate(original, "  Lead with my AWS work  ").json()
+        self.assertEqual(body["instructions"], "Lead with my AWS work")
+        self.assertEqual(
+            self.frozen(body["generation_id"])["instructions"], "Lead with my AWS work"
+        )
+        shown = self.client.get(f"/api/generations/{body['generation_id']}").json()
+        self.assertEqual(shown["instructions"], "Lead with my AWS work")
+        self.assertIsNone(self.client.get(f"/api/generations/{original}").json()["instructions"])
+
+    def test_instructions_do_not_carry_over_to_the_next_regeneration(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        guided = self.regenerate(original, "Shorter letters").json()["generation_id"]
+        self.process(guided)
+        plain = self.regenerate(guided).json()
+        self.assertIsNone(plain["instructions"])
+        self.assertIsNone(self.frozen(plain["generation_id"])["instructions"])
+
+    def test_empty_or_oversized_instructions_are_refused(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        url = f"/api/generations/{original}/regenerate"
+        self.assertEqual(self.client.post(url, json={"instructions": "   "}).status_code, 422)
+        self.assertEqual(self.client.post(url, json={"instructions": "x" * 2001}).status_code, 422)
+
     def test_regenerate_makes_a_new_revision_from_the_frozen_input(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)

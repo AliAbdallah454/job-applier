@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -670,6 +670,59 @@ describe("GenerationPage", () => {
   it("names French on a French generation", async () => {
     open({ ...detail, language: "fr" });
     expect(await screen.findByText(/\/ French/)).toBeInTheDocument();
+  });
+
+  async function openRegenerate(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByRole("button", { name: "Regenerate" }));
+    return screen.findByRole("textbox", { name: /do differently/, hidden: true });
+  }
+
+  it("sends instructions when regenerating and opens the new version", async () => {
+    const user = userEvent.setup();
+    const calls = open(detail, {
+      "POST /api/generations/g1/regenerate": () => json({ ...detail, generation_id: "g2" }, 201),
+    });
+    const box = await openRegenerate(user);
+    fireEvent.change(box, { target: { value: "  Lead with AWS  " } });
+    const buttons = screen.getAllByRole("button", { name: "Regenerate", hidden: true });
+    await user.click(buttons[buttons.length - 1]);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g2"),
+    );
+    expect(calls.find((call) => call.path.endsWith("/regenerate"))?.body).toBe(
+      JSON.stringify({ instructions: "Lead with AWS" }),
+    );
+  });
+
+  it("can regenerate without instructions", async () => {
+    const user = userEvent.setup();
+    const calls = open(detail, {
+      "POST /api/generations/g1/regenerate": () => json({ ...detail, generation_id: "g2" }, 201),
+    });
+    await openRegenerate(user);
+    const buttons = screen.getAllByRole("button", { name: "Regenerate", hidden: true });
+    await user.click(buttons[buttons.length - 1]);
+    await waitFor(() => expect(calls.some((call) => call.method === "POST")).toBe(true));
+    expect(calls.find((call) => call.method === "POST")?.body).toBe("{}");
+  });
+
+  it("keeps the dialog and what was typed when regenerating fails", async () => {
+    const user = userEvent.setup();
+    open(detail, {
+      "POST /api/generations/g1/regenerate": () => json({ detail: "Try again later" }, 503),
+    });
+    const box = await openRegenerate(user);
+    fireEvent.change(box, { target: { value: "Shorter" } });
+    const buttons = screen.getAllByRole("button", { name: "Regenerate", hidden: true });
+    await user.click(buttons[buttons.length - 1]);
+    expect(await screen.findByText("Try again later")).toBeInTheDocument();
+    expect(box).toHaveValue("Shorter");
+  });
+
+  it("shows what was asked for on a regenerated version", async () => {
+    open({ ...detail, instructions: "Lead with AWS" });
+    expect(await screen.findByText("Lead with AWS")).toBeInTheDocument();
+    expect(screen.getByText("You asked for")).toBeInTheDocument();
   });
 
   it("shows no version history or edited label before the first edit", async () => {

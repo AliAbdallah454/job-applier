@@ -224,7 +224,7 @@ export interface paths {
         put?: never;
         /**
          * Regenerate
-         * @description A new revision from the same frozen CV, profile and job.
+         * @description A new revision from the same frozen CV, profile and job, with any new instructions.
          */
         post: operations["regenerate_api_generations__generation_id__regenerate_post"];
         delete?: never;
@@ -683,6 +683,8 @@ export interface components {
             files: string[];
             /** Generation Id */
             generation_id: string;
+            /** Instructions */
+            instructions?: string | null;
             /** Job Id */
             job_id: string;
             /** Job Title */
@@ -727,6 +729,8 @@ export interface components {
             files: string[];
             /** Generation Id */
             generation_id: string;
+            /** Instructions */
+            instructions?: string | null;
             /** Job Id */
             job_id: string;
             /** Job Title */
@@ -959,6 +963,11 @@ export interface components {
             start_date?: string | null;
             /** Technologies */
             technologies?: string[];
+        };
+        /** Regeneration */
+        Regeneration: {
+            /** Instructions */
+            instructions?: string | null;
         };
         /** Skill */
         Skill: {
@@ -1447,7 +1456,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Regeneration"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

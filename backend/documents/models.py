@@ -7,9 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
-PROMPT_VERSION = 11
+PROMPT_VERSION = 12
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 Language = Literal["en", "fr"]
+Instructions = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+]
 
 
 class StrictModel(BaseModel):
@@ -55,8 +58,9 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    prompt_version: Literal[5, 6, 7, 8, 9, 10, 11] = PROMPT_VERSION
+    prompt_version: Literal[5, 6, 7, 8, 9, 10, 11, 12] = PROMPT_VERSION
     language: Language = "en"  # Of the CV and letters; the change list is always in English.
+    instructions: Instructions | None = None  # The user's guidance for a regeneration.
 
 
 class CvChange(StrictModel):

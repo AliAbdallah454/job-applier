@@ -153,10 +153,11 @@ export function useRetry(id: string) {
 export function useRegenerate(id: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (instructions?: string) =>
       unwrap(
         api.POST("/api/generations/{generation_id}/regenerate", {
           params: { path: { generation_id: id } },
+          body: { instructions },
         }),
       ),
     onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
