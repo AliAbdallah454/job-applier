@@ -613,10 +613,10 @@ export interface components {
             before: string;
         };
         /**
-         * CloudInfrastructureSkill
+         * CloudAndInfrastructureSkill
          * @enum {string}
          */
-        CloudInfrastructureSkill: "AWS" | "AWS EC2" | "AWS Lambda" | "Amazon S3" | "Amazon ECS" | "Amazon EKS" | "AWS Fargate" | "Amazon RDS" | "Amazon SQS" | "Amazon SNS" | "Amazon VPC" | "Amazon CloudWatch" | "Amazon API Gateway" | "AWS IAM" | "AWS CDK" | "AWS CloudFormation" | "AWS Step Functions" | "AWS Bedrock" | "Amazon SageMaker" | "Google Cloud" | "Microsoft Azure" | "Cloudflare" | "Vercel" | "DigitalOcean" | "Docker" | "Kubernetes" | "Helm" | "Terraform" | "Pulumi" | "Ansible" | "Linux" | "Nginx" | "Serverless" | "Networking";
+        CloudAndInfrastructureSkill: "AWS" | "AWS EC2" | "AWS Lambda" | "AWS S3" | "AWS ECS" | "AWS EKS" | "AWS Fargate" | "AWS RDS" | "AWS SQS" | "AWS SNS" | "AWS VPC" | "AWS CloudWatch" | "AWS API Gateway" | "AWS IAM" | "AWS CDK" | "AWS CloudFormation" | "AWS Step Functions" | "AWS Bedrock" | "AWS SageMaker" | "Google Cloud" | "Microsoft Azure" | "Cloudflare" | "Vercel" | "DigitalOcean" | "Docker" | "Kubernetes" | "Helm" | "Terraform" | "Pulumi" | "Ansible" | "Linux" | "Nginx" | "Serverless" | "Networking";
         /** Cv */
         Cv: {
             /** Cv Id */
@@ -634,15 +634,15 @@ export interface components {
          */
         DataEngineeringSkill: "NumPy" | "Pandas" | "Polars" | "Spark" | "PySpark" | "Kafka" | "Flink" | "Airflow" | "Dagster" | "Prefect" | "dbt" | "Snowflake" | "BigQuery" | "Redshift" | "Databricks" | "Hadoop" | "Hive" | "Trino" | "ETL" | "Data modeling" | "Data warehousing" | "Power BI" | "Tableau" | "Looker";
         /**
-         * DatabaseSkill
+         * DatabasesSkill
          * @enum {string}
          */
-        DatabaseSkill: "PostgreSQL" | "MySQL" | "MariaDB" | "SQLite" | "Microsoft SQL Server" | "Oracle Database" | "MongoDB" | "Redis" | "DynamoDB" | "Cassandra" | "Elasticsearch" | "OpenSearch" | "Neo4j" | "ClickHouse" | "RocksDB" | "Firestore" | "Supabase" | "InfluxDB" | "TimescaleDB" | "pgvector" | "Pinecone" | "Weaviate" | "Qdrant" | "Milvus" | "Chroma";
+        DatabasesSkill: "PostgreSQL" | "MySQL" | "MariaDB" | "SQLite" | "Microsoft SQL Server" | "Oracle Database" | "MongoDB" | "Redis" | "AWS DynamoDB" | "Cassandra" | "Elasticsearch" | "OpenSearch" | "Neo4j" | "ClickHouse" | "RocksDB" | "Firestore" | "Supabase" | "InfluxDB" | "TimescaleDB" | "pgvector" | "Pinecone" | "Weaviate" | "Qdrant" | "Milvus" | "Chroma";
         /**
-         * DevOpsToolSkill
+         * DevopsAndToolsSkill
          * @enum {string}
          */
-        DevOpsToolSkill: "Git" | "GitHub" | "GitHub Actions" | "GitLab CI" | "CI/CD" | "Jenkins" | "CircleCI" | "Argo CD" | "Observability" | "Prometheus" | "Grafana" | "Datadog" | "OpenTelemetry" | "ELK Stack" | "Sentry" | "OWASP" | "Postman" | "Jira" | "Agile" | "Scrum";
+        DevopsAndToolsSkill: "Git" | "GitHub" | "GitHub Actions" | "GitLab CI" | "CI/CD" | "Jenkins" | "CircleCI" | "Argo CD" | "Observability" | "Prometheus" | "Grafana" | "Datadog" | "OpenTelemetry" | "ELK Stack" | "Sentry" | "OWASP" | "Postman" | "Jira" | "Agile" | "Scrum";
         /** DocumentEdit */
         DocumentEdit: {
             /**
@@ -993,10 +993,10 @@ export interface components {
             tracking_since?: string | null;
         };
         /**
-         * MlAiSkill
+         * MlAndAiSkill
          * @enum {string}
          */
-        MlAiSkill: "PyTorch" | "TensorFlow" | "Keras" | "JAX" | "Scikit-learn" | "XGBoost" | "LightGBM" | "Hugging Face Transformers" | "LangChain" | "LangGraph" | "LlamaIndex" | "OpenCV" | "spaCy" | "NLTK" | "PEFT" | "LoRA" | "Optuna" | "MLflow" | "Metaflow" | "Weights & Biases" | "ONNX" | "vLLM" | "Ollama" | "CUDA" | "LLM integration" | "RAG" | "Prompt engineering" | "Fine-tuning" | "AI agents" | "Vector search" | "Generative AI" | "Deep learning" | "Computer vision" | "NLP" | "Reinforcement learning";
+        MlAndAiSkill: "PyTorch" | "TensorFlow" | "Keras" | "JAX" | "Scikit-learn" | "XGBoost" | "LightGBM" | "Hugging Face Transformers" | "LangChain" | "LangGraph" | "LlamaIndex" | "OpenCV" | "spaCy" | "NLTK" | "PEFT" | "LoRA" | "Optuna" | "MLflow" | "Metaflow" | "Weights & Biases" | "ONNX" | "vLLM" | "Ollama" | "CUDA" | "LLM integration" | "RAG" | "Prompt engineering" | "Fine-tuning" | "AI agents" | "Vector search" | "Generative AI" | "Deep learning" | "Computer vision" | "NLP" | "Reinforcement learning";
         /**
          * ModelOption
          * @description A model or language the user can pick for tailoring.
@@ -1027,10 +1027,10 @@ export interface components {
             user_id: string;
         };
         /**
-         * ProgrammingLanguage
+         * ProgrammingLanguagesSkill
          * @enum {string}
          */
-        ProgrammingLanguage: "Python" | "JavaScript" | "TypeScript" | "Java" | "C" | "C++" | "C#" | "Go" | "Rust" | "SQL" | "Bash" | "Kotlin" | "Swift" | "PHP" | "Ruby" | "Scala" | "R" | "MATLAB" | "Dart" | "PowerShell" | "Lua" | "Perl" | "Haskell" | "Elixir" | "Julia" | "Objective-C" | "Solidity" | "Assembly";
+        ProgrammingLanguagesSkill: "Python" | "JavaScript" | "TypeScript" | "Java" | "C" | "C++" | "C#" | "Go" | "Rust" | "SQL" | "Bash" | "Kotlin" | "Swift" | "PHP" | "Ruby" | "Scala" | "R" | "MATLAB" | "Dart" | "PowerShell" | "Lua" | "Perl" | "Haskell" | "Elixir" | "Julia" | "Objective-C" | "Solidity" | "Assembly";
         /** Project */
         Project: {
             /** Contribution */
@@ -1088,27 +1088,24 @@ export interface components {
             /** Skills */
             skills: string[];
         };
-        /**
-         * Skills
-         * @description The user's skills by category; the field order is the order the web app shows.
-         */
+        /** Skills */
         Skills: {
             /** Backend */
             backend?: components["schemas"]["BackendSkill"][];
             /** Cloud & infrastructure */
-            cloud_and_infrastructure?: components["schemas"]["CloudInfrastructureSkill"][];
+            cloud_and_infrastructure?: components["schemas"]["CloudAndInfrastructureSkill"][];
             /** Data engineering */
             data_engineering?: components["schemas"]["DataEngineeringSkill"][];
             /** Databases */
-            databases?: components["schemas"]["DatabaseSkill"][];
+            databases?: components["schemas"]["DatabasesSkill"][];
             /** DevOps & tools */
-            devops_and_tools?: components["schemas"]["DevOpsToolSkill"][];
+            devops_and_tools?: components["schemas"]["DevopsAndToolsSkill"][];
             /** Frontend & mobile */
             frontend?: components["schemas"]["FrontendSkill"][];
             /** ML & AI */
-            ml_and_ai?: components["schemas"]["MlAiSkill"][];
+            ml_and_ai?: components["schemas"]["MlAndAiSkill"][];
             /** Programming languages */
-            programming_languages?: components["schemas"]["ProgrammingLanguage"][];
+            programming_languages?: components["schemas"]["ProgrammingLanguagesSkill"][];
             /** Testing */
             testing?: components["schemas"]["TestingSkill"][];
         };

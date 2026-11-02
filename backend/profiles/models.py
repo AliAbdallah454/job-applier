@@ -133,16 +133,19 @@ class CandidateProfile(ProfileModel):
 
 
 def upgrade_profile(data):
-    """Turn a profile saved with free-text skills into today's shape; others pass through.
+    """Bring a saved profile's skills up to today's catalogue, whatever it was saved with.
 
-    Stored profiles and frozen snapshots may still hold that list, while the API only accepts
-    the catalogue. What the catalogue cannot hold moves to additional_information, so no fact the
-    user gave is lost.
+    Stored profiles and frozen snapshots may hold the old free-text list, or catalogue names that
+    were since renamed or removed, while the API only accepts the current names. What the catalogue
+    cannot hold moves to additional_information, so no fact the user gave is lost.
     """
-    if not isinstance(data, dict) or not isinstance(data.get("skills"), list):
+    if not isinstance(data, dict) or not isinstance(data.get("skills"), list | dict):
         return data
+    saved = data["skills"]
+    if isinstance(saved, dict):
+        saved = [{"name": name} for names in saved.values() for name in names]
     skills, notes = {}, []
-    for old in data["skills"]:
+    for old in saved:
         details = ", ".join(filter(None, (old.get("proficiency"), old.get("description"))))
         entries = catalogue_entries(old["name"])
         for key, skill in entries:

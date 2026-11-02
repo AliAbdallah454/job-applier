@@ -461,27 +461,27 @@
         "title": "Change",
         "type": "object"
       },
-      "CloudInfrastructureSkill": {
+      "CloudAndInfrastructureSkill": {
         "enum": [
           "AWS",
           "AWS EC2",
           "AWS Lambda",
-          "Amazon S3",
-          "Amazon ECS",
-          "Amazon EKS",
+          "AWS S3",
+          "AWS ECS",
+          "AWS EKS",
           "AWS Fargate",
-          "Amazon RDS",
-          "Amazon SQS",
-          "Amazon SNS",
-          "Amazon VPC",
-          "Amazon CloudWatch",
-          "Amazon API Gateway",
+          "AWS RDS",
+          "AWS SQS",
+          "AWS SNS",
+          "AWS VPC",
+          "AWS CloudWatch",
+          "AWS API Gateway",
           "AWS IAM",
           "AWS CDK",
           "AWS CloudFormation",
           "AWS Step Functions",
           "AWS Bedrock",
-          "Amazon SageMaker",
+          "AWS SageMaker",
           "Google Cloud",
           "Microsoft Azure",
           "Cloudflare",
@@ -498,7 +498,7 @@
           "Serverless",
           "Networking"
         ],
-        "title": "CloudInfrastructureSkill",
+        "title": "CloudAndInfrastructureSkill",
         "type": "string"
       },
       "Cv": {
@@ -559,7 +559,7 @@
         "title": "DataEngineeringSkill",
         "type": "string"
       },
-      "DatabaseSkill": {
+      "DatabasesSkill": {
         "enum": [
           "PostgreSQL",
           "MySQL",
@@ -569,7 +569,7 @@
           "Oracle Database",
           "MongoDB",
           "Redis",
-          "DynamoDB",
+          "AWS DynamoDB",
           "Cassandra",
           "Elasticsearch",
           "OpenSearch",
@@ -587,10 +587,10 @@
           "Milvus",
           "Chroma"
         ],
-        "title": "DatabaseSkill",
+        "title": "DatabasesSkill",
         "type": "string"
       },
-      "DevOpsToolSkill": {
+      "DevopsAndToolsSkill": {
         "enum": [
           "Git",
           "GitHub",
@@ -613,7 +613,7 @@
           "Agile",
           "Scrum"
         ],
-        "title": "DevOpsToolSkill",
+        "title": "DevopsAndToolsSkill",
         "type": "string"
       },
       "DocumentEdit": {
@@ -1844,7 +1844,7 @@
         "title": "MailStatus",
         "type": "object"
       },
-      "MlAiSkill": {
+      "MlAndAiSkill": {
         "enum": [
           "PyTorch",
           "TensorFlow",
@@ -1882,7 +1882,7 @@
           "NLP",
           "Reinforcement learning"
         ],
-        "title": "MlAiSkill",
+        "title": "MlAndAiSkill",
         "type": "string"
       },
       "ModelOption": {
@@ -1975,7 +1975,7 @@
         "title": "Options",
         "type": "object"
       },
-      "ProgrammingLanguage": {
+      "ProgrammingLanguagesSkill": {
         "enum": [
           "Python",
           "JavaScript",
@@ -2006,7 +2006,7 @@
           "Solidity",
           "Assembly"
         ],
-        "title": "ProgrammingLanguage",
+        "title": "ProgrammingLanguagesSkill",
         "type": "string"
       },
       "Project": {
@@ -2180,7 +2180,6 @@
       },
       "Skills": {
         "additionalProperties": false,
-        "description": "The user's skills by category; the field order is the order the web app shows.",
         "properties": {
           "backend": {
             "items": {
@@ -2191,7 +2190,7 @@
           },
           "cloud_and_infrastructure": {
             "items": {
-              "$ref": "#/components/schemas/CloudInfrastructureSkill"
+              "$ref": "#/components/schemas/CloudAndInfrastructureSkill"
             },
             "title": "Cloud & infrastructure",
             "type": "array"
@@ -2205,14 +2204,14 @@
           },
           "databases": {
             "items": {
-              "$ref": "#/components/schemas/DatabaseSkill"
+              "$ref": "#/components/schemas/DatabasesSkill"
             },
             "title": "Databases",
             "type": "array"
           },
           "devops_and_tools": {
             "items": {
-              "$ref": "#/components/schemas/DevOpsToolSkill"
+              "$ref": "#/components/schemas/DevopsAndToolsSkill"
             },
             "title": "DevOps & tools",
             "type": "array"
@@ -2226,14 +2225,14 @@
           },
           "ml_and_ai": {
             "items": {
-              "$ref": "#/components/schemas/MlAiSkill"
+              "$ref": "#/components/schemas/MlAndAiSkill"
             },
             "title": "ML & AI",
             "type": "array"
           },
           "programming_languages": {
             "items": {
-              "$ref": "#/components/schemas/ProgrammingLanguage"
+              "$ref": "#/components/schemas/ProgrammingLanguagesSkill"
             },
             "title": "Programming languages",
             "type": "array"

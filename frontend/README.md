@@ -59,9 +59,10 @@ profile do not support.
 
 A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
-Skills in your profile are picked from a fixed list, by category. The list is the set of enums in
-`backend/profiles/skills.py`: the page reads it from `/api/options`, its types come from the same
-enums, and saving anything else is refused. To add a skill, add it there and run `npm run types`.
+Skills in your profile are picked from a fixed list, by category. The list is
+`backend/profiles/skill_catalogue.py`: the enums are built from it, the page reads it from
+`/api/options`, its types come from those enums, and saving anything else is refused. To add a skill
+or a category, edit that file and run `npm run types`.
 
 The generation page shows the model's list of edits and a diff computed from the two CV
 sources. Rewrites are checked for structure but not fact-checked, so read each change before

@@ -1282,9 +1282,9 @@
       "cloud_and_infrastructure": [
         "AWS",
         "AWS EC2",
-        "Amazon ECS",
+        "AWS ECS",
         "AWS Bedrock",
-        "Amazon SageMaker",
+        "AWS SageMaker",
         "AWS Step Functions",
         "AWS CloudFormation",
         "Docker",

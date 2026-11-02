@@ -13,7 +13,8 @@ from backend.profiles.models import (
     Project,
     upgrade_profile,
 )
-from backend.profiles.skills import CATALOGUE, SKILL_CATEGORIES, Skills
+from backend.profiles.skill_catalogue import CATEGORIES, OTHER_NAMES
+from backend.profiles.skills import KNOWN_NAMES, SKILL_CATEGORIES, Skills, catalogue_entries
 
 
 class ProfileTests(unittest.TestCase):
@@ -98,8 +99,8 @@ class SkillTests(unittest.TestCase):
         }
 
     def test_each_skill_is_in_one_category_and_every_field_has_a_label(self):
-        total = sum(len(category.skills) for category in SKILL_CATEGORIES)
-        self.assertEqual(len(CATALOGUE), total)
+        names = [skill.casefold() for category in CATEGORIES for skill in category.skills]
+        self.assertEqual(len(names), len(set(names)))
         self.assertEqual([category.key for category in SKILL_CATEGORIES], list(Skills.model_fields))
         self.assertTrue(all(category.label and category.skills for category in SKILL_CATEGORIES))
 
@@ -165,8 +166,50 @@ class SkillTests(unittest.TestCase):
 
     def test_a_profile_in_todays_shape_passes_through_unchanged(self):
         data = {"user_id": "u", "full_name": "Name", "skills": {"databases": ["Redis"]}}
-        self.assertIs(upgrade_profile(data), data)
+        self.assertEqual(upgrade_profile(data)["skills"], data["skills"])
+        self.assertIsNone(upgrade_profile(data)["additional_information"])
         self.assertEqual(upgrade_profile("not a profile"), "not a profile")
+
+    def test_every_aws_service_is_named_the_same_way(self):
+        names = [skill for category in CATEGORIES for skill in category.skills]
+        self.assertEqual([name for name in names if name.startswith("Amazon")], [])
+        for spelling in ("Amazon ECS", "ECS", "AWS ECS", "amazon ecs"):
+            self.assertEqual(
+                catalogue_entries(spelling), [("cloud_and_infrastructure", "AWS ECS")], spelling
+            )
+        self.assertEqual(catalogue_entries("DynamoDB"), [("databases", "AWS DynamoDB")])
+        self.assertEqual(catalogue_entries("Amazon DynamoDB"), [("databases", "AWS DynamoDB")])
+
+    def test_other_names_lead_to_a_skill_in_the_catalogue(self):
+        for other, name in OTHER_NAMES.items():
+            self.assertEqual(KNOWN_NAMES[other.casefold()][1], name)
+        self.assertEqual(catalogue_entries("Amazon Dynamo"), [("databases", "AWS DynamoDB")])
+
+    def test_a_saved_profile_follows_a_renamed_skill(self):
+        profile = CandidateProfile.model_validate(
+            upgrade_profile(
+                {
+                    "user_id": "u",
+                    "full_name": "Name",
+                    "skills": {
+                        "cloud_and_infrastructure": ["Amazon ECS", "AWS EC2", "AWS ECS"],
+                        "databases": ["DynamoDB"],
+                    },
+                }
+            )
+        )
+        self.assertEqual(profile.skills.cloud_and_infrastructure, ["AWS ECS", "AWS EC2"])
+        self.assertEqual(profile.skills.databases, ["AWS DynamoDB"])
+
+    def test_a_skill_taken_off_the_list_is_kept_as_a_note(self):
+        data = {"user_id": "u", "full_name": "Name", "skills": {"testing": ["Gone", "pytest"]}}
+        profile = CandidateProfile.model_validate(upgrade_profile(data))
+        self.assertEqual(profile.skills.testing, ["pytest"])
+        self.assertEqual(profile.additional_information, "Skill details: Gone")
+
+    def test_a_profile_can_only_save_current_names(self):
+        with self.assertRaises(ValidationError):
+            Skills.model_validate({"cloud_and_infrastructure": ["Amazon ECS"]})
 
     def test_a_snapshot_frozen_before_the_catalogue_can_still_be_read(self):
         request = GenerationInput.model_validate(
