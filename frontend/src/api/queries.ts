@@ -18,6 +18,7 @@ import {
   toApiError,
   unwrap,
 } from "./client";
+import { notify } from "./notices";
 
 export type JobQuery = {
   tech: string;
@@ -66,7 +67,10 @@ export function useUploadCv() {
         }),
       );
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: ["cvs"] }),
+    onSuccess: () => {
+      notify("CV uploaded");
+      return client.invalidateQueries({ queryKey: ["cvs"] });
+    },
   });
 }
 
@@ -75,7 +79,10 @@ export function useDeleteCv() {
   return useMutation({
     mutationFn: (cvId: string) =>
       unwrap(api.DELETE("/api/cvs/{cv_id}", { params: { path: { cv_id: cvId } } })),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["cvs"] }),
+    onSuccess: () => {
+      notify("CV deleted");
+      return client.invalidateQueries({ queryKey: ["cvs"] });
+    },
   });
 }
 
@@ -98,7 +105,10 @@ export function useSaveSystemPrompt() {
             }),
           )
         : unwrap(api.POST("/api/system-prompts", { body })),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["system-prompts"] }),
+    onSuccess: () => {
+      notify("System prompt saved");
+      return client.invalidateQueries({ queryKey: ["system-prompts"] });
+    },
   });
 }
 
@@ -109,7 +119,10 @@ export function useDeleteSystemPrompt() {
       unwrap(
         api.DELETE("/api/system-prompts/{prompt_id}", { params: { path: { prompt_id: id } } }),
       ),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["system-prompts"] }),
+    onSuccess: () => {
+      notify("System prompt deleted");
+      return client.invalidateQueries({ queryKey: ["system-prompts"] });
+    },
   });
 }
 
@@ -131,7 +144,10 @@ export function useSaveProfile() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CandidateProfile) => unwrap(api.PUT("/api/profile", { body })),
-    onSuccess: (saved) => client.setQueryData(["profile"], saved),
+    onSuccess: (saved) => {
+      notify("Profile saved");
+      client.setQueryData(["profile"], saved);
+    },
   });
 }
 
@@ -173,7 +189,13 @@ export function useStartGeneration() {
       language: Language;
       system_prompt_id?: string;
     }) => unwrap(api.POST("/api/generations", { body })),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
+    onSuccess: ({ status }) => {
+      // Identical inputs return the existing generation, whatever became of it.
+      if (isActive(status)) notify("Tailoring started");
+      else if (status === "ready") notify("Already tailored with these settings");
+      else notify("These settings already failed");
+      return client.invalidateQueries({ queryKey: ["generations"] });
+    },
   });
 }
 
@@ -186,7 +208,10 @@ export function useRetry(id: string) {
           params: { path: { generation_id: id } },
         }),
       ),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["generation", id] }),
+    onSuccess: () => {
+      notify("Retrying");
+      return client.invalidateQueries({ queryKey: ["generation", id] });
+    },
   });
 }
 
@@ -200,11 +225,13 @@ export function useRegenerate(id: string) {
           body: { instructions },
         }),
       ),
-    onSuccess: () =>
-      Promise.all([
+    onSuccess: () => {
+      notify("Regenerating");
+      return Promise.all([
         client.invalidateQueries({ queryKey: ["generations"] }),
         client.invalidateQueries({ queryKey: ["generation", id] }),
-      ]),
+      ]);
+    },
   });
 }
 
@@ -231,6 +258,12 @@ export function useFindSourceLine(id: string) {
   });
 }
 
+const DOCUMENT_NAMES: Record<Document, string> = {
+  cv: "CV",
+  motivation_letter: "Motivation letter",
+  cover_letter: "Cover letter",
+};
+
 export function useEditDocument(id: string, document: Document) {
   const client = useQueryClient();
   return useMutation({
@@ -242,6 +275,7 @@ export function useEditDocument(id: string, document: Document) {
         }),
       ),
     onSuccess: async (saved, { latex }) => {
+      notify(`${DOCUMENT_NAMES[document]} saved`);
       // A read from before the save would otherwise land afterwards and bring the old CV back.
       await client.cancelQueries({ queryKey: ["generation", id] });
       // Already known, so the page shows the saved CV without a loading state. The source goes
@@ -268,7 +302,10 @@ export function useSyncMail() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => unwrap(api.POST("/api/mail/sync")),
-    onSuccess: (status) => client.setQueryData(["mail-status"], { ...status, syncing: true }),
+    onSuccess: (status) => {
+      notify("Checking your mail");
+      client.setQueryData(["mail-status"], { ...status, syncing: true });
+    },
   });
 }
 
@@ -327,11 +364,13 @@ export function useAnswerInterest(jobId: string) {
       const { error, response } = await api.DELETE("/api/applications/interests/{job_id}", path);
       if (!response.ok) throw toApiError(response.status, error);
     },
-    onSuccess: () =>
-      Promise.all([
+    onSuccess: (_, applied) => {
+      notify(applied ? "Marked as applied" : "Removed from the list");
+      return Promise.all([
         client.invalidateQueries({ queryKey: ["interests"] }),
         client.invalidateQueries({ queryKey: ["applications"] }),
-      ]),
+      ]);
+    },
   });
 }
 
@@ -345,7 +384,10 @@ export function useChangeApplication() {
           body: { status },
         }),
       ),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["applications"] }),
+    onSuccess: () => {
+      notify("Status updated");
+      return client.invalidateQueries({ queryKey: ["applications"] });
+    },
   });
 }
 
@@ -358,7 +400,10 @@ export function useRemoveApplication() {
       });
       if (!response.ok) throw toApiError(response.status, error);
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: ["applications"] }),
+    onSuccess: () => {
+      notify("Application removed");
+      return client.invalidateQueries({ queryKey: ["applications"] });
+    },
   });
 }
 

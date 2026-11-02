@@ -8,6 +8,9 @@ binds to localhost and refuses writes from other sites.
 The app follows the system's light or dark setting until you use the toggle in the top bar.
 That choice is saved in the browser.
 
+A small green box at the top right confirms an action once the API has accepted it. Failures stay
+beside the control that caused them. To confirm another action, call `notify` in its `onSuccess`.
+
 ## Start
 
 Two terminals, from the repository root:

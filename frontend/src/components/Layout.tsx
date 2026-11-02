@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { isActive, useGenerations, useOptions } from "../api/queries";
 import { ThemeToggle } from "./ThemeToggle";
+import { Toasts } from "./Toasts";
 
 const LINKS = [
   { to: "/", label: "Jobs" },
@@ -121,6 +122,7 @@ export function Layout() {
       <main key={pathname} className="rise flex min-h-0 flex-1 flex-col">
         <Outlet />
       </main>
+      <Toasts />
     </div>
   );
 }
