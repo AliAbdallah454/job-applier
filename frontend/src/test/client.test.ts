@@ -1,9 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { downloadUrl, fileUrl, previewUrl, toApiError, versionFileUrl } from "../api/client";
+import { api, downloadUrl, fileUrl, previewUrl, toApiError, versionFileUrl } from "../api/client";
 import { pollInterval } from "../api/queries";
 import { descriptionBlocks } from "../pages/jobText";
 import { clean, setIn } from "../pages/profileForm";
+
+describe("session", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function answer(status: number) {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { origin: "http://localhost", assign });
+    vi.stubGlobal("fetch", async () => new Response("{}", { status }));
+    await api.GET("/api/cvs");
+    return assign;
+  }
+
+  it("goes to the login page when the API asks for one", async () => {
+    expect(await answer(401)).toHaveBeenCalledWith("/api/auth/login");
+  });
+
+  it("stays on the page for other errors, so a refused account does not loop", async () => {
+    expect(await answer(403)).not.toHaveBeenCalled();
+  });
+});
 
 describe("toApiError", () => {
   it("keeps a plain detail message", () => {

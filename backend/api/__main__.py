@@ -1,4 +1,4 @@
-"""Run the local API. Binds to localhost and has no login; it is not deployed."""
+"""Run the local API. Binds to localhost; login needs the AUTH0_* values in .env."""
 
 import argparse
 import os
@@ -9,6 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import dotenv_values
 
 from backend.api.app import create_app
+from backend.api.auth0 import Auth0
 from backend.api.deps import Context, resolve_settings
 from backend.api.mail import start_auto_sync
 from backend.mail.mailbox import configured_mailbox
@@ -33,6 +34,11 @@ def main():
         context = start_demo(args.user_id)
     else:
         session = boto3.Session(profile_name=args.profile, region_name=args.region)
+        values = {**dotenv_values(".env"), **os.environ}
+        try:
+            auth = Auth0.from_values(values)
+        except ValueError as exc:
+            parser.error(str(exc))
         try:
             settings = resolve_settings(
                 session,
@@ -40,7 +46,8 @@ def main():
                 application_stack=args.application_stack,
                 jobs_stack=args.jobs_stack,
                 # Only these settings are taken from .env, so it cannot change anything else.
-                open_mailbox=configured_mailbox({**dotenv_values(".env"), **os.environ}),
+                open_mailbox=configured_mailbox(values),
+                auth=auth,
             )
         except (BotoCoreError, ClientError, KeyError) as exc:
             parser.error(f"Cannot resolve stack outputs: {exc}")

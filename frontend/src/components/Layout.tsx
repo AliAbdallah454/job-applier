@@ -116,6 +116,11 @@ export function Layout() {
               demo data
             </span>
           )}
+          {options.data?.login_enabled && (
+            <a href="/api/auth/logout" className="whitespace-nowrap hover:text-ink">
+              log out
+            </a>
+          )}
           <ThemeToggle />
         </span>
       </header>

@@ -23,6 +23,7 @@ class Options(BaseModel):
     skill_categories: list[SkillCategory]
     user_id: str
     demo: bool
+    login_enabled: bool
 
 
 class JobSummary(BaseModel):
@@ -58,6 +59,7 @@ def options(context: AppContext, user: CurrentUser) -> Options:
         skill_categories=SKILL_CATEGORIES,
         user_id=user,
         demo=context.settings.demo,
+        login_enabled=context.settings.auth is not None,
     )
 
 

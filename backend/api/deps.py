@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from typing import Annotated
 
 import boto3
-from fastapi import Depends, Request
+import jwt
+from fastapi import Depends, HTTPException, Request
 
+from backend.api.auth0 import Auth0
 from backend.api.catalogue import JobCatalogue
 from backend.documents.__main__ import stack_outputs
 from backend.documents.models import DOCUMENT_MODELS, ModelOption
@@ -16,6 +18,8 @@ from backend.documents.storage import GenerationStore
 from backend.mail.classifier import MailClassifier
 from backend.mail.linkedin import fetch_job
 from backend.mail.storage import MailStore
+
+SESSION_COOKIE = "session"
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,9 @@ class Settings:
     classify_mail: Callable = MailClassifier
     fetch_job: Callable = fetch_job
     demo: bool = False
+    auth: Auth0 | None = (
+        None  # None until the AUTH0_* values are in .env: no login, localhost only.
+    )
 
 
 def resolve_settings(
@@ -44,6 +51,7 @@ def resolve_settings(
     application_stack="Application",
     jobs_stack="JobPipeline",
     open_mailbox=None,
+    auth=None,
 ):
     application = stack_outputs(session, application_stack)
     jobs = stack_outputs(session, jobs_stack)
@@ -57,6 +65,7 @@ def resolve_settings(
         document_queue_url=application["DocumentQueueUrl"],
         mail_table=application.get("MailTable"),
         open_mailbox=open_mailbox,
+        auth=auth,
     )
 
 
@@ -125,9 +134,27 @@ def get_context(request: Request) -> Context:
 AppContext = Annotated[Context, Depends(get_context)]
 
 
-def current_user(context: AppContext) -> str:
-    """The configured local user; replace this one function when Cognito is added."""
-    return context.settings.user_id
+def current_user(request: Request, context: AppContext) -> str:
+    """The user of this request, from the session cookie when login is set up.
+
+    The one account allowed holds the data of the configured user, as the mailbox and the existing
+    data are that user's. Each account gets its own data once mail is per user.
+    """
+    settings = context.settings
+    if settings.auth is None:
+        return settings.user_id
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        raise HTTPException(401, "Log in first")
+    try:
+        claims = settings.auth.verify(token)
+    except jwt.PyJWKClientConnectionError:
+        raise HTTPException(503, "Auth0 could not be reached. Try again.") from None
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Log in again") from None
+    if claims["sub"] != settings.auth.owner_id:
+        raise HTTPException(403, "This account is not allowed")
+    return settings.user_id
 
 
 CurrentUser = Annotated[str, Depends(current_user)]

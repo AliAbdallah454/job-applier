@@ -4,12 +4,13 @@ import logging
 from urllib.parse import urlsplit
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from backend.api import cvs, generations, jobs, mail, profile, system_prompts
+from backend.api import auth, cvs, generations, jobs, mail, profile, system_prompts
+from backend.api.deps import current_user
 from backend.documents.errors import DocumentError
 
 LOG = logging.getLogger(__name__)
@@ -56,5 +57,7 @@ def create_app(context=None):
         app.add_exception_handler(error, aws_unavailable)
 
     for feature in (jobs, profile, cvs, system_prompts, generations, mail):
-        app.include_router(feature.router)
+        # Here and not per route, so that a new route cannot be left open by accident.
+        app.include_router(feature.router, dependencies=[Depends(current_user)])
+    app.include_router(auth.router)
     return app

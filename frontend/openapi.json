@@ -1936,6 +1936,10 @@
             "title": "Languages",
             "type": "array"
           },
+          "login_enabled": {
+            "title": "Login Enabled",
+            "type": "boolean"
+          },
           "models": {
             "items": {
               "$ref": "#/components/schemas/ModelOption"
@@ -1970,7 +1974,8 @@
           "languages",
           "skill_categories",
           "user_id",
-          "demo"
+          "demo",
+          "login_enabled"
         ],
         "title": "Options",
         "type": "object"

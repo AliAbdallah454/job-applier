@@ -72,8 +72,15 @@ A cold start of such a large image will make the first save after an idle period
 
 ## Application
 
-Authentication and the profile API, application submission, per-user recommendations and
-Overleaf sync remain unimplemented (see the root README).
+Application submission, per-user recommendations and Overleaf sync remain unimplemented (see the
+root README).
+
+## Login
+
+Auth0 login works for one account, `AUTH0_OWNER_ID`, which holds the config user's data. Letting
+others in needs per-user mail first, because the mailbox in `.env` is one person's. `/docs` and
+`/openapi.json` stay public, so turn them off before the API is deployed, and also change
+`LOCAL_HOSTS` in `backend/api/app.py`, which only allows localhost.
 
 ## Mail
 

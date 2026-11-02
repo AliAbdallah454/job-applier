@@ -24,7 +24,11 @@ export type SystemPromptFields = Schemas["SystemPromptFields"];
 export const api = createClient<paths>({
   baseUrl: window.location.origin,
   // Read at call time so tests can replace fetch.
-  fetch: (request) => globalThis.fetch(request),
+  fetch: async (request) => {
+    const response = await globalThis.fetch(request);
+    if (response.status === 401) window.location.assign("/api/auth/login");
+    return response;
+  },
 });
 
 export class ApiError extends Error {

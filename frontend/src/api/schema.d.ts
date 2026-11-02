@@ -1017,6 +1017,8 @@ export interface components {
             demo: boolean;
             /** Languages */
             languages: components["schemas"]["ModelOption"][];
+            /** Login Enabled */
+            login_enabled: boolean;
             /** Models */
             models: components["schemas"]["ModelOption"][];
             /** Seniorities */

@@ -40,6 +40,15 @@ Demo mode runs the real routes and document service on in-memory AWS with a fake
 compiler, and forgets everything when stopped. The job marked "compile failure example"
 shows the failure page.
 
+## Login
+
+With `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` and `AUTH0_OWNER_ID` in `.env`, the API
+requires login on every route but `/api/auth/*`: a 401 sends the page to Auth0, and the session is
+an `HttpOnly` cookie. Only the owner's account is let in. The first login with no owner set is
+refused, and the message gives the account's ID to put in `.env`. Without these values there is no
+login, and `--demo` never has one. Auth0's application needs the callback
+`http://localhost:8000/api/auth/callback` and the logout URL `http://localhost:5173`.
+
 ## Tailoring
 
 **Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
