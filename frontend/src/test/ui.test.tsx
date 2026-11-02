@@ -249,6 +249,7 @@ describe("GenerationPage", () => {
     previous_versions: [],
     revisions: { cv: 0, motivation_letter: 0, cover_letter: 0 },
     starts_from_edit: false,
+    edited: false,
   };
 
   function Place() {
@@ -328,7 +329,8 @@ describe("GenerationPage", () => {
   const saved = {
     ...detail,
     updated_at: SAVED_AT,
-    previous_versions: [{ document: "cv", number: 1, saved_at: detail.updated_at }],
+    edited: true,
+    previous_versions: [{ document: "cv", number: 1, saved_at: detail.updated_at, by: "model" }],
     revisions: { ...detail.revisions, cv: 1 },
   };
 
@@ -403,7 +405,7 @@ describe("GenerationPage", () => {
     open({
       ...detail,
       previous_versions: [
-        { document: "motivation_letter", number: 1, saved_at: "2026-01-02T10:00:00Z" },
+        { document: "motivation_letter", number: 1, saved_at: "2026-01-02T10:00:00Z", by: "model" },
       ],
       revisions: { ...detail.revisions, motivation_letter: 1 },
     });
@@ -644,9 +646,10 @@ describe("GenerationPage", () => {
   it("lists previous versions newest first and names the model's", async () => {
     open({
       ...detail,
+      edited: true,
       previous_versions: [
-        { document: "cv", number: 1, saved_at: "2026-01-02T10:00:00Z" },
-        { document: "cv", number: 2, saved_at: "2026-01-03T10:00:00Z" },
+        { document: "cv", number: 1, saved_at: "2026-01-02T10:00:00Z", by: "model" },
+        { document: "cv", number: 2, saved_at: "2026-01-03T10:00:00Z", by: "you" },
       ],
     });
     const heading = await screen.findByRole("heading", { name: "Previous versions" });
@@ -674,24 +677,60 @@ describe("GenerationPage", () => {
 
   async function openRegenerate(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole("button", { name: "Regenerate" }));
-    return screen.findByRole("textbox", { name: /do differently/, hidden: true });
+    return screen.findByRole("textbox", { name: /fix in this version/, hidden: true });
   }
 
-  it("sends instructions when regenerating and opens the new version", async () => {
+  it("regenerates this entry with comments, without leaving it", async () => {
     const user = userEvent.setup();
+    let current: unknown = detail;
     const calls = open(detail, {
-      "POST /api/generations/g1/regenerate": () => json({ ...detail, generation_id: "g2" }, 201),
+      "GET /api/generations/g1": () => json(current),
+      "POST /api/generations/g1/regenerate": () => {
+        current = { ...detail, status: "queued" };
+        return json(current, 202);
+      },
     });
     const box = await openRegenerate(user);
     fireEvent.change(box, { target: { value: "  Lead with AWS  " } });
     const buttons = screen.getAllByRole("button", { name: "Regenerate", hidden: true });
     await user.click(buttons[buttons.length - 1]);
-    await waitFor(() =>
-      expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g2"),
-    );
+    expect(await screen.findByText(/Waiting for a worker/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Current page")).toHaveTextContent("/generations/g1");
     expect(calls.find((call) => call.path.endsWith("/regenerate"))?.body).toBe(
       JSON.stringify({ instructions: "Lead with AWS" }),
     );
+    expect(screen.queryByRole("dialog", { hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("says a failed regeneration left the documents unchanged", async () => {
+    open({
+      ...detail,
+      regeneration_error: "LaTeX failed",
+      files: [...detail.files, "compilation_log"],
+    });
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("your CV and letters are unchanged: LaTeX failed");
+    expect(within(alert).getByRole("link", { name: "Compile log .log" })).toBeInTheDocument();
+    expect(screen.getByTitle("CV preview")).toBeInTheDocument();
+  });
+
+  it("says who made each previous version", async () => {
+    open({
+      ...saved,
+      previous_versions: [
+        { document: "cv", number: 1, saved_at: "2026-01-01T10:00:00Z", by: "model" },
+        { document: "cv", number: 2, saved_at: "2026-01-02T10:00:00Z", by: "you" },
+        { document: "cv", number: 3, saved_at: "2026-01-03T10:00:00Z", by: "model" },
+      ],
+    });
+    expect(await screen.findByText(/Version 2 \(your edit\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Version 3 \(the model's version\)/)).toBeInTheDocument();
+  });
+
+  it("does not call a regenerated entry edited by you", async () => {
+    open({ ...saved, edited: false });
+    await screen.findByTitle("CV preview");
+    expect(screen.queryByText(/edited by you/)).not.toBeInTheDocument();
   });
 
   it("can regenerate without instructions", async () => {
@@ -722,7 +761,7 @@ describe("GenerationPage", () => {
   it("shows what was asked for on a regenerated version", async () => {
     open({ ...detail, instructions: "Lead with AWS" });
     expect(await screen.findByText("Lead with AWS")).toBeInTheDocument();
-    expect(screen.getByText("You asked for")).toBeInTheDocument();
+    expect(screen.getByText("Your comments")).toBeInTheDocument();
   });
 
   it("shows no version history or edited label before the first edit", async () => {
@@ -743,6 +782,7 @@ describe("GenerationPage", () => {
     open({
       ...detail,
       starts_from_edit: true,
+      edited: true,
       explanations: [{ change: "Named FastAPI", reason: "Job asks for it" }],
     });
     expect(await screen.findByText(/edited by you/)).toBeInTheDocument();
@@ -750,7 +790,13 @@ describe("GenerationPage", () => {
   });
 
   it("does not call the first CV of a row from the old edit flow the model's", async () => {
-    open({ ...saved, starts_from_edit: true });
+    open({
+      ...saved,
+      starts_from_edit: true,
+      previous_versions: [
+        { document: "cv", number: 1, saved_at: detail.updated_at, by: "you" },
+      ],
+    });
     const heading = await screen.findByRole("heading", { name: "Previous versions" });
     expect(heading.nextElementSibling).toHaveTextContent("Version 1");
     expect(heading.nextElementSibling).not.toHaveTextContent("model");

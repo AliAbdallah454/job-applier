@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import {
   type Document,
@@ -55,17 +55,11 @@ const FAILURE_FILES = [
   ["compilation_log", "Compile log .log"],
 ];
 
-/** A row from the old edit flow already holds the user's CV before it has any versions. */
-function isEdited(generation: GenerationDetail) {
-  return generation.previous_versions.length > 0 || generation.starts_from_edit;
-}
-
 export function GenerationPage() {
   const { id = "" } = useParams();
   const generation = useGeneration(id);
   const retry = useRetry(id);
   const regenerate = useRegenerate(id);
-  const navigate = useNavigate();
   const data = generation.data;
   const status = data?.status;
   const previous = useRef(status);
@@ -108,7 +102,7 @@ export function GenerationPage() {
             / {formatDate(data.created_at)} / {data.model_id}
             {data.language === "fr" && " / French"}
             {application && ` / application: ${label(application)}`}
-            {isEdited(data) && " / edited by you"}
+            {data.edited && " / edited by you"}
           </Eyebrow>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-balance">{data.job_title}</h1>
           {data.company && <p className="text-muted">{data.company}</p>}
@@ -145,15 +139,21 @@ export function GenerationPage() {
           onClose={() => setRegenerating(false)}
           onStart={(instructions) =>
             regenerate.mutate(instructions, {
-              onSuccess: (next) => {
-                setRegenerating(false);
-                navigate(`/generations/${next.generation_id}`);
-              },
+              onSuccess: () => setRegenerating(false),
             })
           }
         />
       )}
       {celebrating && <Celebration onDone={stopCelebrating} />}
+      {data.status === "ready" && data.regeneration_error && (
+        <div role="alert" className="mx-4 mt-3 border-l-2 border-ink pl-3 text-sm sm:mx-6">
+          <p>
+            The new version failed, so your CV and letters are unchanged:{" "}
+            {data.regeneration_error}
+          </p>
+          <FailureFiles generation={data} />
+        </div>
+      )}
       {data.status === "ready" && <Review key={data.generation_id} generation={data} />}
       {data.status === "failed" && <Failure generation={data} />}
       {(data.status === "queued" || data.status === "processing") && (
@@ -192,6 +192,22 @@ function Progress({ status }: { status: "queued" | "processing" }) {
   );
 }
 
+function FailureFiles({ generation }: { generation: GenerationDetail }) {
+  return (
+    <div className="mt-3 flex gap-4 text-sm empty:hidden">
+      {FAILURE_FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
+        <a
+          key={name}
+          href={fileUrl(generation.generation_id, name, true)}
+          className="underline underline-offset-4"
+        >
+          {text}
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function Failure({ generation }: { generation: GenerationDetail }) {
   return (
     <div className="max-w-4xl p-4 sm:p-6">
@@ -206,17 +222,7 @@ function Failure({ generation }: { generation: GenerationDetail }) {
           <pre className="mt-2 max-h-[60dvh] overflow-auto bg-wash p-4 font-mono text-xs leading-relaxed">
             {generation.compilation_log}
           </pre>
-          <div className="mt-3 flex gap-4 text-sm">
-            {FAILURE_FILES.filter(([name]) => generation.files.includes(name)).map(([name, text]) => (
-              <a
-                key={name}
-                href={fileUrl(generation.generation_id, name, true)}
-                className="underline underline-offset-4"
-              >
-                {text}
-              </a>
-            ))}
-          </div>
+          <FailureFiles generation={generation} />
         </>
       )}
     </div>
@@ -327,7 +333,7 @@ function ReviewList({
     <div className="p-4 sm:p-6">
       {generation.instructions && (
         <div className="mb-6">
-          <Eyebrow>You asked for</Eyebrow>
+          <Eyebrow>Your comments</Eyebrow>
           <p className="mt-1 text-sm break-words whitespace-pre-wrap">{generation.instructions}</p>
         </div>
       )}
@@ -342,7 +348,7 @@ function ReviewList({
       {generation.explanations.length > 0 && (
         <>
           <h2 className="mt-6 text-lg font-semibold tracking-tight">
-            {isEdited(generation) ? "Edits made by the model" : "Edits made"}
+            {generation.edited ? "Edits made by the model" : "Edits made"}
           </h2>
           <ul className="mt-2 space-y-2">
             {generation.explanations.map((item, index) => (
@@ -391,17 +397,16 @@ function PreviousVersions({
 }) {
   const id = generation.generation_id;
   const versions = generation.previous_versions.filter((item) => item.document === document);
-  const startsFromEdit = document === "cv" && generation.starts_from_edit;
   if (versions.length === 0) return null;
   return (
     <>
       <h2 className="mt-6 text-lg font-semibold tracking-tight">Previous versions</h2>
       <ul className="mt-2 space-y-2">
-        {versions.toReversed().map(({ number, saved_at: savedAt }) => (
+        {versions.toReversed().map(({ number, saved_at: savedAt, by }) => (
           <li key={number} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             <span className="font-medium">
               Version {number}
-              {number === 1 && !startsFromEdit && " (the model's version)"}
+              {by === "model" ? " (the model's version)" : " (your edit)"}
             </span>
             <span className="text-muted">{formatDate(savedAt)}</span>
             <a

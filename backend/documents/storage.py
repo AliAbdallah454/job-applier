@@ -10,6 +10,8 @@ from urllib.parse import quote
 from backend.documents.latex import cv_body, diff_cv, validate_cv
 from backend.documents.models import GenerationInput
 
+DOCUMENTS = ("cv", "motivation_letter", "cover_letter")
+
 
 def timestamp():
     return datetime.now(UTC).isoformat()
@@ -17,6 +19,14 @@ def timestamp():
 
 def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+
+
+def edited_documents(record):
+    """Documents holding the user's edit; older records only show this through their history."""
+    if "edited_documents" in record:
+        return record["edited_documents"]
+    edited = [document for document in DOCUMENTS if record.get(f"{document}_versions")]
+    return list({*edited, "cv"}) if "edited_from" in record else edited
 
 
 class GenerationStore:
@@ -126,8 +136,10 @@ class GenerationStore:
                 artifacts["cv_synctex"] = self.put_file(
                     f"{prefix}/cv.synctex.gz", synctex, "application/gzip"
                 )
+        edited = edited_documents(record)
         replaced = {
             "saved_at": record["updated_at"],
+            "by": "you" if document in edited else "model",
             "files": {name: record["artifacts"][name] for name in files},
         }
         versions = f"{document}_versions"
@@ -135,7 +147,8 @@ class GenerationStore:
             response = self.table.update_item(
                 Key={"user_id": record["user_id"], "generation_id": record["generation_id"]},
                 UpdateExpression=(
-                    "SET artifacts = :artifacts, #versions = :versions, updated_at = :updated"
+                    "SET artifacts = :artifacts, #versions = :versions, "
+                    "edited_documents = :edited, updated_at = :updated"
                 ),
                 # Two saves from the same read would otherwise lose one entry of the history.
                 ConditionExpression="#status = :ready AND updated_at = :read",
@@ -143,6 +156,7 @@ class GenerationStore:
                 ExpressionAttributeValues={
                     ":artifacts": artifacts,
                     ":versions": [*record.get(versions, []), replaced],
+                    ":edited": sorted({*edited, document}),
                     ":updated": timestamp(),
                     ":ready": "ready",
                     ":read": record["updated_at"],
@@ -152,6 +166,69 @@ class GenerationStore:
         except self.table.meta.client.exceptions.ConditionalCheckFailedException:
             return None
         return response["Attributes"]
+
+    def regenerate(self, record, request: GenerationInput, sqs, queue_url):
+        """Queue a new version on this record, or None if it changed since it was read.
+
+        The current documents stay on the record until the new ones are ready.
+        """
+        body = encode(request.model_dump(mode="json"))
+        snapshot = self.put_file(
+            f"{record['prefix']}/inputs/{uuid.uuid4().hex}.json", body, "application/json"
+        )
+        try:
+            response = self.table.update_item(
+                Key={"user_id": record["user_id"], "generation_id": record["generation_id"]},
+                # Without removing it, the checkpoint would bring back the old model output.
+                UpdateExpression=(
+                    "SET #input = :input, input_hash = :hash, model_id = :model, "
+                    "prompt_version = :prompt, instructions = :instructions, #status = :queued, "
+                    "previous_saved_at = :saved, failure_artifacts = :nothing, "
+                    "updated_at = :updated "
+                    "REMOVE #content, lock_token, lease_until, regeneration_error"
+                ),
+                ConditionExpression="updated_at = :read",
+                ExpressionAttributeNames={
+                    "#input": "input",
+                    "#status": "status",
+                    "#content": "content",
+                },
+                ExpressionAttributeValues={
+                    ":input": snapshot,
+                    ":hash": hashlib.sha256(body).hexdigest(),
+                    ":model": request.model_id,
+                    ":prompt": request.prompt_version,
+                    ":instructions": request.instructions,
+                    ":queued": "queued",
+                    ":saved": record["updated_at"],
+                    ":nothing": {},
+                    ":updated": timestamp(),
+                    ":read": record["updated_at"],
+                },
+                ReturnValues="ALL_NEW",
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            return None
+        saved = response["Attributes"]
+        self.enqueue(sqs, queue_url, saved["user_id"], saved["generation_id"])
+        return saved
+
+    def replaced_documents(self, record):
+        """Each document a finished regeneration replaces, added to that document's history."""
+        edited = edited_documents(record)
+        histories = {}
+        for document in DOCUMENTS:
+            names = [f"{document}_tex", f"{document}_pdf"]
+            names += ["changes_json"] if document == "cv" else []
+            if names[0] in record.get("artifacts", {}):
+                replaced = {
+                    "saved_at": record.get("previous_saved_at", record["updated_at"]),
+                    "by": "you" if document in edited else "model",
+                    "files": {name: record["artifacts"][name] for name in names},
+                }
+                versions = f"{document}_versions"
+                histories[versions] = [*record.get(versions, []), replaced]
+        return histories
 
     def enqueue(self, sqs, queue_url, user_id, generation_id):
         if self.get(user_id, generation_id) is None:

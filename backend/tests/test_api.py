@@ -15,8 +15,8 @@ from moto import mock_aws
 from backend.api.app import create_app
 from backend.api.demo import create_tables, example_pdf, fake_generate
 from backend.api.deps import Context, Settings
-from backend.documents.errors import DocumentCompilationError
-from backend.documents.models import ModelOption, TailoredCv
+from backend.documents.errors import DocumentCompilationError, DocumentError
+from backend.documents.models import GenerationInput, ModelOption, TailoredCv
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
 from backend.jobs.classification.models import input_hash
@@ -238,9 +238,7 @@ class ApiTests(unittest.TestCase):
         self.process(french["generation_id"])
         again = self.client.post(f"/api/generations/{french['generation_id']}/regenerate").json()
         self.assertEqual(again["language"], "fr")
-        record = self.context.generations.get("ali", again["generation_id"])
-        frozen = json.loads(self.context.generations.read_file(record["input"]))
-        self.assertEqual(frozen["language"], "fr")
+        self.assertEqual(self.frozen(french["generation_id"])["language"], "fr")
 
     def test_an_unknown_language_is_rejected_and_old_records_read_as_english(self):
         self.client.put("/api/profile", json=PROFILE)
@@ -391,21 +389,166 @@ class ApiTests(unittest.TestCase):
         self.process(original)
         body = self.regenerate(original, "  Lead with my AWS work  ").json()
         self.assertEqual(body["instructions"], "Lead with my AWS work")
-        self.assertEqual(
-            self.frozen(body["generation_id"])["instructions"], "Lead with my AWS work"
-        )
-        shown = self.client.get(f"/api/generations/{body['generation_id']}").json()
+        self.assertEqual(self.frozen(original)["instructions"], "Lead with my AWS work")
+        shown = self.client.get(f"/api/generations/{original}").json()
         self.assertEqual(shown["instructions"], "Lead with my AWS work")
-        self.assertIsNone(self.client.get(f"/api/generations/{original}").json()["instructions"])
+
+    def test_comments_are_about_the_current_version_including_manual_edits(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        mine = self.added_by_hand(original, "My own line")
+        self.edit(original, mine)
+        letter = self.letter(original, "cover_letter")
+        self.regenerate(original, "Shorten the second bullet")
+        previous = self.frozen(original)["previous_version"]
+        self.assertEqual(previous["cv_latex"], mine)
+        self.assertEqual(previous["cover_letter_latex"], letter)
+        self.assertEqual(previous["changes"][0]["reason"], "The posting asks for reliable API work")
+
+    def test_no_comments_means_a_fresh_start_without_the_previous_version(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.edit(original, self.added_by_hand(original, "My own line"))
+        self.regenerate(original)
+        self.assertIsNone(self.frozen(original)["previous_version"])
+
+    def test_comments_on_a_first_run_that_failed_have_nothing_to_revise(self):
+        original = self.tailor().json()["generation_id"]
+
+        def fail(path):
+            raise DocumentCompilationError(timed_out=False, diagnostics=b"! Broken")
+
+        with self.assertLogs("backend.documents.service", level="ERROR"):
+            with self.assertRaises(DocumentError):
+                self.process(original, compile_document=fail)
+        self.regenerate(original, "Try a shorter letter")
+        frozen = self.frozen(original)
+        self.assertEqual(frozen["instructions"], "Try a shorter letter")
+        self.assertIsNone(frozen["previous_version"])
 
     def test_instructions_do_not_carry_over_to_the_next_regeneration(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)
-        guided = self.regenerate(original, "Shorter letters").json()["generation_id"]
-        self.process(guided)
-        plain = self.regenerate(guided).json()
+        self.regenerate(original, "Shorter letters")
+        self.process(original)
+        plain = self.regenerate(original).json()
         self.assertIsNone(plain["instructions"])
-        self.assertIsNone(self.frozen(plain["generation_id"])["instructions"])
+        self.assertIsNone(self.frozen(original)["instructions"])
+
+    def test_regenerating_updates_the_entry_and_keeps_the_old_documents_as_versions(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        first_cv = self.cv_source(original)
+        before = self.client.get(f"/api/generations/{original}").json()
+
+        body = self.regenerate(original, "Again")
+        self.assertEqual(body.status_code, 202)
+        self.assertEqual(body.json()["generation_id"], original)
+        self.assertEqual(body.json()["status"], "queued")
+        self.assertEqual(len(self.client.get("/api/generations").json()), 1)
+
+        self.process(original)
+        after = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual(after["status"], "ready")
+        self.assertEqual(after["created_at"], before["created_at"])
+        self.assertEqual(
+            [(item["document"], item["number"], item["by"]) for item in after["previous_versions"]],
+            [("cv", 1, "model"), ("motivation_letter", 1, "model"), ("cover_letter", 1, "model")],
+        )
+        self.assertEqual(
+            {item["saved_at"] for item in after["previous_versions"]}, {before["updated_at"]}
+        )
+        self.assertEqual(self.version_file(original, 1).text, first_cv)
+        self.assertEqual(after["revisions"], {"cv": 1, "motivation_letter": 1, "cover_letter": 1})
+        self.assertFalse(after["edited"])
+        self.assertEqual(len(self.client.get("/api/generations").json()), 1)
+
+    def test_a_manual_edit_stays_in_the_history_after_regenerating(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        mine = self.added_by_hand(original, "My own line")
+        self.edit(original, mine)
+        self.assertTrue(self.client.get(f"/api/generations/{original}").json()["edited"])
+        self.regenerate(original)
+        self.process(original)
+
+        after = self.client.get(f"/api/generations/{original}").json()
+        self.assertFalse(after["edited"])
+        cv = [item for item in after["previous_versions"] if item["document"] == "cv"]
+        self.assertEqual([(item["number"], item["by"]) for item in cv], [(1, "model"), (2, "you")])
+        self.assertEqual(self.version_file(original, 2).text, mine)
+        self.assertNotIn("My own line", self.cv_source(original))
+
+    def test_the_model_runs_again_instead_of_reusing_its_old_answer(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        self.regenerate(original)
+        self.assertNotIn("content", self.context.generations.get("ali", original))
+
+    def test_a_failed_regeneration_leaves_the_working_documents_in_place(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        cv = self.cv_source(original)
+        self.regenerate(original)
+
+        def fail(path):
+            raise DocumentCompilationError(timed_out=False, diagnostics=b"! Broken")
+
+        message = {"user_id": "ali", "generation_id": original}
+        with self.assertLogs("backend.documents.service", level="ERROR"):
+            with self.assertRaises(DocumentError):
+                self.process(original, compile_document=fail)
+        after = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual(after["status"], "ready")
+        self.assertIn("LaTeX", after["regeneration_error"])
+        self.assertEqual(self.cv_source(original), cv)
+        self.assertEqual(after["previous_versions"], [])
+
+        # SQS delivers the failed message again, which must not run the model again.
+        store = GenerationStore(self.db.Table("generations"), self.s3, "documents")
+        generate = Mock()
+        service = DocumentService(store, generate, ["test-model"])
+        self.assertEqual(service.process(message), "already ready")
+        generate.assert_not_called()
+
+        self.regenerate(original)
+        self.process(original)
+        cleared = self.client.get(f"/api/generations/{original}").json()
+        self.assertIsNone(cleared["regeneration_error"])
+        self.assertEqual(len(cleared["previous_versions"]), 3)
+
+    def test_a_failed_first_run_can_be_regenerated_in_place(self):
+        original = self.tailor().json()["generation_id"]
+
+        def fail(path):
+            raise DocumentCompilationError(timed_out=False, diagnostics=b"! Broken")
+
+        with self.assertLogs("backend.documents.service", level="ERROR"):
+            with self.assertRaises(DocumentError):
+                self.process(original, compile_document=fail)
+        self.assertEqual(self.client.get(f"/api/generations/{original}").json()["status"], "failed")
+        self.assertEqual(self.regenerate(original).status_code, 202)
+        self.process(original)
+        after = self.client.get(f"/api/generations/{original}").json()
+        self.assertEqual(after["status"], "ready")
+        self.assertEqual(after["previous_versions"], [])
+
+    def test_a_run_in_progress_cannot_be_regenerated_over(self):
+        original = self.tailor().json()["generation_id"]
+        store = self.context.generations
+        store.claim("ali", original, lease_seconds=300)
+        self.assertEqual(self.regenerate(original).status_code, 409)
+
+    def test_regenerating_from_a_stale_read_changes_nothing(self):
+        original = self.tailor().json()["generation_id"]
+        self.process(original)
+        store = self.context.generations
+        record = store.get("ali", original)
+        request = GenerationInput.model_validate_json(store.read_file(record["input"]))
+        self.edit(original, self.added_by_hand(original, "Newer"))
+        saved = store.get("ali", original)
+        self.assertIsNone(store.regenerate(record, request, self.sqs, self.queue))
+        self.assertEqual(store.get("ali", original), saved)
 
     def test_empty_or_oversized_instructions_are_refused(self):
         original = self.tailor().json()["generation_id"]
@@ -414,7 +557,7 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.post(url, json={"instructions": "   "}).status_code, 422)
         self.assertEqual(self.client.post(url, json={"instructions": "x" * 2001}).status_code, 422)
 
-    def test_regenerate_makes_a_new_revision_from_the_frozen_input(self):
+    def test_regenerate_starts_from_the_frozen_input(self):
         original = self.tailor().json()["generation_id"]
         self.process(original)
         self.client.put(
@@ -422,11 +565,9 @@ class ApiTests(unittest.TestCase):
             json={**self.client.get("/api/profile").json(), "location": "Changed later"},
         )
         body = self.client.post(f"/api/generations/{original}/regenerate").json()
-        self.assertNotEqual(body["generation_id"], original)
+        self.assertEqual(body["generation_id"], original)
         self.assertEqual(body["status"], "queued")
-        record = self.context.generations.get("ali", body["generation_id"])
-        frozen = json.loads(self.context.generations.read_file(record["input"]))
-        self.assertNotIn("location", {k for k, v in frozen["profile"].items() if v})
+        self.assertNotIn("location", {k for k, v in self.frozen(original)["profile"].items() if v})
 
     def edit(self, generation_id, source, revision=None, document="cv"):
         url = f"/api/generations/{generation_id}"
@@ -507,8 +648,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(
             detail["previous_versions"],
             [
-                {"document": "cv", "number": 1, "saved_at": ready["updated_at"]},
-                {"document": "cv", "number": 2, "saved_at": saved_first["updated_at"]},
+                {"document": "cv", "number": 1, "saved_at": ready["updated_at"], "by": "model"},
+                {"document": "cv", "number": 2, "saved_at": saved_first["updated_at"], "by": "you"},
             ],
         )
         fetched = self.client.get(f"/api/generations/{original}").json()
@@ -625,7 +766,14 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(detail["changes"], before["changes"])
         self.assertEqual(
             detail["previous_versions"],
-            [{"document": "cover_letter", "number": 1, "saved_at": before["updated_at"]}],
+            [
+                {
+                    "document": "cover_letter",
+                    "number": 1,
+                    "saved_at": before["updated_at"],
+                    "by": "model",
+                }
+            ],
         )
         old = self.client.get(
             f"/api/generations/{original}/versions/cover_letter/1/files/cover_letter_tex"
@@ -735,13 +883,9 @@ class ApiTests(unittest.TestCase):
         original = self.tailor().json()["generation_id"]
         self.process(original)
         self.edit(original, self.added_by_hand(original, "Added by hand"))
-        body = self.client.post(f"/api/generations/{original}/regenerate").json()
-        self.assertNotEqual(body["generation_id"], original)
-        record = self.context.generations.get("ali", body["generation_id"])
-        self.assertNotIn("cv_versions", record)
-        frozen = json.loads(self.context.generations.read_file(record["input"]))
-        self.assertNotIn("Added by hand", frozen["cv_latex"])
-        self.assertEqual(len(self.client.get("/api/generations").json()), 2)
+        self.regenerate(original)
+        self.assertNotIn("Added by hand", self.frozen(original)["cv_latex"])
+        self.assertEqual(len(self.client.get("/api/generations").json()), 1)
 
     def test_editing_without_tex_says_what_is_missing(self):
         original = self.tailor().json()["generation_id"]
@@ -762,7 +906,9 @@ class ApiTests(unittest.TestCase):
 
     def test_history_lists_newest_first_and_filters(self):
         first = self.tailor().json()["generation_id"]
-        second = self.client.post(f"/api/generations/{first}/regenerate").json()["generation_id"]
+        cv_id = self.client.get("/api/cvs").json()[0]["cv_id"]
+        request = {"job_id": "job-1", "cv_id": cv_id, "language": "fr"}
+        second = self.client.post("/api/generations", json=request).json()["generation_id"]
         self.process(first)
         ids = [item["generation_id"] for item in self.client.get("/api/generations").json()]
         self.assertEqual(ids, [second, first])

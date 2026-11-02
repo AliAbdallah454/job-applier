@@ -134,13 +134,16 @@ class DocumentService:
                 record,
                 token,
                 {
+                    **self.store.replaced_documents(record),
                     "status": "ready",
                     "artifacts": artifacts,
+                    "edited_documents": [],
                     "usage": usage,
                     "updated_at": timestamp(),
                     "last_error": None,
                     "failure_stage": None,
                     "error_detail": None,
+                    "regeneration_error": None,
                     "failure_artifacts": {},
                 },
                 release=True,
@@ -161,24 +164,29 @@ class DocumentService:
                 Path(origin.tb_frame.f_code.co_filename).name,
                 origin.tb_lineno,
             )
+            failure = {
+                "status": "failed",
+                "last_error": (
+                    exc.response.get("Error", {}).get("Code", type(exc).__name__)
+                    if hasattr(exc, "response")
+                    else type(exc).__name__
+                ),
+                "failure_stage": stage,
+                "error_detail": detail,
+                "failure_artifacts": failure_artifacts,
+                "updated_at": timestamp(),
+            }
+            if record.get("artifacts"):
+                # A failed regeneration keeps the working documents; being ready again also
+                # means a redelivered message does nothing, so it is not paid for repeatedly.
+                failure = {
+                    "status": "ready",
+                    "regeneration_error": detail,
+                    "failure_artifacts": failure_artifacts,
+                    "updated_at": timestamp(),
+                }
             try:
-                self.store.update_owned(
-                    record,
-                    token,
-                    {
-                        "status": "failed",
-                        "last_error": (
-                            exc.response.get("Error", {}).get("Code", type(exc).__name__)
-                            if hasattr(exc, "response")
-                            else type(exc).__name__
-                        ),
-                        "failure_stage": stage,
-                        "error_detail": detail,
-                        "failure_artifacts": failure_artifacts,
-                        "updated_at": timestamp(),
-                    },
-                    release=True,
-                )
+                self.store.update_owned(record, token, failure, release=True)
             except self.store.table.meta.client.exceptions.ConditionalCheckFailedException:
                 pass  # A newer worker owns the record; do not overwrite its state.
             raise

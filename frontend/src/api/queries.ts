@@ -160,7 +160,11 @@ export function useRegenerate(id: string) {
           body: { instructions },
         }),
       ),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: ["generations"] }),
+        client.invalidateQueries({ queryKey: ["generation", id] }),
+      ]),
   });
 }
 

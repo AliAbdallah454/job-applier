@@ -224,7 +224,7 @@ export interface paths {
         put?: never;
         /**
          * Regenerate
-         * @description A new revision from the same frozen CV, profile and job, with any new instructions.
+         * @description A new version of this entry: a fix of the current one with comments, else a fresh start.
          */
         post: operations["regenerate_api_generations__generation_id__regenerate_post"];
         delete?: never;
@@ -598,6 +598,11 @@ export interface components {
          */
         DocumentVersion: {
             /**
+             * By
+             * @enum {string}
+             */
+            by: "model" | "you";
+            /**
              * Document
              * @enum {string}
              */
@@ -719,6 +724,8 @@ export interface components {
             compilation_log?: string | null;
             /** Created At */
             created_at: string;
+            /** Edited */
+            edited: boolean;
             /** Error Detail */
             error_detail?: string | null;
             /** Explanations */
@@ -749,6 +756,8 @@ export interface components {
             model_id: string;
             /** Previous Versions */
             previous_versions: components["schemas"]["DocumentVersion"][];
+            /** Regeneration Error */
+            regeneration_error?: string | null;
             /** Retryable */
             retryable: boolean;
             /** Review Required */
@@ -1463,7 +1472,7 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

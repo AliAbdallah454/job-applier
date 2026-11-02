@@ -42,11 +42,13 @@ shows the failure page.
 **Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
 document queue. The generation page polls until a worker finishes. Workers start from zero,
 so a run can stay queued for a few minutes. Identical inputs return the existing generation;
-**Regenerate** can take instructions for the model, such as what to emphasise, and these are shown
-on the new version. They apply once, and the model still may not claim anything your CV and profile
-do not support. It makes a new, separate revision from the same frozen inputs, so it starts from
-your uploaded CV and not from your edits, and **Retry** re-queues a failed run or one whose
-worker died. Each real run calls Bedrock and costs money.
+**Regenerate** makes a new version of the same entry. Write comments and the model reads the current
+CV and letters, including your edits, and changes only what you asked for. Leave them empty and it
+starts over from your uploaded CV. Comments are shown on the new version and apply once, and the
+model still may not claim anything your CV and profile do not support. Your current CV and letters
+move to **Previous versions** once the new ones are ready. If it fails they stay as they are, with a
+note saying why. **Retry** re-queues a failed run or one whose worker died. Each real run calls
+Bedrock and costs money.
 
 A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
@@ -73,7 +75,7 @@ be a few lines late inside multi-line macros, and `sourceLine.ts` then picks the
 of it that holds most of the clicked words. With no match, it stays on the SyncTeX line. Text cannot be selected and
 links cannot be followed in this preview; the downloaded PDF has both.
 
-Each CV or letter an edit replaces appears under **Previous versions** in the review list while that
+Each CV or letter that an edit or regeneration replaces appears under **Previous versions** in the review list while that
 document is shown, newest first, with
 its PDF and `.tex`. Version 1 is the model's, unless the entry came from the old edit flow, which
 gave each edit its own entry. Old versions can be opened but not restored.
@@ -88,7 +90,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 | `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run |
 | `GET /api/generations/{id}` | Status, keywords, edits, file names, compile log, previous versions |
-| `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new revision, with optional `instructions` for the model |
+| `POST /api/generations/{id}/retry`, `/regenerate` | Re-queue, or make a new version of the same entry, with optional `instructions`, the user's comments on the current version |
 | `GET /api/mail/status`, `POST /api/mail/sync` | Whether the mailbox is connected, the last check, and starting one; see the [mail guide](../backend/mail/README.md) |
 | `GET /api/applications`, `PATCH`/`DELETE /api/applications/{id}` | Tracked applications, correcting a status, and removing an entry |
 | `POST`/`GET /api/applications/interests`, `POST .../{job_id}/applied`, `DELETE .../{job_id}` | Note an opened job post, list those to ask about, and answer "Did you apply?" |

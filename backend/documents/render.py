@@ -60,7 +60,12 @@ def render_letter(request: GenerationInput, paragraphs):
 
 
 def render_sources(request: GenerationInput, content: TailoredCv):
-    cv = rewrite_cv(request.cv_latex, content.cv_body)
+    previous = request.previous_version
+    cv = (
+        rewrite_cv(previous.cv_latex, content.cv_body, uploaded=request.cv_latex)
+        if previous
+        else rewrite_cv(request.cv_latex, content.cv_body)
+    )
     return {
         "cv.tex": (with_accented_text(cv) if request.language == "fr" else cv).encode(),
         "motivation_letter.tex": render_letter(

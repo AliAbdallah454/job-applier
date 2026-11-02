@@ -113,6 +113,7 @@ def example_pdf(title, lines):
 
 def fake_generate(request, previous=None):
     time.sleep(3)
+    broken = "Example Broken" if "Example Broken" in (request.instructions or "") else ""
     body = (
         cv_body(request.cv_latex)
         .replace(
@@ -128,7 +129,8 @@ def fake_generate(request, previous=None):
         TailoredCv(
             job_keywords=["Python", "APIs", "testing", "CI/CD", "SQL", "AWS"],
             # The extra line keeps the example changed for a CV without the bullets above.
-            cv_body=body + "\nExample line added by demo mode.\n",
+            # Instructions naming the broken example show how a failed regeneration looks.
+            cv_body=body + f"\nExample line added by demo mode.\n{broken}",
             changes=[
                 CvChange(
                     change="Reworded the retries bullet around APIs",

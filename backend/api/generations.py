@@ -22,8 +22,10 @@ from backend.documents.models import (
     Instructions,
     Job,
     Language,
+    PreviousVersion,
 )
 from backend.documents.render import compile_source
+from backend.documents.storage import edited_documents
 from backend.mail.linkedin import job_url
 from backend.mail.storage import MAIL_JOB_PREFIX
 
@@ -77,6 +79,7 @@ class DocumentVersion(BaseModel):
     document: Document
     number: int
     saved_at: str
+    by: Literal["model", "you"]
 
 
 class SourceLine(BaseModel):
@@ -113,6 +116,8 @@ class GenerationDetail(Generation):
     revisions: dict[str, int]
     # The old edit flow gave each edit its own record, so the first CV on one is the user's.
     starts_from_edit: bool
+    edited: bool  # Whether a current document holds the user's own edit.
+    regeneration_error: str | None = None  # Why a new version failed; the current one stays.
 
 
 def retryable(record):
@@ -147,6 +152,14 @@ def mail_job_links(context, user_id, job_ids):
             company = saved[linkedin_id].get("company") or None
             links[job_id] = {"company": company, "job_url": job_url(linkedin_id)}
     return links
+
+
+def version_author(record, document, number, version):
+    """Older versions do not say: a record's first was the model's, and the rest were edits."""
+    if "by" in version:
+        return version["by"]
+    first_from_model = number == 1 and not (document == "cv" and "edited_from" in record)
+    return "model" if first_from_model else "you"
 
 
 def summaries(context, records):
@@ -198,12 +211,19 @@ def detail(context, record):
         explanations=explanations,
         compilation_log=log,
         previous_versions=[
-            DocumentVersion(document=document, number=number, saved_at=version["saved_at"])
+            DocumentVersion(
+                document=document,
+                number=number,
+                saved_at=version["saved_at"],
+                by=version_author(record, document, number, version),
+            )
             for document in get_args(Document)
             for number, version in enumerate(record.get(f"{document}_versions", []), start=1)
         ],
         revisions=revisions(record),
         starts_from_edit="edited_from" in record,
+        edited=bool(edited_documents(record)),
+        regeneration_error=record.get("regeneration_error"),
     )
 
 
@@ -244,6 +264,23 @@ def job_for(context, user, job_id):
     if job_id.startswith(MAIL_JOB_PREFIX):
         return load_mail_job(context, user, job_id)
     return load_job(context, job_id)
+
+
+def current_version(context, record):
+    """What the user sees now, edits included, so comments can be about exactly that."""
+
+    def source(name):
+        reference = record["artifacts"].get(f"{name}_tex")
+        return context.generations.read_file(reference).decode() if reference else None
+
+    saved = read_json(context, record["artifacts"]["changes_json"])
+    return PreviousVersion(
+        cv_latex=source("cv"),
+        motivation_letter_latex=source("motivation_letter"),
+        cover_letter_latex=source("cover_letter"),
+        # Generations from before prompt version 7 stored a list of find/replace edits.
+        changes=saved["explanations"] if isinstance(saved, dict) else [],
+    )
 
 
 def model_ids(context):
@@ -320,15 +357,17 @@ def retry_generation(generation_id: str, context: AppContext, user: CurrentUser)
     return summary(context, record)
 
 
-@router.post("/{generation_id}/regenerate", status_code=201)
+@router.post("/{generation_id}/regenerate", status_code=202)
 def regenerate(
     generation_id: str,
     context: AppContext,
     user: CurrentUser,
     body: Regeneration = Regeneration(),  # noqa: B008
 ) -> Generation:
-    """A new revision from the same frozen CV, profile and job, with any new instructions."""
+    """A new version of this entry: a fix of the current one with comments, else a fresh start."""
     record = load(context, user, generation_id)
+    if record["status"] == "processing" and not retryable(record):
+        raise HTTPException(409, "A new version is already being made")
     frozen = GenerationInput.model_validate_json(context.generations.read_file(record["input"]))
     models = model_ids(context)
     request = frozen.model_copy(
@@ -336,11 +375,21 @@ def regenerate(
             # The same model again, unless it has since been removed from the config.
             "model_id": frozen.model_id if frozen.model_id in models else models[0],
             "prompt_version": PROMPT_VERSION,
-            # Each regeneration says what it wants; earlier instructions do not carry over.
+            # Comments apply to this run only, and are about the version shown now.
             "instructions": body.instructions,
+            "previous_version": (
+                current_version(context, record)
+                if body.instructions and record.get("artifacts")
+                else None
+            ),
         }
     )
-    return summary(context, submit(context, request, force=True))
+    saved = context.generations.regenerate(
+        record, request, context.client("sqs"), context.settings.document_queue_url
+    )
+    if saved is None:
+        raise HTTPException(409, "This entry just changed. Try again.")
+    return summary(context, saved)
 
 
 @router.post("/{generation_id}/edit")

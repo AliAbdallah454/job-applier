@@ -495,6 +495,14 @@
       "DocumentVersion": {
         "description": "A CV or letter that a later edit replaced; number 1 is that document's oldest.",
         "properties": {
+          "by": {
+            "enum": [
+              "model",
+              "you"
+            ],
+            "title": "By",
+            "type": "string"
+          },
           "document": {
             "enum": [
               "cv",
@@ -516,7 +524,8 @@
         "required": [
           "document",
           "number",
-          "saved_at"
+          "saved_at",
+          "by"
         ],
         "title": "DocumentVersion",
         "type": "object"
@@ -878,6 +887,10 @@
             "title": "Created At",
             "type": "string"
           },
+          "edited": {
+            "title": "Edited",
+            "type": "boolean"
+          },
           "error_detail": {
             "anyOf": [
               {
@@ -975,6 +988,17 @@
             "title": "Previous Versions",
             "type": "array"
           },
+          "regeneration_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regeneration Error"
+          },
           "retryable": {
             "title": "Retryable",
             "type": "boolean"
@@ -1025,7 +1049,8 @@
           "explanations",
           "previous_versions",
           "revisions",
-          "starts_from_edit"
+          "starts_from_edit",
+          "edited"
         ],
         "title": "GenerationDetail",
         "type": "object"
@@ -2513,7 +2538,7 @@
     },
     "/api/generations/{generation_id}/regenerate": {
       "post": {
-        "description": "A new revision from the same frozen CV, profile and job, with any new instructions.",
+        "description": "A new version of this entry: a fix of the current one with comments, else a fresh start.",
         "operationId": "regenerate_api_generations__generation_id__regenerate_post",
         "parameters": [
           {
@@ -2537,7 +2562,7 @@
           }
         },
         "responses": {
-          "201": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {

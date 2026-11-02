@@ -29,20 +29,22 @@ export function RegenerateDialog({
     >
       <Eyebrow>Regenerate</Eyebrow>
       <label className="mt-2 block text-sm font-medium">
-        Anything the model should do differently? (optional)
+        What should the model fix in this version? (optional)
         <textarea
           rows={5}
           maxLength={2000}
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder="For example: lead with my AWS projects, and keep the letters shorter."
+          placeholder="For example: shorten the second bullet, and make the cover letter warmer."
           className="mt-2 block w-full border border-rule bg-wash p-2 font-normal outline-none focus:border-ink"
         />
       </label>
       <p className="mt-2 text-xs text-muted">
-        It can change emphasis, tone, length and order, but it still will not claim anything your CV
-        and profile do not support. This makes a new version from your original CV, without your
-        manual edits.
+        The model reads the current CV and letters, including your edits, and changes only what you
+        comment on. It still will not claim anything your CV and profile do not support. Leave this
+        empty to start over from your original CV. The current version moves to Previous versions
+        once the new one is ready, and stays as it is if this fails. Unsaved changes in the editor
+        are lost.
       </p>
       <div className="mt-3 empty:hidden">
         <ErrorNote error={error} />

@@ -59,12 +59,18 @@ that as `starts_from_edit`, and nothing writes the attribute any more. The reque
 The update is conditional on `status` and that `updated_at`: of two saves from the same read,
 the second gets a 409 instead of dropping a version. A compile failure saves nothing.
 
-`regenerate` can carry the user's `instructions`, frozen in the new generation's input and given
-to the model as `candidate_instructions`. The prompt's rules still win over them, so they cannot
-add unsupported claims, and they apply to that generation only.
+`regenerate` makes a new version on the same record, so a job keeps one entry per generation.
+Without comments it is a fresh start from the frozen CV. With the user's comments (`instructions`),
+the current CV and letters, edits included, are frozen as `previous_version`, and the model is told
+to make only those fixes and leave the rest alone. The uploaded CV and profile remain its only
+sources of facts, and the prompt's rules win over the comments. A revised CV may stay the same when
+the comments only concern a letter, so the "unchanged" check does not apply, and its preamble comes
+from the version being revised. Comments apply to that run only.
 
-`regenerate` does not use edits: it makes a separate generation from the frozen inputs, with
-no version history.
+The current documents stay on the record until the worker finishes, when each one moves to its
+`<document>_versions`, marked `by` the model or the user. If the run fails, the record goes back to
+`ready` with its documents unchanged and the reason in `regeneration_error`. Being ready also means
+SQS's redelivered message does nothing, so a failed regeneration is not paid for repeatedly.
 
 The letters are edited the same way, through the same endpoint with `document` set to
 `motivation_letter` or `cover_letter`. A letter edit replaces only that letter, and its old files

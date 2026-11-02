@@ -29,7 +29,7 @@ from backend.documents.latex import (
     validate_cv,
     with_accented_text,
 )
-from backend.documents.models import GenerationInput, Job, TailoredCv
+from backend.documents.models import GenerationInput, Job, PreviousVersion, TailoredCv
 from backend.documents.render import compile_pdf, read_synctex, render_sources, source_line
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
@@ -148,6 +148,31 @@ class CvRewriteTests(unittest.TestCase):
 
 
 class RenderingTests(unittest.TestCase):
+    def revision(self):
+        revised = CV.replace("a prediction endpoint", "a revised endpoint")
+        extended = revised.replace(r"\end{document}", "\\textsc{Added by hand}\n\\end{document}")
+        return revised, extended
+
+    def test_a_revision_may_leave_the_cv_as_it_was(self):
+        revised, _ = self.revision()
+        result = rewrite_cv(revised, cv_body(revised), uploaded=CV)
+        self.assertIn("a revised endpoint", result)
+        with self.assertRaisesRegex(DocumentError, "unchanged"):
+            rewrite_cv(CV, cv_body(CV))
+
+    def test_a_revision_may_keep_commands_from_the_users_edit_but_not_add_new_ones(self):
+        _, extended = self.revision()
+        self.assertIn(r"\textsc", rewrite_cv(extended, cv_body(extended), uploaded=CV))
+        with self.assertRaisesRegex(DocumentError, "adds LaTeX commands"):
+            rewrite_cv(extended, cv_body(extended) + r"\input{secret}", uploaded=CV)
+
+    def test_a_revision_keeps_the_preamble_of_the_version_being_revised(self):
+        revised = CV.replace(r"\begin{document}", "% my preamble edit\n\\begin{document}")
+        previous = PreviousVersion(cv_latex=revised)
+        french = request().model_copy(update={"previous_version": previous})
+        source = render_sources(french, content())["cv.tex"].decode()
+        self.assertIn("% my preamble edit", source)
+
     def test_a_french_cv_gets_an_encoding_only_when_it_needs_one(self):
         added = with_accented_text("\\documentclass[11pt]{article}\n\\usepackage{x}")
         self.assertEqual(
@@ -372,9 +397,10 @@ class GenerationTests(unittest.TestCase):
             [
                 {
                     "saved_at": record["updated_at"],
+                    "by": by,
                     "files": {name: record["artifacts"][name] for name in files},
                 }
-                for record in (ready, first)
+                for record, by in ((ready, "model"), (first, "you"))
             ],
         )
         for name in files:
@@ -653,6 +679,7 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("changes are always in English", SYSTEM)
         self.assertIn("Never use an em dash", SYSTEM)
         self.assertIn("Everything else in this prompt still applies", SYSTEM)
+        self.assertIn("every other part of the CV and letters stays exactly", SYSTEM)
         self.assertIn("keep only the one\n  closest to this job", SYSTEM)
         self.assertIn("never\n  move an experience entry", SYSTEM)
 
@@ -678,7 +705,7 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn("email", prompt["candidate_facts"])
         self.assertNotIn("full_name", prompt["candidate_facts"])
         self.assertNotIn("previous_attempt", prompt)
-        self.assertNotIn("candidate_instructions", prompt)
+        self.assertNotIn("candidate_comments", prompt)
         self.assertEqual(prompt["output_language"], "English")
         french = self.request.model_copy(update={"language": "fr"})
         with self.assertRaises(ValueError):
@@ -689,7 +716,15 @@ class GenerationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(guided)
         prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
-        self.assertEqual(prompt["candidate_instructions"], "Lead with AWS")
+        self.assertEqual(prompt["candidate_comments"], "Lead with AWS")
+        self.assertNotIn("previous_version", prompt)
+        revising = guided.model_copy(
+            update={"previous_version": PreviousVersion(cv_latex=CV, cover_letter_latex="Letter")}
+        )
+        with self.assertRaises(ValueError):
+            BedrockGenerator(client)(revising)
+        prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["previous_version"]["cover_letter_latex"], "Letter")
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(self.request, {"error": "Fix this"})
         prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])

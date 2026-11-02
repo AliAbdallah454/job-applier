@@ -83,14 +83,21 @@ def cv_body(source):
     return source[source.index(BEGIN) + len(BEGIN) : source.rindex(END)]
 
 
-def rewrite_cv(source, body):
-    """Put the rewritten body into the user's CV, or raise what the model must fix."""
+def rewrite_cv(source, body, *, uploaded=None):
+    """Put the rewritten body into the CV, or raise what the model must fix.
+
+    uploaded is given when source is a version being revised: comments may only concern the
+    letters, so the CV can stay the same, and the commands of both documents are allowed.
+    """
     original = cv_body(source)
     # Models often return the document markers too; anything outside them is not the body.
     body = body.split(BEGIN, 1)[-1].rsplit(END, 1)[0]
-    if WHITESPACE.sub("", body) == WHITESPACE.sub("", original):
+    if uploaded is None and WHITESPACE.sub("", body) == WHITESPACE.sub("", original):
         raise DocumentError("The model returned the CV unchanged")
-    added = set(COMMAND.findall(body)) - set(COMMAND.findall(original))
+    allowed = set(COMMAND.findall(original))
+    if uploaded is not None:
+        allowed |= set(COMMAND.findall(cv_body(uploaded)))
+    added = set(COMMAND.findall(body)) - allowed
     if added:
         raise DocumentError(
             "The rewritten CV adds LaTeX commands that the original did not use",
