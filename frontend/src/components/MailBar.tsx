@@ -8,6 +8,7 @@ const SETUP = {
   table: "The mail table is not deployed yet. Deploy the Application stack, then restart the API.",
   credentials:
     "Connect your mailbox: add MAIL_ADDRESS and MAIL_APP_PASSWORD to .env, then restart the API.",
+  owner_only: "Mail tracking is not available for this account yet.",
 };
 
 /** Mailbox state and the sync button, shared by the pages that show what came from mail. */

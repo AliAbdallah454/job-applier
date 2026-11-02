@@ -7,7 +7,7 @@ import jwt
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from backend.api.deps import SESSION_COOKIE, AppContext
+from backend.api.deps import SESSION_COOKIE, AppContext, user_of_account
 
 router = APIRouter(prefix="/api/auth", tags=["auth"], include_in_schema=False)
 
@@ -68,9 +68,10 @@ def callback(
     # Ties the token to this login, so a captured one cannot be replayed through this route.
     if claims.get("nonce") != request.cookies.get(NONCE_COOKIE):
         raise HTTPException(400, "This login link is no longer valid. Start again.")
-    if claims["sub"] != auth.owner_id:
-        hint = "" if auth.owner_id else f" Set AUTH0_OWNER_ID={claims['sub']} to allow it."
-        raise HTTPException(403, f"This account is not allowed.{hint}")
+    if not auth.owner_id:
+        hint = f"Set AUTH0_OWNER_ID={claims['sub']} if this is the owner's account."
+        raise HTTPException(403, f"This account is not allowed. {hint}")
+    user_of_account(context.settings, claims["sub"])
     response = RedirectResponse(auth.app_url, status_code=302)
     set_cookie(response, auth, SESSION_COOKIE, token, claims["exp"] - claims["iat"])
     response.delete_cookie(STATE_COOKIE)

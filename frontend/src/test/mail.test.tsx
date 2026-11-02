@@ -195,6 +195,16 @@ describe("Applications", () => {
     expect(screen.queryByRole("button", { name: "Check mail now" })).not.toBeInTheDocument();
   });
 
+  it("tells an account without the mailbox that mail is not available", async () => {
+    server({
+      "GET /api/mail/status": () => json({ ...OK_STATUS, problem: "owner_only" }),
+      "GET /api/applications": () => json([]),
+    });
+    mount(<Applications />);
+    expect(await screen.findByText(/not available for this account/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check mail now" })).not.toBeInTheDocument();
+  });
+
   it("starts a sync and shows why the last one stopped", async () => {
     const calls = server({
       "GET /api/mail/status": () => json({ ...OK_STATUS, last_error: "The mailbox refused" }),

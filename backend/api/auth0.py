@@ -20,7 +20,7 @@ class Auth0:
         self.domain = domain
         self.client_id = client_id
         self.client_secret = client_secret
-        self.owner_id = owner_id  # The account that holds the app's data; others are refused.
+        self.owner_id = owner_id  # The account that holds the existing data and the mailbox.
         self.app_url = app_url
         self.callback_url = callback_url
         self.keys = jwt.PyJWKClient(f"https://{domain}/.well-known/jwks.json")

@@ -1,21 +1,29 @@
 """Login through a fake Auth0: tokens are real and signed here, and nothing leaves the machine."""
 
+import io
+import os
 import time
 import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlsplit
 
+import boto3
 import httpx
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
+from moto import mock_aws
 
 from backend.api.app import create_app
 from backend.api.auth0 import Auth0
+from backend.api.demo import create_tables
 from backend.api.deps import Context, Settings
 
 KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 OTHER_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 OWNER = "auth0|owner"
+CV = (Path(__file__).resolve().parents[2] / "data/cv-examples/jake_cv.tex").read_bytes()
 
 
 class FakeAuth0(Auth0):
@@ -105,8 +113,19 @@ class AuthTests(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(self.options(session).status_code, 401)
 
-    def test_another_account_is_refused(self):
-        self.assertEqual(self.options(token(sub="auth0|someone-else")).status_code, 403)
+    def test_a_created_account_is_its_own_user(self):
+        response = self.options(token(sub="auth0|friend"))
+        self.assertEqual(response.json()["user_id"], "auth0|friend")
+
+    def test_accounts_nobody_created_are_refused(self):
+        for account in ("google-oauth2|123", "github|123", "auth0", "ali"):
+            with self.subTest(account):
+                self.assertEqual(self.options(token(sub=account)).status_code, 403)
+
+    def test_without_an_owner_nobody_gets_in(self):
+        self.auth.owner_id = None
+        self.assertEqual(self.options(token()).status_code, 403)
+        self.assertEqual(self.options(token(sub="auth0|friend")).status_code, 403)
 
     def test_login_goes_to_auth0_and_remembers_its_state(self):
         response, state, nonce = self.start_login()
@@ -162,13 +181,20 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertNotIn("session", self.client.cookies)
 
-    def test_another_account_gets_no_session(self):
+    def test_a_google_login_gets_no_session(self):
         _, state, nonce = self.start_login()
-        self.auth.answer = token(nonce=nonce, sub="auth0|someone-else")
+        self.auth.answer = token(nonce=nonce, sub="google-oauth2|123")
         response = self.client.get("/api/auth/callback", params={"code": "c", "state": state})
         self.assertEqual(response.status_code, 403)
         self.assertNotIn("session", self.client.cookies)
-        self.assertNotIn("auth0|someone-else", response.text)
+        self.assertNotIn("google-oauth2|123", response.text)
+
+    def test_a_created_account_gets_a_session(self):
+        _, state, nonce = self.start_login()
+        self.auth.answer = token(nonce=nonce, sub="auth0|friend")
+        response = self.client.get("/api/auth/callback", params={"code": "c", "state": state})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("session", self.client.cookies)
 
     def test_the_first_login_says_which_id_to_set_as_owner(self):
         self.auth.owner_id = None
@@ -220,6 +246,125 @@ class AuthTests(unittest.TestCase):
             }
         )
         self.assertEqual((auth.owner_id, auth.app_url), ("o", "https://app.example"))
+
+
+@mock_aws
+class TwoUsersTests(unittest.TestCase):
+    """The owner and a created account, through the real routes on Moto."""
+
+    def setUp(self):
+        environment = patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("AWS_PROFILE", None)
+        os.environ.pop("AWS_DEFAULT_PROFILE", None)
+        session = boto3.Session(region_name="us-east-1")
+        self.db = session.resource("dynamodb")
+        create_tables(self.db)
+        self.s3 = session.client("s3")
+        self.s3.create_bucket(Bucket="documents")
+        queue = session.client("sqs").create_queue(QueueName="documents")["QueueUrl"]
+        self.open_mailbox = Mock()
+        self.settings = Settings(
+            user_id="ali",
+            jobs_table="jobs",
+            classifications_table="classifications",
+            profiles_table="profiles",
+            generations_table="generations",
+            documents_bucket="documents",
+            document_queue_url=queue,
+            mail_table="mail",
+            open_mailbox=self.open_mailbox,
+            compile_document=Mock(),
+            auth=FakeAuth0("example.auth0.com", "client", "secret", OWNER),
+        )
+        self.context = Context(self.settings, region="us-east-1")
+        self.app = create_app(self.context)
+        self.db.Table("jobs").put_item(
+            Item={"job_id": "job-1", "title": "Engineer", "description": "Build", "company": "Co"}
+        )
+        self.owner = self.client_of(OWNER)
+        self.friend = self.client_of("auth0|friend")
+
+    def client_of(self, account):
+        return TestClient(
+            self.app, base_url="http://localhost", cookies={"session": token(sub=account)}
+        )
+
+    def tailor(self, client, user_id):
+        client.put("/api/profile", json={"user_id": user_id, "full_name": "Someone"})
+        files = {"file": ("cv.tex", io.BytesIO(CV))}
+        cv_id = client.post("/api/cvs", files=files).json()["cv_id"]
+        body = {"job_id": "job-1", "cv_id": cv_id}
+        return cv_id, client.post("/api/generations", json=body).json()["generation_id"]
+
+    def test_a_new_account_can_use_the_app_with_its_own_data(self):
+        self.assertEqual(self.friend.get("/api/profile").status_code, 404)
+        cv_id, generation_id = self.tailor(self.friend, "auth0|friend")
+        self.assertEqual(self.friend.get(f"/api/generations/{generation_id}").status_code, 200)
+        self.assertEqual([cv["cv_id"] for cv in self.friend.get("/api/cvs").json()], [cv_id])
+        keys = self.s3.list_objects_v2(Bucket="documents")["Contents"]
+        self.assertTrue(all(item["Key"].startswith("users/auth0%7Cfriend/") for item in keys))
+
+    def test_the_owner_keeps_the_data_stored_as_the_configured_user(self):
+        self.tailor(self.owner, "ali")
+        self.assertEqual(self.owner.get("/api/profile").json()["user_id"], "ali")
+        keys = self.s3.list_objects_v2(Bucket="documents")["Contents"]
+        self.assertTrue(all(item["Key"].startswith("users/ali/") for item in keys))
+
+    def test_one_user_cannot_reach_anothers_data(self):
+        cv_id, generation_id = self.tailor(self.owner, "ali")
+        prompt = {"name": "Mine", "text": "Private"}
+        prompt_id = self.owner.post("/api/system-prompts", json=prompt).json()["prompt_id"]
+        generation = f"/api/generations/{generation_id}"
+        self.friend.put("/api/profile", json={"user_id": "auth0|friend", "full_name": "F"})
+
+        self.assertEqual(self.friend.get("/api/cvs").json(), [])
+        self.assertEqual(self.friend.get("/api/generations").json(), [])
+        self.assertEqual(self.friend.get("/api/system-prompts").json(), [])
+        self.assertEqual(self.friend.get("/api/profile").json()["full_name"], "F")
+        for method, path in (
+            ("get", generation),
+            ("get", f"{generation}/files/cv_tex"),
+            ("get", f"{generation}/versions/cv/1/files/cv_tex"),
+            ("get", f"{generation}/source-line?page=1&x=1&y=1"),
+            ("post", f"{generation}/retry"),
+            ("post", f"{generation}/regenerate"),
+            ("delete", f"/api/cvs/{cv_id}"),
+            ("delete", f"/api/system-prompts/{prompt_id}"),
+        ):
+            with self.subTest(path):
+                self.assertEqual(getattr(self.friend, method)(path).status_code, 404)
+        edit = {"document": "cv", "latex": "x", "revision": 0}
+        self.assertEqual(self.friend.post(f"{generation}/edit", json=edit).status_code, 404)
+        body = {"job_id": "job-1", "cv_id": cv_id}
+        self.assertEqual(self.friend.post("/api/generations", json=body).status_code, 404)
+        body = {"job_id": "job-1", "cv_id": cv_id, "system_prompt_id": prompt_id}
+        self.assertEqual(self.friend.post("/api/generations", json=body).status_code, 404)
+        stolen = {"user_id": "ali", "full_name": "Taken"}
+        self.assertEqual(self.friend.put("/api/profile", json=stolen).status_code, 403)
+
+        self.assertEqual(len(self.owner.get("/api/cvs").json()), 1)
+        self.assertEqual(len(self.owner.get("/api/system-prompts").json()), 1)
+        self.assertEqual(self.owner.get("/api/profile").json()["full_name"], "Someone")
+
+    def test_only_the_owner_can_reach_the_mailbox(self):
+        with patch("backend.api.mail.run_sync") as run_sync:
+            self.assertEqual(self.friend.post("/api/mail/sync").status_code, 403)
+            run_sync.assert_not_called()
+            self.assertEqual(self.owner.post("/api/mail/sync").status_code, 202)
+        self.assertEqual(self.friend.get("/api/mail/status").json()["problem"], "owner_only")
+        self.assertIsNone(self.owner.get("/api/mail/status").json()["problem"])
+
+    def test_one_user_cannot_see_anothers_applications(self):
+        store = self.context.mail
+        application = store.new_application("ali", "Secret Co", "Engineer")
+        store.save_interest("ali", {"job_id": "job-1", "title": "Engineer"}, "2026-01-01T00:00:00Z")
+        self.assertEqual(self.friend.get("/api/applications").json(), [])
+        self.assertEqual(self.friend.get("/api/applications/interests").json(), [])
+        self.assertEqual(self.friend.get("/api/mail/alerts").json(), [])
+        url = f"/api/applications/{application['application_id']}"
+        self.assertEqual(self.friend.patch(url, json={"status": "offer"}).status_code, 404)
 
 
 class Blank(dict):

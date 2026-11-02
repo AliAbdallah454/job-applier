@@ -29,7 +29,7 @@ LinkedinId = Annotated[str, Path(pattern=r"^[0-9]{6,20}$")]
 
 
 class MailStatus(BaseModel):
-    problem: Literal["credentials", "table"] | None
+    problem: Literal["credentials", "table", "owner_only"] | None
     syncing: bool
     tracking_since: str | None = None  # Mail from before this is never read.
     last_synced_at: str | None = None
@@ -101,6 +101,11 @@ def mail_store(context):
     return context.mail
 
 
+def owns_mailbox(context, user):
+    """The one mailbox in .env is the configured user's; no other account may read it."""
+    return user == context.settings.user_id
+
+
 def run_sync(context, user):
     """Runs one sync; a second request while one is running does nothing."""
     lock = context.mail_sync_lock
@@ -139,6 +144,8 @@ def start_auto_sync(context, user):
 
 @router.get("/mail/status")
 def mail_status(context: AppContext, user: CurrentUser) -> MailStatus:
+    if not owns_mailbox(context, user):
+        return MailStatus(problem="owner_only", syncing=False)
     syncing = context.mail_sync_lock.locked()
     if context.mail is None:
         return MailStatus(problem="table", syncing=syncing)
@@ -154,6 +161,8 @@ def mail_status(context: AppContext, user: CurrentUser) -> MailStatus:
 
 @router.post("/mail/sync", status_code=202)
 def start_sync(context: AppContext, user: CurrentUser) -> MailStatus:
+    if not owns_mailbox(context, user):
+        raise HTTPException(403, "Mail tracking is not available for this account")
     mail_store(context)
     if context.settings.open_mailbox is None:
         raise HTTPException(409, "Set MAIL_ADDRESS and MAIL_APP_PASSWORD in .env first")

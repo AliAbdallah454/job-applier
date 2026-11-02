@@ -20,6 +20,7 @@ from backend.mail.linkedin import fetch_job
 from backend.mail.storage import MailStore
 
 SESSION_COOKIE = "session"
+CREATED_ACCOUNT = "auth0|"  # Password accounts, which only exist if created in Auth0.
 
 
 @dataclass(frozen=True)
@@ -134,12 +135,23 @@ def get_context(request: Request) -> Context:
 AppContext = Annotated[Context, Depends(get_context)]
 
 
-def current_user(request: Request, context: AppContext) -> str:
-    """The user of this request, from the session cookie when login is set up.
+def user_of_account(settings, account):
+    """The user an Auth0 account acts as, or a refusal.
 
-    The one account allowed holds the data of the configured user, as the mailbox and the existing
-    data are that user's. Each account gets its own data once mail is per user.
+    The owner is the configured user, who holds the existing data and the mailbox. An account
+    created in Auth0 is its own user. Sign-ups only cover password accounts, so any other kind,
+    such as Google, could be anyone and is refused.
     """
+    owner = settings.auth.owner_id
+    if account == owner:
+        return settings.user_id
+    if owner and account.startswith(CREATED_ACCOUNT):
+        return account
+    raise HTTPException(403, "This account is not allowed")
+
+
+def current_user(request: Request, context: AppContext) -> str:
+    """The user of this request, from the session cookie when login is set up."""
     settings = context.settings
     if settings.auth is None:
         return settings.user_id
@@ -152,9 +164,7 @@ def current_user(request: Request, context: AppContext) -> str:
         raise HTTPException(503, "Auth0 could not be reached. Try again.") from None
     except jwt.PyJWTError:
         raise HTTPException(401, "Log in again") from None
-    if claims["sub"] != settings.auth.owner_id:
-        raise HTTPException(403, "This account is not allowed")
-    return settings.user_id
+    return user_of_account(settings, claims["sub"])
 
 
 CurrentUser = Annotated[str, Depends(current_user)]

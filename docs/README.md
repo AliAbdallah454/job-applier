@@ -9,6 +9,7 @@ For a new contributor or LLM session, start with [AGENTS.md](../AGENTS.md) and [
 | [Infrastructure guide](../infra/README.md) | Stack outputs and current deployment/operations | Repositories, push workflow and image tags |
 | [CI/CD](ci-cd.md) | GitHub Actions deploy, image push and one-time AWS setup | Written, not yet run |
 | [Skipped work](skipped-work.md) | Deliberately unimplemented items, including scheduled collection | Living list |
+| [Future features](future-features.md) | Ideas not built yet, rated by value, feasibility and difficulty | Proposed, not implemented |
 | [Documents guide](../backend/documents/README.md) | Tailoring your LaTeX CV and letter generation, retries and review | Current implementation |
 | [Mail guide](../backend/mail/README.md) | Mailbox setup, application tracking and LinkedIn job emails | Current implementation |
 | [Fetcher guide](fetchers.md) | Employer-board adapter behavior and limitations | Feature reference |

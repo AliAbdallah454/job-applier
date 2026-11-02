@@ -44,9 +44,12 @@ shows the failure page.
 
 With `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET` and `AUTH0_OWNER_ID` in `.env`, the API
 requires login on every route but `/api/auth/*`: a 401 sends the page to Auth0, and the session is
-an `HttpOnly` cookie. Only the owner's account is let in. The first login with no owner set is
-refused, and the message gives the account's ID to put in `.env`. Without these values there is no
-login, and `--demo` never has one. Auth0's application needs the callback
+an `HttpOnly` cookie. The owner's account is the configured user, with the existing data and the
+mailbox. A user created in **Auth0 → User Management → Users** can log in straight away, with their
+own empty data and no mail tracking. Any other kind of account, such as Google, is refused, because
+disabling sign-ups does not cover it. Until `AUTH0_OWNER_ID` is set every login is refused, and the
+message gives the account's ID to put in `.env`. Without these values there is no login, and
+`--demo` never has one. Auth0's application needs the callback
 `http://localhost:8000/api/auth/callback` and the logout URL `http://localhost:5173`.
 
 ## Tailoring

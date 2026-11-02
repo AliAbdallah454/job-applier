@@ -986,7 +986,7 @@ export interface components {
             /** Last Synced At */
             last_synced_at?: string | null;
             /** Problem */
-            problem: ("credentials" | "table") | null;
+            problem: ("credentials" | "table" | "owner_only") | null;
             /** Syncing */
             syncing: boolean;
             /** Tracking Since */
