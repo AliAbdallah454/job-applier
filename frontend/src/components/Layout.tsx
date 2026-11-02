@@ -60,16 +60,30 @@ export function Layout() {
       <header className="z-20 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-rule bg-paper px-4 py-2.5 sm:px-6 md:sticky md:top-0 md:grid md:h-[53px] md:grid-cols-[1fr_auto_1fr] md:py-0">
         <Link
           to="/"
-          aria-label="job applier"
+          aria-label="JobTailor"
           onClick={logoClicked}
           className="logo flex w-fit items-center gap-2 text-lg font-bold tracking-tight whitespace-pre"
         >
-          <svg aria-hidden viewBox="0 0 16 20" className="logo-mark h-5 w-4 fill-ink">
-            <path d="M0 0h10.5L16 5.5V20H0z" />
-            <path d="M11.5 0 16 4.5h-4.5z" className="fill-paper" />
+          <svg aria-hidden viewBox="0 0 24 24" className="size-[22px] overflow-visible">
+            <rect
+              x="5.6"
+              y="3.2"
+              width="11.8"
+              height="17.4"
+              rx="1.9"
+              className="logo-back fill-none stroke-ink stroke-[1.5]"
+            />
+            <g className="logo-front">
+              <path
+                d="M9.6 4.4h5.9v3.4a1.6 1.6 0 0 0 1.6 1.6h3.4v9.7a1.9 1.9 0 0 1-1.9 1.9H9.6a1.9 1.9 0 0 1-1.9-1.9V6.3a1.9 1.9 0 0 1 1.9-1.9z"
+                className="fill-ink stroke-paper stroke-[1.3]"
+                paintOrder="stroke"
+              />
+              <path d="M16.7 4.8l3.7 3.4h-3.1a.6.6 0 0 1-.6-.6z" className="fill-ink" />
+            </g>
           </svg>
           <span>
-            {[..."job applier"].map((letter, index) => (
+            {[..."JobTailor"].map((letter, index) => (
               <span key={index} aria-hidden style={{ animationDelay: `${index * 35}ms` }}>
                 {letter}
               </span>
