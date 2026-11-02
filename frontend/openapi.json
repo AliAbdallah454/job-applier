@@ -833,6 +833,16 @@
             "title": "Status",
             "type": "string"
           },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "title": "Updated At",
             "type": "string"
@@ -1028,6 +1038,16 @@
             "title": "Status",
             "type": "string"
           },
+          "system_prompt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SystemPrompt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "title": "Updated At",
             "type": "string"
@@ -1084,6 +1104,17 @@
               }
             ],
             "title": "Model Id"
+          },
+          "system_prompt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System Prompt Id"
           }
         },
         "required": [
@@ -1819,6 +1850,39 @@
         "title": "Regeneration",
         "type": "object"
       },
+      "SavedSystemPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "text",
+          "prompt_id"
+        ],
+        "title": "SavedSystemPrompt",
+        "type": "object"
+      },
       "Skill": {
         "additionalProperties": false,
         "properties": {
@@ -1869,6 +1933,58 @@
           "line"
         ],
         "title": "SourceLine",
+        "type": "object"
+      },
+      "SystemPrompt": {
+        "additionalProperties": false,
+        "description": "Standing instructions the user saved under a name and chose for a generation.",
+        "properties": {
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "text"
+        ],
+        "title": "SystemPrompt",
+        "type": "object"
+      },
+      "SystemPromptFields": {
+        "additionalProperties": false,
+        "properties": {
+          "is_default": {
+            "default": false,
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "text"
+        ],
+        "title": "SystemPromptFields",
         "type": "object"
       },
       "ValidationError": {
@@ -3127,6 +3243,158 @@
         "summary": "Put Profile",
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/api/system-prompts": {
+      "get": {
+        "operationId": "list_system_prompts_api_system_prompts_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedSystemPrompt"
+                  },
+                  "title": "Response List System Prompts Api System Prompts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List System Prompts",
+        "tags": [
+          "system-prompts"
+        ]
+      },
+      "post": {
+        "operationId": "create_system_prompt_api_system_prompts_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemPromptFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSystemPrompt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create System Prompt",
+        "tags": [
+          "system-prompts"
+        ]
+      }
+    },
+    "/api/system-prompts/{prompt_id}": {
+      "delete": {
+        "description": "Earlier generations keep working: each one froze its own copy of the text.",
+        "operationId": "delete_system_prompt_api_system_prompts__prompt_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prompt_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{32}$",
+              "title": "Prompt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete System Prompt",
+        "tags": [
+          "system-prompts"
+        ]
+      },
+      "put": {
+        "operationId": "update_system_prompt_api_system_prompts__prompt_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "prompt_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{32}$",
+              "title": "Prompt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemPromptFields"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSystemPrompt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update System Prompt",
+        "tags": [
+          "system-prompts"
         ]
       }
     }

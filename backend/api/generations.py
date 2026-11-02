@@ -14,6 +14,7 @@ from backend.api.catalogue import posting_of
 from backend.api.cvs import read_cv
 from backend.api.deps import AppContext, CurrentUser
 from backend.api.profile import load_profile
+from backend.api.system_prompts import load_system_prompt
 from backend.documents.errors import DocumentCompilationError
 from backend.documents.latex import validate_cv
 from backend.documents.models import (
@@ -23,6 +24,7 @@ from backend.documents.models import (
     Job,
     Language,
     PreviousVersion,
+    SystemPrompt,
 )
 from backend.documents.render import compile_source
 from backend.documents.storage import edited_documents
@@ -47,6 +49,7 @@ class GenerationRequest(BaseModel):
     cv_id: str
     model_id: str | None = None  # The first configured model when left out.
     language: Language = "en"
+    system_prompt_id: str | None = None  # None when left out; the web app preselects the default.
 
 
 class Regeneration(BaseModel):
@@ -95,6 +98,7 @@ class Generation(BaseModel):
     model_id: str
     language: Language = "en"  # Records from before languages have no value.
     instructions: str | None = None  # What the user asked for when regenerating.
+    system_prompt: SystemPrompt | None = None  # As it was when this entry was started.
     status: Status
     created_at: str
     updated_at: str
@@ -309,6 +313,11 @@ def create_generation(
         job=job_for(context, user, body.job_id),
         model_id=body.model_id or models[0],
         language=body.language,
+        system_prompt=(
+            load_system_prompt(context, user, body.system_prompt_id)
+            if body.system_prompt_id
+            else None
+        ),
         cv_latex=read_cv(context, user, body.cv_id),
     )
     return summary(context, submit(context, request))

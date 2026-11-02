@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from backend.profiles.models import CandidateProfile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
-PROMPT_VERSION = 13
+PROMPT_VERSION = 14
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=10000)]
 Language = Literal["en", "fr"]
 Instructions = Annotated[
@@ -60,6 +60,13 @@ class PreviousVersion(StrictModel):
     changes: list[dict[str, str]] = []  # The model's account of this version.
 
 
+class SystemPrompt(StrictModel):
+    """Standing instructions the user saved under a name and chose for a generation."""
+
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    text: Text
+
+
 class GenerationInput(StrictModel):
     """Everything one generation depends on; frozen in S3 when the request is submitted."""
 
@@ -67,8 +74,9 @@ class GenerationInput(StrictModel):
     job: Job
     model_id: Text
     cv_latex: Annotated[str, StringConstraints(min_length=1, max_length=200000)]
-    prompt_version: Literal[5, 6, 7, 8, 9, 10, 11, 12, 13] = PROMPT_VERSION
+    prompt_version: Literal[5, 6, 7, 8, 9, 10, 11, 12, 13, 14] = PROMPT_VERSION
     language: Language = "en"  # Of the CV and letters; the change list is always in English.
+    system_prompt: SystemPrompt | None = None
     instructions: Instructions | None = None  # The user's comments for a regeneration.
     previous_version: PreviousVersion | None = None  # What those comments are about.
 

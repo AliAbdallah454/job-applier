@@ -4,6 +4,7 @@ import io
 import json
 import os
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -12,6 +13,7 @@ from botocore.exceptions import ClientError
 from fastapi.testclient import TestClient
 from moto import mock_aws
 
+from backend.api import system_prompts
 from backend.api.app import create_app
 from backend.api.demo import create_tables, example_pdf, fake_generate
 from backend.api.deps import Context, Settings
@@ -109,6 +111,128 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["seniorities"], ["entry", "junior", "mid", "senior"])
         self.assertFalse(body["demo"])
         self.assertEqual([language["id"] for language in body["languages"]], ["en", "fr"])
+
+    def add_prompt(self, name="Backend", text="Keep a plain tone", is_default=False):
+        body = {"name": name, "text": text, "is_default": is_default}
+        return self.client.post("/api/system-prompts", json=body)
+
+    def test_system_prompts_are_listed_by_name_and_can_be_changed_and_deleted(self):
+        self.assertEqual(self.client.get("/api/system-prompts").json(), [])
+        data = self.add_prompt("data roles").json()
+        self.add_prompt("Backend")
+        names = [item["name"] for item in self.client.get("/api/system-prompts").json()]
+        self.assertEqual(names, ["Backend", "data roles"])
+
+        url = f"/api/system-prompts/{data['prompt_id']}"
+        changed = {"name": "Data roles", "text": "Lead with SQL", "is_default": False}
+        self.assertEqual(self.client.put(url, json=changed).json()["text"], "Lead with SQL")
+        self.assertEqual(self.client.delete(url).status_code, 204)
+        self.assertEqual(self.client.delete(url).status_code, 404)
+        self.assertEqual(self.client.put(url, json=changed).status_code, 404)
+        names = [item["name"] for item in self.client.get("/api/system-prompts").json()]
+        self.assertEqual(names, ["Backend"])
+
+    def test_only_one_system_prompt_is_the_default_and_it_can_be_cleared(self):
+        first = self.add_prompt("First", is_default=True).json()
+        self.add_prompt("Second", is_default=True)
+
+        def default_names():
+            items = self.client.get("/api/system-prompts").json()
+            return [item["name"] for item in items if item["is_default"]]
+
+        self.assertEqual(default_names(), ["Second"])
+        url = f"/api/system-prompts/{first['prompt_id']}"
+        fields = {"name": "First", "text": first["text"], "is_default": True}
+        self.client.put(url, json=fields)
+        self.assertEqual(default_names(), ["First"])
+        self.client.put(url, json={**fields, "is_default": False})
+        self.assertEqual(default_names(), [])
+
+    def test_deleting_the_default_system_prompt_leaves_none(self):
+        prompt = self.add_prompt(is_default=True).json()
+        self.client.delete(f"/api/system-prompts/{prompt['prompt_id']}")
+        self.assertEqual(self.client.get("/api/system-prompts").json(), [])
+
+    def test_system_prompt_names_are_unique_and_the_fields_are_checked(self):
+        self.add_prompt("Backend")
+        self.assertEqual(self.add_prompt(" backend ").status_code, 409)
+        self.assertEqual(self.add_prompt("").status_code, 422)
+        self.assertEqual(self.add_prompt("x" * 81).status_code, 422)
+        self.assertEqual(self.add_prompt("Other", "   ").status_code, 422)
+        self.assertEqual(self.add_prompt("Other", "x" * 10001).status_code, 422)
+
+    def test_a_prompt_changed_since_it_was_read_is_not_overwritten(self):
+        self.add_prompt("First")
+        stale = system_prompts.read(self.context, "ali")
+        self.add_prompt("Second")
+        with patch.object(system_prompts, "read", return_value=stale):
+            self.assertEqual(self.add_prompt("Third").status_code, 409)
+        names = [item["name"] for item in self.client.get("/api/system-prompts").json()]
+        self.assertEqual(names, ["First", "Second"])
+
+    def test_two_first_prompts_do_not_overwrite_each_other(self):
+        with patch.object(system_prompts, "read", return_value=([], None)):
+            self.assertEqual(self.add_prompt("First").status_code, 201)
+            self.assertEqual(self.add_prompt("Second").status_code, 409)
+
+    def test_system_prompts_belong_to_one_account(self):
+        self.add_prompt()
+        other = Context(replace(self.settings, user_id="someone-else"), region="us-east-1")
+        client = TestClient(create_app(other), base_url="http://localhost")
+        self.assertEqual(client.get("/api/system-prompts").json(), [])
+
+    def test_a_chosen_system_prompt_is_frozen_and_shown_on_the_generation(self):
+        prompt = self.add_prompt("Backend", "Keep a plain tone").json()
+        self.client.put("/api/profile", json=PROFILE)
+        cv_id = self.upload().json()["cv_id"]
+        body = {"job_id": "job-1", "cv_id": cv_id, "system_prompt_id": prompt["prompt_id"]}
+        created = self.client.post("/api/generations", json=body).json()
+        generation_id = created["generation_id"]
+        expected = {"name": "Backend", "text": "Keep a plain tone"}
+        self.assertEqual(created["system_prompt"], expected)
+        self.assertEqual(self.frozen(generation_id)["system_prompt"], expected)
+
+        url = f"/api/system-prompts/{prompt['prompt_id']}"
+        self.client.put(url, json={"name": "Backend", "text": "Something else"})
+        self.client.delete(url)
+        shown = self.client.get(f"/api/generations/{generation_id}").json()
+        self.assertEqual(shown["system_prompt"], expected)
+
+        self.process(generation_id)
+        self.client.post(
+            f"/api/generations/{generation_id}/regenerate", json={"instructions": "Be shorter"}
+        )
+        self.assertEqual(self.frozen(generation_id)["system_prompt"], expected)
+
+    def test_a_different_system_prompt_makes_a_different_generation(self):
+        first = self.add_prompt("First", "One thing").json()
+        second = self.add_prompt("Second", "Another thing").json()
+        self.client.put("/api/profile", json=PROFILE)
+        body = {"job_id": "job-1", "cv_id": self.upload().json()["cv_id"]}
+        ids = {
+            self.client.post("/api/generations", json={**body, "system_prompt_id": prompt}).json()[
+                "generation_id"
+            ]
+            for prompt in (first["prompt_id"], second["prompt_id"], None)
+        }
+        self.assertEqual(len(ids), 3)
+
+    def test_the_default_prompt_is_used_only_when_it_is_asked_for(self):
+        self.add_prompt(is_default=True)
+        generation = self.tailor().json()
+        self.assertIsNone(generation["system_prompt"])
+        self.assertIsNone(self.frozen(generation["generation_id"])["system_prompt"])
+
+    def test_tailoring_with_a_deleted_system_prompt_is_refused(self):
+        self.client.put("/api/profile", json=PROFILE)
+        body = {
+            "job_id": "job-1",
+            "cv_id": self.upload().json()["cv_id"],
+            "system_prompt_id": "a" * 32,
+        }
+        response = self.client.post("/api/generations", json=body)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(self.messages(), [])
 
     def test_jobs_filter_and_invalid_values_return_400(self):
         self.add_job("job-2", "senior")

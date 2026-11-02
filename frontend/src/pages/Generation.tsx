@@ -331,6 +331,16 @@ function ReviewList({
 }) {
   return (
     <div className="p-4 sm:p-6">
+      {generation.system_prompt && (
+        <details className="mb-6">
+          <summary className="cursor-pointer font-mono text-[11px] tracking-wider text-muted uppercase">
+            System prompt: {generation.system_prompt.name}
+          </summary>
+          <p className="mt-1 text-sm break-words whitespace-pre-wrap">
+            {generation.system_prompt.text}
+          </p>
+        </details>
+      )}
       {generation.instructions && (
         <div className="mb-6">
           <Eyebrow>Your comments</Eyebrow>

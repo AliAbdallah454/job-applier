@@ -28,7 +28,8 @@ uv run python -m scripts.clear_mail --stack Application --region us-east-1 --yes
 ## Clear generated documents
 
 Deletes every record in the document generations table and every version of the
-files under `users/<id>/generations/`, for all users. Uploaded CVs and profiles stay.
+files under `users/<id>/generations/`, for all users. Uploaded CVs, profiles and system prompts
+stay.
 It only reports the counts unless you pass `--yes`, and the deletion cannot be undone:
 
 ```sh

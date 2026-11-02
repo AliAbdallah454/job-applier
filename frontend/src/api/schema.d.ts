@@ -430,6 +430,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system-prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List System Prompts */
+        get: operations["list_system_prompts_api_system_prompts_get"];
+        put?: never;
+        /** Create System Prompt */
+        post: operations["create_system_prompt_api_system_prompts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system-prompts/{prompt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update System Prompt */
+        put: operations["update_system_prompt_api_system_prompts__prompt_id__put"];
+        post?: never;
+        /**
+         * Delete System Prompt
+         * @description Earlier generations keep working: each one froze its own copy of the text.
+         */
+        delete: operations["delete_system_prompt_api_system_prompts__prompt_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -711,6 +750,7 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "processing" | "ready" | "failed";
+            system_prompt?: components["schemas"]["SystemPrompt"] | null;
             /** Updated At */
             updated_at: string;
         };
@@ -773,6 +813,7 @@ export interface components {
              * @enum {string}
              */
             status: "queued" | "processing" | "ready" | "failed";
+            system_prompt?: components["schemas"]["SystemPrompt"] | null;
             /** Updated At */
             updated_at: string;
         };
@@ -790,6 +831,8 @@ export interface components {
             language: "en" | "fr";
             /** Model Id */
             model_id?: string | null;
+            /** System Prompt Id */
+            system_prompt_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -978,6 +1021,20 @@ export interface components {
             /** Instructions */
             instructions?: string | null;
         };
+        /** SavedSystemPrompt */
+        SavedSystemPrompt: {
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Text */
+            text: string;
+        };
         /** Skill */
         Skill: {
             /** Description */
@@ -991,6 +1048,28 @@ export interface components {
         SourceLine: {
             /** Line */
             line: number;
+        };
+        /**
+         * SystemPrompt
+         * @description Standing instructions the user saved under a name and chose for a generation.
+         */
+        SystemPrompt: {
+            /** Name */
+            name: string;
+            /** Text */
+            text: string;
+        };
+        /** SystemPromptFields */
+        SystemPromptFields: {
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+            /** Name */
+            name: string;
+            /** Text */
+            text: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1816,6 +1895,123 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CandidateProfile"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_system_prompts_api_system_prompts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSystemPrompt"][];
+                };
+            };
+        };
+    };
+    create_system_prompt_api_system_prompts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemPromptFields"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSystemPrompt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_system_prompt_api_system_prompts__prompt_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                prompt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SystemPromptFields"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSystemPrompt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_system_prompt_api_system_prompts__prompt_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                prompt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -59,6 +59,14 @@ that as `starts_from_edit`, and nothing writes the attribute any more. The reque
 The update is conditional on `status` and that `updated_at`: of two saves from the same read,
 the second gets a 409 instead of dropping a version. A compile failure saves nothing.
 
+The fixed instructions are in `prompts.py`. A user can also save named system prompts and choose
+one when tailoring. Its name and text are frozen in the snapshot as `system_prompt`, so later
+edits to the saved prompt do not change the generation, and `regenerate` keeps using the frozen
+text. A different prompt is a changed input, so it makes a new generation. The text reaches the
+model as `candidate_standing_instructions` in the request, not in the system block. It can change
+the defaults for tone, length and emphasis, but the ground rules, the LaTeX rules and the order of
+experience entries win over it, as they do over comments.
+
 `regenerate` makes a new version on the same record, so a job keeps one entry per generation.
 Without comments it is a fresh start from the frozen CV. With the user's comments (`instructions`),
 the current CV and letters, edits included, are frozen as `previous_version`, and the model is told

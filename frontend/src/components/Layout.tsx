@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/applications", label: "Applications" },
   { to: "/job-emails", label: "Job emails" },
   { to: "/cvs", label: "CVs" },
+  { to: "/system-prompts", label: "System prompts" },
   { to: "/profile", label: "Profile" },
 ];
 
@@ -38,6 +39,10 @@ export function Layout() {
       setMarker(active && { left: active.offsetLeft, width: active.offsetWidth });
     };
     measure();
+    // On a narrow window the tabs scroll, and the current one must not be left out of sight.
+    element
+      .querySelector('[aria-current="page"]')
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     // Tab widths change when the web font arrives, the window resizes or the count appears.
     const observer = new ResizeObserver(measure);
     observer.observe(element);

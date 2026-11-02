@@ -17,6 +17,8 @@ export type Interest = Schemas["Interest"];
 export type AlertJob = Schemas["AlertJob"];
 export type JobAlert = Schemas["JobAlert"];
 export type Language = NonNullable<Schemas["GenerationRequest"]["language"]>;
+export type SavedSystemPrompt = Schemas["SavedSystemPrompt"];
+export type SystemPromptFields = Schemas["SystemPromptFields"];
 
 export const api = createClient<paths>({
   baseUrl: window.location.origin,

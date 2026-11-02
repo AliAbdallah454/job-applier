@@ -84,6 +84,7 @@ class GenerationStore:
                 "model_id": request.model_id,
                 "language": request.language,
                 "instructions": request.instructions,
+                "system_prompt": request.system_prompt and request.system_prompt.model_dump(),
                 "prompt_version": request.prompt_version,
                 "input_hash": digest,
                 "input": snapshot,

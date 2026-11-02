@@ -18,7 +18,7 @@ from moto import mock_aws
 from pydantic import ValidationError
 
 from backend.documents.__main__ import main as cli_main
-from backend.documents.bedrock import SYSTEM, BedrockGenerator, tool_schema
+from backend.documents.bedrock import BedrockGenerator, tool_schema
 from backend.documents.errors import DocumentCompilationError, DocumentError
 from backend.documents.latex import (
     cv_body,
@@ -29,7 +29,14 @@ from backend.documents.latex import (
     validate_cv,
     with_accented_text,
 )
-from backend.documents.models import GenerationInput, Job, PreviousVersion, TailoredCv
+from backend.documents.models import (
+    GenerationInput,
+    Job,
+    PreviousVersion,
+    SystemPrompt,
+    TailoredCv,
+)
+from backend.documents.prompts import SYSTEM
 from backend.documents.render import compile_pdf, read_synctex, render_sources, source_line
 from backend.documents.service import DocumentService
 from backend.documents.storage import GenerationStore
@@ -679,6 +686,9 @@ class GenerationTests(unittest.TestCase):
         self.assertIn("changes are always in English", SYSTEM)
         self.assertIn("Never use an em dash", SYSTEM)
         self.assertIn("Everything else in this prompt still applies", SYSTEM)
+        self.assertIn("preferences on tone, length, emphasis", SYSTEM)
+        self.assertIn("win over anything the candidate\nwrites", SYSTEM)
+        self.assertIn("Be very careful with backslashes", SYSTEM)
         self.assertIn("every other part of the CV and letters stays exactly", SYSTEM)
         self.assertIn("keep only the one\n  closest to this job", SYSTEM)
         self.assertIn("never\n  move an experience entry", SYSTEM)
@@ -706,7 +716,17 @@ class GenerationTests(unittest.TestCase):
         self.assertNotIn("full_name", prompt["candidate_facts"])
         self.assertNotIn("previous_attempt", prompt)
         self.assertNotIn("candidate_comments", prompt)
+        self.assertNotIn("candidate_standing_instructions", prompt)
         self.assertEqual(prompt["output_language"], "English")
+        standing = self.request.model_copy(
+            update={"system_prompt": SystemPrompt(name="Tone", text="Keep it plain")}
+        )
+        with self.assertRaises(ValueError):
+            BedrockGenerator(client)(standing)
+        prompt = json.loads(client.converse.call_args.kwargs["messages"][0]["content"][0]["text"])
+        self.assertEqual(prompt["candidate_standing_instructions"], "Keep it plain")
+        self.assertNotIn("Tone", json.dumps(prompt))
+        self.assertNotIn("Keep it plain", client.converse.call_args.kwargs["system"][0]["text"])
         french = self.request.model_copy(update={"language": "fr"})
         with self.assertRaises(ValueError):
             BedrockGenerator(client)(french)

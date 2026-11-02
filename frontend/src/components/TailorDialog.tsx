@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError, type Job, type Language } from "../api/client";
-import { useCvs, useOptions, useStartGeneration, useUploadCv } from "../api/queries";
+import {
+  useCvs,
+  useOptions,
+  useStartGeneration,
+  useSystemPrompts,
+  useUploadCv,
+} from "../api/queries";
 import { Button, ErrorNote, Eyebrow, formatDate } from "./ui";
 
 export function TailorDialog({
@@ -20,11 +26,16 @@ export function TailorDialog({
   const options = useOptions().data;
   const models = options?.models ?? [];
   const languages = options?.languages ?? [];
+  const prompts = useSystemPrompts();
   const [picked, setPicked] = useState<string | null>(null);
   const [pickedModel, setPickedModel] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language>("en");
+  // The empty string is the choice of none, so null can mean nothing was picked yet.
+  const [pickedPrompt, setPickedPrompt] = useState<string | null>(null);
   const selected = picked ?? cvs.data?.[0]?.cv_id ?? null;
   const model = pickedModel ?? models[0]?.id;
+  const prompt =
+    pickedPrompt ?? prompts.data?.find((item) => item.is_default)?.prompt_id ?? "";
 
   useEffect(() => {
     const element = dialog.current;
@@ -120,8 +131,26 @@ export function TailorDialog({
         </label>
       )}
 
+      {!!prompts.data?.length && (
+        <label className="mt-5 block text-sm font-medium">
+          Which system prompt?
+          <select
+            className="mt-2 block w-full border border-rule bg-paper p-2 font-normal"
+            value={prompt}
+            onChange={(event) => setPickedPrompt(event.target.value)}
+          >
+            <option value="">None</option>
+            {prompts.data.map((option) => (
+              <option key={option.prompt_id} value={option.prompt_id}>
+                {option.is_default ? `${option.name} (default)` : option.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <div className="mt-4 flex flex-col gap-2">
-        <ErrorNote error={cvs.error ?? upload.error ?? start.error} />
+        <ErrorNote error={cvs.error ?? upload.error ?? prompts.error ?? start.error} />
         {needsProfile && (
           <Link to="/profile" className="text-sm underline underline-offset-4">
             Go to your profile
@@ -133,11 +162,18 @@ export function TailorDialog({
         <Button onClick={() => dialog.current?.close()}>Cancel</Button>
         <Button
           primary
-          disabled={!selected || start.isPending}
+          // Until the prompts have loaded, starting could silently leave out the default one.
+          disabled={!selected || !prompts.data || start.isPending}
           onClick={() =>
             selected &&
             start.mutate(
-              { job_id: job.job_id, cv_id: selected, model_id: model, language },
+              {
+                job_id: job.job_id,
+                cv_id: selected,
+                model_id: model,
+                language,
+                system_prompt_id: prompt || undefined,
+              },
               { onSuccess: (generation) => navigate(`/generations/${generation.generation_id}`) },
             )
           }

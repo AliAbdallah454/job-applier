@@ -13,6 +13,7 @@ import { History } from "./pages/History";
 import { JobEmails } from "./pages/JobEmails";
 import { Jobs } from "./pages/Jobs";
 import { Profile } from "./pages/Profile";
+import { SystemPrompts } from "./pages/SystemPrompts";
 
 const queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -28,6 +29,7 @@ createRoot(document.getElementById("root")!).render(
             <Route path="applications" element={<Applications />} />
             <Route path="job-emails" element={<JobEmails />} />
             <Route path="cvs" element={<Cvs />} />
+            <Route path="system-prompts" element={<SystemPrompts />} />
             <Route path="profile" element={<Profile />} />
           </Route>
         </Routes>

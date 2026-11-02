@@ -26,6 +26,9 @@ down.
 - **A motivation letter**, on why you want this role
 - **A cover letter**, on the evidence that you fit it
 
+**Follows your own instructions.** Save named system prompts, such as your tone or what to
+emphasise, and pick one each time you tailor. The one you set as default is selected for you.
+
 **Stays truthful.** The model may only use facts from your CV and profile, and it must not
 invent experience, skills or numbers. Every rewrite is checked before it is accepted, and
 the app shows you exactly what changed in the CV, along with the model's reasons in English.

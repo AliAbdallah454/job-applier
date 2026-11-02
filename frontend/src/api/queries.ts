@@ -14,6 +14,7 @@ import {
   ApiError,
   previewUrl,
   type Status,
+  type SystemPromptFields,
   toApiError,
   unwrap,
 } from "./client";
@@ -78,6 +79,40 @@ export function useDeleteCv() {
   });
 }
 
+export function useSystemPrompts() {
+  return useQuery({
+    queryKey: ["system-prompts"],
+    queryFn: () => unwrap(api.GET("/api/system-prompts")),
+  });
+}
+
+export function useSaveSystemPrompt() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: SystemPromptFields & { id?: string }) =>
+      id
+        ? unwrap(
+            api.PUT("/api/system-prompts/{prompt_id}", {
+              params: { path: { prompt_id: id } },
+              body,
+            }),
+          )
+        : unwrap(api.POST("/api/system-prompts", { body })),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["system-prompts"] }),
+  });
+}
+
+export function useDeleteSystemPrompt() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      unwrap(
+        api.DELETE("/api/system-prompts/{prompt_id}", { params: { path: { prompt_id: id } } }),
+      ),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["system-prompts"] }),
+  });
+}
+
 export function useProfile() {
   return useQuery({
     queryKey: ["profile"],
@@ -131,8 +166,13 @@ export function useGeneration(id: string) {
 export function useStartGeneration() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { job_id: string; cv_id: string; model_id?: string; language: Language }) =>
-      unwrap(api.POST("/api/generations", { body })),
+    mutationFn: (body: {
+      job_id: string;
+      cv_id: string;
+      model_id?: string;
+      language: Language;
+      system_prompt_id?: string;
+    }) => unwrap(api.POST("/api/generations", { body })),
     onSuccess: () => client.invalidateQueries({ queryKey: ["generations"] }),
   });
 }

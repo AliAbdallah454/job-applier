@@ -11,6 +11,7 @@ import { formatDate } from "../components/ui";
 import { GenerationPage } from "../pages/Generation";
 import { History } from "../pages/History";
 import { Jobs } from "../pages/Jobs";
+import { SystemPrompts } from "../pages/SystemPrompts";
 
 // PDF.js cannot draw in jsdom; PdfPreview has its own tests, and this keeps what pages depend on.
 vi.mock("../components/PdfPreview", () => ({
@@ -115,6 +116,7 @@ describe("TailorDialog", () => {
   it("starts a generation with the chosen CV and opens its status page", async () => {
     const calls = server({
       "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json([]),
       "POST /api/generations": () => json({ generation_id: "g1", status: "queued" }, 201),
     });
     mount(<TailorDialog job={JOB} onClose={() => {}} />);
@@ -132,6 +134,7 @@ describe("TailorDialog", () => {
   it("sends the chosen model, defaulting to the first", async () => {
     const calls = server({
       "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json([]),
       "GET /api/options": () =>
         json({
           models: [
@@ -155,6 +158,7 @@ describe("TailorDialog", () => {
   it("sends the chosen language and says the changes stay in English", async () => {
     const calls = server({
       "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json([]),
       "GET /api/options": () =>
         json({
           models: [],
@@ -180,6 +184,7 @@ describe("TailorDialog", () => {
   it("links to the profile when the API says one is missing", async () => {
     server({
       "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json([]),
       "POST /api/generations": () => json({ detail: "Fill in your profile" }, 409),
     });
     mount(<TailorDialog job={JOB} onClose={() => {}} />);
@@ -189,11 +194,169 @@ describe("TailorDialog", () => {
     expect(screen.getByText("Go to your profile")).toBeInTheDocument();
   });
 
+  const PROMPTS = [
+    { prompt_id: "p1", name: "Backend", text: "Plain tone", is_default: false },
+    { prompt_id: "p2", name: "Data", text: "Lead with SQL", is_default: true },
+  ];
+
+  async function startWith(prompts: typeof PROMPTS, choice?: string) {
+    const calls = server({
+      "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json(prompts),
+      "POST /api/generations": () => json({ generation_id: "g1", status: "queued" }, 201),
+    });
+    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    await screen.findByText("cv.tex");
+    if (prompts.length) {
+      const picker = await screen.findByRole("combobox", {
+        name: "Which system prompt?",
+        hidden: true,
+      });
+      if (choice !== undefined) await userEvent.selectOptions(picker, choice);
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
+    await screen.findByText("Status page");
+    return JSON.parse(calls.find((call) => call.method === "POST")!.body);
+  }
+
+  it("selects the default system prompt", async () => {
+    expect((await startWith(PROMPTS)).system_prompt_id).toBe("p2");
+  });
+
+  it("marks the default system prompt in the list", async () => {
+    server({
+      "GET /api/cvs": () => json([CV]),
+      "GET /api/system-prompts": () => json(PROMPTS),
+    });
+    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    const picker = await screen.findByRole("combobox", {
+      name: "Which system prompt?",
+      hidden: true,
+    });
+    expect(picker).toHaveValue("p2");
+    expect(within(picker).getByText("Data (default)")).toBeInTheDocument();
+  });
+
+  it("sends another system prompt when one is picked", async () => {
+    expect((await startWith(PROMPTS, "p1")).system_prompt_id).toBe("p1");
+  });
+
+  it("can tailor without the default system prompt", async () => {
+    expect(await startWith(PROMPTS, "")).not.toHaveProperty("system_prompt_id");
+  });
+
+  it("uses no system prompt when none is the default", async () => {
+    const none = PROMPTS.map((prompt) => ({ ...prompt, is_default: false }));
+    expect(await startWith(none)).not.toHaveProperty("system_prompt_id");
+  });
+
+  it("does not ask about system prompts when there are none", async () => {
+    await startWith([]);
+    expect(screen.queryByRole("combobox", { name: "Which system prompt?", hidden: true })).toBeNull();
+  });
+
+  it("cannot start until the system prompts have loaded", async () => {
+    server({ "GET /api/cvs": () => json([CV]) });
+    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    await screen.findByText("cv.tex");
+    await screen.findByRole("alert", { hidden: true });
+    expect(screen.getByRole("button", { name: "Start tailoring", hidden: true })).toBeDisabled();
+  });
+
   it("cannot start without a CV", async () => {
     server({ "GET /api/cvs": () => json([]) });
     mount(<TailorDialog job={JOB} onClose={() => {}} />);
     await screen.findByText(/You have no CVs yet/);
     expect(screen.getByRole("button", { name: "Start tailoring", hidden: true })).toBeDisabled();
+  });
+});
+
+describe("SystemPrompts", () => {
+  const PROMPT = { prompt_id: "p1", name: "Backend", text: "Plain tone", is_default: false };
+
+  it("adds a system prompt and clears the form", async () => {
+    const calls = server({
+      "GET /api/system-prompts": () => json([]),
+      "POST /api/system-prompts": () => json(PROMPT, 201),
+    });
+    mount(<SystemPrompts />);
+    expect(await screen.findByText("No system prompts yet.")).toBeInTheDocument();
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await userEvent.type(name, "Backend");
+    await userEvent.type(screen.getByRole("textbox", { name: /keep in mind/ }), "Plain tone");
+    await userEvent.click(screen.getByRole("checkbox"));
+    await userEvent.click(screen.getByRole("button", { name: "Add system prompt" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue(""));
+    const post = calls.find((call) => call.method === "POST");
+    expect(JSON.parse(post!.body)).toEqual({
+      name: "Backend",
+      text: "Plain tone",
+      is_default: true,
+    });
+  });
+
+  it("makes a system prompt the default without changing it", async () => {
+    const calls = server({
+      "GET /api/system-prompts": () => json([PROMPT]),
+      "PUT /api/system-prompts/p1": () => json({ ...PROMPT, is_default: true }),
+    });
+    mount(<SystemPrompts />);
+    await userEvent.click(await screen.findByRole("button", { name: "Make default" }));
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const put = calls.find((call) => call.method === "PUT");
+    expect(JSON.parse(put!.body)).toEqual({
+      name: "Backend",
+      text: "Plain tone",
+      is_default: true,
+    });
+  });
+
+  it("shows which one is the default and can remove that", async () => {
+    server({ "GET /api/system-prompts": () => json([{ ...PROMPT, is_default: true }]) });
+    mount(<SystemPrompts />);
+    expect(await screen.findByText("Default")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove default" })).toBeInTheDocument();
+  });
+
+  it("edits a system prompt in its place", async () => {
+    const calls = server({
+      "GET /api/system-prompts": () => json([PROMPT]),
+      "PUT /api/system-prompts/p1": () => json(PROMPT),
+    });
+    mount(<SystemPrompts />);
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const text = screen.getAllByRole("textbox", { name: /keep in mind/ })[1];
+    expect(text).toHaveValue("Plain tone");
+    await userEvent.type(text, " always");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull());
+    const put = calls.find((call) => call.method === "PUT");
+    expect(JSON.parse(put!.body).text).toBe("Plain tone always");
+  });
+
+  it("asks before deleting", async () => {
+    const calls = server({
+      "GET /api/system-prompts": () => json([PROMPT]),
+      "DELETE /api/system-prompts/p1": () => new Response(null, { status: 204 }),
+    });
+    mount(<SystemPrompts />);
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(calls.some((call) => call.method === "DELETE")).toBe(true));
+  });
+
+  it("shows why a prompt was refused", async () => {
+    server({
+      "GET /api/system-prompts": () => json([]),
+      "POST /api/system-prompts": () => json({ detail: "That name is taken" }, 409),
+    });
+    mount(<SystemPrompts />);
+    await userEvent.type(await screen.findByRole("textbox", { name: "Name" }), "Backend");
+    await userEvent.type(screen.getByRole("textbox", { name: /keep in mind/ }), "Plain");
+    await userEvent.click(screen.getByRole("button", { name: "Add system prompt" }));
+    expect(await screen.findByText("That name is taken")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Backend");
   });
 });
 
