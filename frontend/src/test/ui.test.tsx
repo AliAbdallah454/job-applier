@@ -113,16 +113,18 @@ describe("EditDiff", () => {
 });
 
 describe("TailorDialog", () => {
-  it("starts a generation with the chosen CV and opens its status page", async () => {
+  it("starts a generation with the chosen CV and stays on the page", async () => {
     const calls = server({
       "GET /api/cvs": () => json([CV]),
       "GET /api/system-prompts": () => json([]),
       "POST /api/generations": () => json({ generation_id: "g1", status: "queued" }, 201),
     });
-    mount(<TailorDialog job={JOB} onClose={() => {}} />);
+    const onClose = vi.fn();
+    mount(<TailorDialog job={JOB} onClose={onClose} />);
     await screen.findByText("cv.tex");
     await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
-    expect(await screen.findByText("Status page")).toBeInTheDocument();
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(screen.queryByText("Status page")).not.toBeInTheDocument();
     const post = calls.find((call) => call.method === "POST");
     expect(JSON.parse(post!.body)).toEqual({
       job_id: "job-1",
@@ -150,7 +152,7 @@ describe("TailorDialog", () => {
     await screen.findByText("cv.tex");
     await userEvent.selectOptions(picker, "sonnet");
     await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
-    await screen.findByText("Status page");
+    await waitFor(() => expect(calls.some((call) => call.method === "POST")).toBe(true));
     const post = calls.find((call) => call.method === "POST");
     expect(JSON.parse(post!.body).model_id).toBe("sonnet");
   });
@@ -176,7 +178,7 @@ describe("TailorDialog", () => {
     await screen.findByText("cv.tex");
     await userEvent.selectOptions(picker, "fr");
     await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
-    await screen.findByText("Status page");
+    await waitFor(() => expect(calls.some((call) => call.method === "POST")).toBe(true));
     const post = calls.find((call) => call.method === "POST");
     expect(JSON.parse(post!.body).language).toBe("fr");
   });
@@ -215,7 +217,7 @@ describe("TailorDialog", () => {
       if (choice !== undefined) await userEvent.selectOptions(picker, choice);
     }
     await userEvent.click(screen.getByRole("button", { name: "Start tailoring", hidden: true }));
-    await screen.findByText("Status page");
+    await waitFor(() => expect(calls.some((call) => call.method === "POST")).toBe(true));
     return JSON.parse(calls.find((call) => call.method === "POST")!.body);
   }
 

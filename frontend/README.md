@@ -40,8 +40,9 @@ shows the failure page.
 ## Tailoring
 
 **Tailor my CV** on a job snapshots your CV, profile and the job, then puts a message on the
-document queue. The generation page polls until a worker finishes. Workers start from zero,
-so a run can stay queued for a few minutes. Identical inputs return the existing generation;
+document queue. The dialog closes and you stay where you were: the top bar counts running
+generations and the job lists its own. The generation page polls until a worker finishes. Workers
+start from zero, so a run can stay queued for a few minutes. Identical inputs return the existing generation;
 **Regenerate** makes a new version of the same entry. Write comments and the model reads the current
 CV and letters, including your edits, and changes only what you asked for. Leave them empty and it
 starts over from your uploaded CV. Comments are shown on the new version and apply once, and the

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 import { ApiError, type Job, type Language } from "../api/client";
 import {
@@ -19,7 +19,6 @@ export function TailorDialog({
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const navigate = useNavigate();
   const cvs = useCvs();
   const upload = useUploadCv();
   const start = useStartGeneration();
@@ -174,7 +173,7 @@ export function TailorDialog({
                 language,
                 system_prompt_id: prompt || undefined,
               },
-              { onSuccess: (generation) => navigate(`/generations/${generation.generation_id}`) },
+              { onSuccess: () => dialog.current?.close() },
             )
           }
         >
