@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from backend.documents.models import DOCUMENT_MODELS, GenerationInput, Job
 from backend.documents.storage import GenerationStore, encode
-from backend.profiles.models import CandidateProfile
+from backend.profiles.models import CandidateProfile, upgrade_profile
 
 
 def stack_outputs(session, name):
@@ -84,7 +84,7 @@ def main():
             if args.model and args.model not in models:
                 raise ValueError("Unknown model; choose one of " + ", ".join(models))
             request = GenerationInput(
-                profile=CandidateProfile.model_validate(data),
+                profile=CandidateProfile.model_validate(upgrade_profile(data)),
                 job=load_job(args, session),
                 model_id=args.model or models[0],
                 cv_latex=Path(args.cv_file).read_text(encoding="utf-8"),

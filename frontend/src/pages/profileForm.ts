@@ -61,14 +61,10 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
-    key: "skills",
+    key: "skills", // Picked from the catalogue by SkillPicker, so it has no fields of its own.
     title: "Skills",
     item: "skill",
-    fields: [
-      { key: "name", label: "Name", required: true },
-      { key: "proficiency", label: "Proficiency" },
-      { key: "description", label: "Description" },
-    ],
+    fields: [],
   },
   {
     key: "languages",

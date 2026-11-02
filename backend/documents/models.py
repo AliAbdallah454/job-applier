@@ -2,9 +2,9 @@
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-from backend.profiles.models import CandidateProfile
+from backend.profiles.models import CandidateProfile, upgrade_profile
 
 # Part of the request hash: bumping it makes an unchanged CV/profile/job produce a new generation.
 PROMPT_VERSION = 14
@@ -79,6 +79,11 @@ class GenerationInput(StrictModel):
     system_prompt: SystemPrompt | None = None
     instructions: Instructions | None = None  # The user's comments for a regeneration.
     previous_version: PreviousVersion | None = None  # What those comments are about.
+
+    @field_validator("profile", mode="before")
+    @classmethod
+    def upgrade_frozen_profile(cls, value):
+        return upgrade_profile(value)
 
 
 class CvChange(StrictModel):

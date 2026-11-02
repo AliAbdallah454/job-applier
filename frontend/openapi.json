@@ -191,6 +191,37 @@
         "title": "ApplicationEvent",
         "type": "object"
       },
+      "BackendSkill": {
+        "enum": [
+          "REST APIs",
+          "GraphQL",
+          "gRPC",
+          "WebSockets",
+          "HTTP",
+          "Microservices",
+          "Event-driven architecture",
+          "Node.js",
+          "Express",
+          "NestJS",
+          "FastAPI",
+          "Django",
+          "Flask",
+          "Pydantic",
+          "SQLAlchemy",
+          "Celery",
+          "Spring Boot",
+          "Hibernate",
+          ".NET",
+          "ASP.NET Core",
+          "Laravel",
+          "Ruby on Rails",
+          "Prisma",
+          "OAuth",
+          "RabbitMQ"
+        ],
+        "title": "BackendSkill",
+        "type": "string"
+      },
       "Body_upload_cv_api_cvs_post": {
         "properties": {
           "file": {
@@ -320,17 +351,13 @@
             "type": "array"
           },
           "schema_version": {
-            "const": 1,
-            "default": 1,
+            "const": 2,
+            "default": 2,
             "title": "Schema Version",
             "type": "integer"
           },
           "skills": {
-            "items": {
-              "$ref": "#/components/schemas/Skill"
-            },
-            "title": "Skills",
-            "type": "array"
+            "$ref": "#/components/schemas/Skills"
           },
           "user_id": {
             "minLength": 1,
@@ -434,6 +461,46 @@
         "title": "Change",
         "type": "object"
       },
+      "CloudInfrastructureSkill": {
+        "enum": [
+          "AWS",
+          "AWS EC2",
+          "AWS Lambda",
+          "Amazon S3",
+          "Amazon ECS",
+          "Amazon EKS",
+          "AWS Fargate",
+          "Amazon RDS",
+          "Amazon SQS",
+          "Amazon SNS",
+          "Amazon VPC",
+          "Amazon CloudWatch",
+          "Amazon API Gateway",
+          "AWS IAM",
+          "AWS CDK",
+          "AWS CloudFormation",
+          "AWS Step Functions",
+          "AWS Bedrock",
+          "Amazon SageMaker",
+          "Google Cloud",
+          "Microsoft Azure",
+          "Cloudflare",
+          "Vercel",
+          "DigitalOcean",
+          "Docker",
+          "Kubernetes",
+          "Helm",
+          "Terraform",
+          "Pulumi",
+          "Ansible",
+          "Linux",
+          "Nginx",
+          "Serverless",
+          "Networking"
+        ],
+        "title": "CloudInfrastructureSkill",
+        "type": "string"
+      },
       "Cv": {
         "properties": {
           "cv_id": {
@@ -461,6 +528,93 @@
         ],
         "title": "Cv",
         "type": "object"
+      },
+      "DataEngineeringSkill": {
+        "enum": [
+          "NumPy",
+          "Pandas",
+          "Polars",
+          "Spark",
+          "PySpark",
+          "Kafka",
+          "Flink",
+          "Airflow",
+          "Dagster",
+          "Prefect",
+          "dbt",
+          "Snowflake",
+          "BigQuery",
+          "Redshift",
+          "Databricks",
+          "Hadoop",
+          "Hive",
+          "Trino",
+          "ETL",
+          "Data modeling",
+          "Data warehousing",
+          "Power BI",
+          "Tableau",
+          "Looker"
+        ],
+        "title": "DataEngineeringSkill",
+        "type": "string"
+      },
+      "DatabaseSkill": {
+        "enum": [
+          "PostgreSQL",
+          "MySQL",
+          "MariaDB",
+          "SQLite",
+          "Microsoft SQL Server",
+          "Oracle Database",
+          "MongoDB",
+          "Redis",
+          "DynamoDB",
+          "Cassandra",
+          "Elasticsearch",
+          "OpenSearch",
+          "Neo4j",
+          "ClickHouse",
+          "RocksDB",
+          "Firestore",
+          "Supabase",
+          "InfluxDB",
+          "TimescaleDB",
+          "pgvector",
+          "Pinecone",
+          "Weaviate",
+          "Qdrant",
+          "Milvus",
+          "Chroma"
+        ],
+        "title": "DatabaseSkill",
+        "type": "string"
+      },
+      "DevOpsToolSkill": {
+        "enum": [
+          "Git",
+          "GitHub",
+          "GitHub Actions",
+          "GitLab CI",
+          "CI/CD",
+          "Jenkins",
+          "CircleCI",
+          "Argo CD",
+          "Observability",
+          "Prometheus",
+          "Grafana",
+          "Datadog",
+          "OpenTelemetry",
+          "ELK Stack",
+          "Sentry",
+          "OWASP",
+          "Postman",
+          "Jira",
+          "Agile",
+          "Scrum"
+        ],
+        "title": "DevOpsToolSkill",
+        "type": "string"
       },
       "DocumentEdit": {
         "properties": {
@@ -747,6 +901,37 @@
         ],
         "title": "Explanation",
         "type": "object"
+      },
+      "FrontendSkill": {
+        "enum": [
+          "React",
+          "Next.js",
+          "Vue.js",
+          "Nuxt",
+          "Angular",
+          "Svelte",
+          "HTML",
+          "CSS",
+          "Sass",
+          "Tailwind CSS",
+          "Bootstrap",
+          "Redux",
+          "TanStack Query",
+          "Vite",
+          "Webpack",
+          "jQuery",
+          "D3.js",
+          "Three.js",
+          "WebAssembly",
+          "Accessibility",
+          "React Native",
+          "Flutter",
+          "SwiftUI",
+          "Jetpack Compose",
+          "Electron"
+        ],
+        "title": "FrontendSkill",
+        "type": "string"
       },
       "Generation": {
         "properties": {
@@ -1659,6 +1844,47 @@
         "title": "MailStatus",
         "type": "object"
       },
+      "MlAiSkill": {
+        "enum": [
+          "PyTorch",
+          "TensorFlow",
+          "Keras",
+          "JAX",
+          "Scikit-learn",
+          "XGBoost",
+          "LightGBM",
+          "Hugging Face Transformers",
+          "LangChain",
+          "LangGraph",
+          "LlamaIndex",
+          "OpenCV",
+          "spaCy",
+          "NLTK",
+          "PEFT",
+          "LoRA",
+          "Optuna",
+          "MLflow",
+          "Metaflow",
+          "Weights & Biases",
+          "ONNX",
+          "vLLM",
+          "Ollama",
+          "CUDA",
+          "LLM integration",
+          "RAG",
+          "Prompt engineering",
+          "Fine-tuning",
+          "AI agents",
+          "Vector search",
+          "Generative AI",
+          "Deep learning",
+          "Computer vision",
+          "NLP",
+          "Reinforcement learning"
+        ],
+        "title": "MlAiSkill",
+        "type": "string"
+      },
       "ModelOption": {
         "additionalProperties": false,
         "description": "A model or language the user can pick for tailoring.",
@@ -1724,6 +1950,13 @@
             "title": "Seniorities",
             "type": "array"
           },
+          "skill_categories": {
+            "items": {
+              "$ref": "#/components/schemas/SkillCategory"
+            },
+            "title": "Skill Categories",
+            "type": "array"
+          },
           "user_id": {
             "title": "User Id",
             "type": "string"
@@ -1735,11 +1968,46 @@
           "seniorities",
           "models",
           "languages",
+          "skill_categories",
           "user_id",
           "demo"
         ],
         "title": "Options",
         "type": "object"
+      },
+      "ProgrammingLanguage": {
+        "enum": [
+          "Python",
+          "JavaScript",
+          "TypeScript",
+          "Java",
+          "C",
+          "C++",
+          "C#",
+          "Go",
+          "Rust",
+          "SQL",
+          "Bash",
+          "Kotlin",
+          "Swift",
+          "PHP",
+          "Ruby",
+          "Scala",
+          "R",
+          "MATLAB",
+          "Dart",
+          "PowerShell",
+          "Lua",
+          "Perl",
+          "Haskell",
+          "Elixir",
+          "Julia",
+          "Objective-C",
+          "Solidity",
+          "Assembly"
+        ],
+        "title": "ProgrammingLanguage",
+        "type": "string"
       },
       "Project": {
         "additionalProperties": false,
@@ -1883,43 +2151,102 @@
         "title": "SavedSystemPrompt",
         "type": "object"
       },
-      "Skill": {
-        "additionalProperties": false,
+      "SkillCategory": {
+        "description": "One group of the catalogue, as offered to the web app.",
         "properties": {
-          "description": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "name": {
-            "minLength": 1,
-            "title": "Name",
+          "key": {
+            "title": "Key",
             "type": "string"
           },
-          "proficiency": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Proficiency"
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Skills",
+            "type": "array"
           }
         },
         "required": [
-          "name"
+          "key",
+          "label",
+          "skills"
         ],
-        "title": "Skill",
+        "title": "SkillCategory",
+        "type": "object"
+      },
+      "Skills": {
+        "additionalProperties": false,
+        "description": "The user's skills by category; the field order is the order the web app shows.",
+        "properties": {
+          "backend": {
+            "items": {
+              "$ref": "#/components/schemas/BackendSkill"
+            },
+            "title": "Backend",
+            "type": "array"
+          },
+          "cloud_and_infrastructure": {
+            "items": {
+              "$ref": "#/components/schemas/CloudInfrastructureSkill"
+            },
+            "title": "Cloud & infrastructure",
+            "type": "array"
+          },
+          "data_engineering": {
+            "items": {
+              "$ref": "#/components/schemas/DataEngineeringSkill"
+            },
+            "title": "Data engineering",
+            "type": "array"
+          },
+          "databases": {
+            "items": {
+              "$ref": "#/components/schemas/DatabaseSkill"
+            },
+            "title": "Databases",
+            "type": "array"
+          },
+          "devops_and_tools": {
+            "items": {
+              "$ref": "#/components/schemas/DevOpsToolSkill"
+            },
+            "title": "DevOps & tools",
+            "type": "array"
+          },
+          "frontend": {
+            "items": {
+              "$ref": "#/components/schemas/FrontendSkill"
+            },
+            "title": "Frontend & mobile",
+            "type": "array"
+          },
+          "ml_and_ai": {
+            "items": {
+              "$ref": "#/components/schemas/MlAiSkill"
+            },
+            "title": "ML & AI",
+            "type": "array"
+          },
+          "programming_languages": {
+            "items": {
+              "$ref": "#/components/schemas/ProgrammingLanguage"
+            },
+            "title": "Programming languages",
+            "type": "array"
+          },
+          "testing": {
+            "items": {
+              "$ref": "#/components/schemas/TestingSkill"
+            },
+            "title": "Testing",
+            "type": "array"
+          }
+        },
+        "title": "Skills",
         "type": "object"
       },
       "SourceLine": {
@@ -1986,6 +2313,23 @@
         ],
         "title": "SystemPromptFields",
         "type": "object"
+      },
+      "TestingSkill": {
+        "enum": [
+          "pytest",
+          "unittest",
+          "JUnit",
+          "Jest",
+          "Vitest",
+          "Testing Library",
+          "Cypress",
+          "Playwright",
+          "Selenium",
+          "k6",
+          "Test-driven development"
+        ],
+        "title": "TestingSkill",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {

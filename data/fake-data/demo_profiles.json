@@ -89,20 +89,17 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "Python",
-        "description": "Used for data collection, testing and ML experiments."
-      },
-      {
-        "name": "PostgreSQL",
-        "description": "Designed tables and wrote SQL queries for supplier records."
-      },
-      {
-        "name": "scikit-learn",
-        "description": "Built classification baselines and evaluated errors."
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "Python"
+      ],
+      "databases": [
+        "PostgreSQL"
+      ],
+      "ml_and_ai": [
+        "Scikit-learn"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-ml-001",
@@ -141,7 +138,8 @@
         "hybrid",
         "onsite"
       ]
-    }
+    },
+    "additional_information": "Skill details: Python: Used for data collection, testing and ML experiments.; PostgreSQL: Designed tables and wrote SQL queries for supplier records.; scikit-learn: Built classification baselines and evaluated errors."
   },
   {
     "user_id": "demo-user-002",
@@ -244,25 +242,17 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "AWS",
-        "description": "Hands-on staging work with compute, storage and CloudWatch logs."
-      },
-      {
-        "name": "Terraform"
-      },
-      {
-        "name": "Docker"
-      },
-      {
-        "name": "Python",
-        "description": "Wrote small deployment and validation scripts."
-      },
-      {
-        "name": "Linux"
-      }
-    ],
+    "skills": {
+      "cloud_and_infrastructure": [
+        "AWS",
+        "Terraform",
+        "Docker",
+        "Linux"
+      ],
+      "programming_languages": [
+        "Python"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-cloud-001",
@@ -300,7 +290,8 @@
         "remote",
         "hybrid"
       ]
-    }
+    },
+    "additional_information": "Skill details: AWS: Hands-on staging work with compute, storage and CloudWatch logs.; Python: Wrote small deployment and validation scripts."
   },
   {
     "user_id": "demo-user-003",
@@ -356,23 +347,20 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "JavaScript"
-      },
-      {
-        "name": "HTML/CSS"
-      },
-      {
-        "name": "Python"
-      },
-      {
-        "name": "SQL"
-      },
-      {
-        "name": "SQLite"
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "JavaScript",
+        "Python",
+        "SQL"
+      ],
+      "frontend": [
+        "HTML",
+        "CSS"
+      ],
+      "databases": [
+        "SQLite"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-web-001",
@@ -513,28 +501,19 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "Python",
-        "description": "API ingestion and workflow automation."
-      },
-      {
-        "name": "SQL",
-        "description": "Reporting queries and data quality checks."
-      },
-      {
-        "name": "PostgreSQL",
-        "description": "Tables, constraints and incremental loads."
-      },
-      {
-        "name": "Airflow",
-        "description": "Maintained scheduled DAGs."
-      },
-      {
-        "name": "dbt",
-        "description": "Reviewed and tested transformations."
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "Python",
+        "SQL"
+      ],
+      "databases": [
+        "PostgreSQL"
+      ],
+      "data_engineering": [
+        "Airflow",
+        "dbt"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-004-001",
@@ -572,7 +551,8 @@
         "hybrid",
         "remote"
       ]
-    }
+    },
+    "additional_information": "Skill details: Python: API ingestion and workflow automation.; SQL: Reporting queries and data quality checks.; PostgreSQL: Tables, constraints and incremental loads.; Airflow: Maintained scheduled DAGs.; dbt: Reviewed and tested transformations."
   },
   {
     "user_id": "demo-user-005",
@@ -652,28 +632,21 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "Python",
-        "description": "Backend services and evaluation scripts."
-      },
-      {
-        "name": "FastAPI",
-        "description": "Validated endpoints and API tests."
-      },
-      {
-        "name": "PostgreSQL",
-        "description": "Document metadata queries."
-      },
-      {
-        "name": "LLM integration",
-        "description": "Retrieval prototypes and grounded answer evaluation."
-      },
-      {
-        "name": "Vector search",
-        "description": "Experimented with document retrieval settings."
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "Python"
+      ],
+      "backend": [
+        "FastAPI"
+      ],
+      "databases": [
+        "PostgreSQL"
+      ],
+      "ml_and_ai": [
+        "LLM integration",
+        "Vector search"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-005-001",
@@ -713,7 +686,8 @@
         "hybrid",
         "remote"
       ]
-    }
+    },
+    "additional_information": "Skill details: Python: Backend services and evaluation scripts.; FastAPI: Validated endpoints and API tests.; PostgreSQL: Document metadata queries.; LLM integration: Retrieval prototypes and grounded answer evaluation.; Vector search: Experimented with document retrieval settings."
   },
   {
     "user_id": "demo-user-006",
@@ -814,28 +788,19 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "React",
-        "description": "Built production-style interfaces and forms."
-      },
-      {
-        "name": "TypeScript",
-        "description": "Typed UI state and API responses."
-      },
-      {
-        "name": "Python",
-        "description": "Backend validation and API implementation."
-      },
-      {
-        "name": "PostgreSQL",
-        "description": "Application queries and constraints."
-      },
-      {
-        "name": "Accessibility",
-        "description": "Keyboard navigation and form semantics."
-      }
-    ],
+    "skills": {
+      "frontend": [
+        "React",
+        "Accessibility"
+      ],
+      "programming_languages": [
+        "TypeScript",
+        "Python"
+      ],
+      "databases": [
+        "PostgreSQL"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-006-001",
@@ -873,7 +838,8 @@
         "hybrid",
         "remote"
       ]
-    }
+    },
+    "additional_information": "Skill details: React: Built production-style interfaces and forms.; TypeScript: Typed UI state and API responses.; Python: Backend validation and API implementation.; PostgreSQL: Application queries and constraints.; Accessibility: Keyboard navigation and form semantics."
   },
   {
     "user_id": "demo-user-007",
@@ -952,28 +918,18 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "Python",
-        "description": "Security test scripts and log processing."
-      },
-      {
-        "name": "Linux",
-        "description": "Workstation troubleshooting and log review."
-      },
-      {
-        "name": "HTTP",
-        "description": "Request analysis and authorization tests."
-      },
-      {
-        "name": "SQL",
-        "description": "Basic database queries for investigations."
-      },
-      {
-        "name": "Security reporting",
-        "description": "Reproducible findings and retest notes."
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "Python",
+        "SQL"
+      ],
+      "cloud_and_infrastructure": [
+        "Linux"
+      ],
+      "backend": [
+        "HTTP"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-007-001",
@@ -1013,7 +969,8 @@
         "hybrid",
         "remote"
       ]
-    }
+    },
+    "additional_information": "Skill details: Python: Security test scripts and log processing.; Linux: Workstation troubleshooting and log review.; HTTP: Request analysis and authorization tests.; SQL: Basic database queries for investigations.; Security reporting: Reproducible findings and retest notes."
   },
   {
     "user_id": "demo-user-008",
@@ -1094,28 +1051,19 @@
         ]
       }
     ],
-    "skills": [
-      {
-        "name": "Playwright",
-        "description": "Browser regression tests and stable selectors."
-      },
-      {
-        "name": "TypeScript",
-        "description": "Test helpers and reusable fixtures."
-      },
-      {
-        "name": "Python",
-        "description": "API tests and data setup."
-      },
-      {
-        "name": "SQL",
-        "description": "Inspecting and validating test data."
-      },
-      {
-        "name": "GitHub Actions",
-        "description": "Maintaining test jobs in CI."
-      }
-    ],
+    "skills": {
+      "testing": [
+        "Playwright"
+      ],
+      "programming_languages": [
+        "TypeScript",
+        "Python",
+        "SQL"
+      ],
+      "devops_and_tools": [
+        "GitHub Actions"
+      ]
+    },
     "certifications": [
       {
         "id": "certificate-008-001",
@@ -1155,11 +1103,12 @@
         "hybrid",
         "remote"
       ]
-    }
+    },
+    "additional_information": "Skill details: Playwright: Browser regression tests and stable selectors.; TypeScript: Test helpers and reusable fixtures.; Python: API tests and data setup.; SQL: Inspecting and validating test data.; GitHub Actions: Maintaining test jobs in CI."
   },
   {
     "user_id": "ali",
-    "schema_version": 1,
+    "schema_version": 2,
     "version": 1,
     "full_name": "Ali Abdallah",
     "email": "alikhaledabdallah454@gmail.com",
@@ -1308,98 +1257,50 @@
         "current": false
       }
     ],
-    "skills": [
-      {
-        "name": "Python"
-      },
-      {
-        "name": "Rust"
-      },
-      {
-        "name": "C/C++"
-      },
-      {
-        "name": "Go"
-      },
-      {
-        "name": "Java"
-      },
-      {
-        "name": "JavaScript"
-      },
-      {
-        "name": "TypeScript"
-      },
-      {
-        "name": "PyTorch"
-      },
-      {
-        "name": "TensorFlow"
-      },
-      {
-        "name": "Hugging Face Transformers"
-      },
-      {
-        "name": "PEFT/LoRA"
-      },
-      {
-        "name": "Scikit-learn"
-      },
-      {
-        "name": "OpenCV"
-      },
-      {
-        "name": "Optuna"
-      },
-      {
-        "name": "AWS"
-      },
-      {
-        "name": "AWS EC2"
-      },
-      {
-        "name": "Amazon ECS"
-      },
-      {
-        "name": "AWS Bedrock"
-      },
-      {
-        "name": "Amazon SageMaker"
-      },
-      {
-        "name": "AWS Step Functions"
-      },
-      {
-        "name": "AWS CloudFormation"
-      },
-      {
-        "name": "Docker"
-      },
-      {
-        "name": "Terraform"
-      },
-      {
-        "name": "Metaflow"
-      },
-      {
-        "name": "CI/CD"
-      },
-      {
-        "name": "Linux"
-      },
-      {
-        "name": "PostgreSQL"
-      },
-      {
-        "name": "MongoDB"
-      },
-      {
-        "name": "Redis"
-      },
-      {
-        "name": "RocksDB"
-      }
-    ],
+    "skills": {
+      "programming_languages": [
+        "Python",
+        "Rust",
+        "C",
+        "C++",
+        "Go",
+        "Java",
+        "JavaScript",
+        "TypeScript"
+      ],
+      "ml_and_ai": [
+        "PyTorch",
+        "TensorFlow",
+        "Hugging Face Transformers",
+        "PEFT",
+        "LoRA",
+        "Scikit-learn",
+        "OpenCV",
+        "Optuna",
+        "Metaflow"
+      ],
+      "cloud_and_infrastructure": [
+        "AWS",
+        "AWS EC2",
+        "Amazon ECS",
+        "AWS Bedrock",
+        "Amazon SageMaker",
+        "AWS Step Functions",
+        "AWS CloudFormation",
+        "Docker",
+        "Terraform",
+        "Linux"
+      ],
+      "devops_and_tools": [
+        "CI/CD"
+      ],
+      "databases": [
+        "PostgreSQL",
+        "MongoDB",
+        "Redis",
+        "RocksDB"
+      ]
+    },
     "certifications": [
       {
         "id": "certification-aws-ml-associate",

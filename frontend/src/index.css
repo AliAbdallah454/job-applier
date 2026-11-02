@@ -50,6 +50,11 @@ body {
   outline-offset: 2px;
 }
 
+/* The box around a tag input shows its focus instead of the input inside it. */
+.tag-input:focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: var(--ink);
   color: var(--paper);

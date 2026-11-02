@@ -4,7 +4,16 @@ import unittest
 
 from pydantic import ValidationError
 
-from backend.profiles.models import CandidateProfile, Education, Experience, JobPreferences, Project
+from backend.documents.models import GenerationInput
+from backend.profiles.models import (
+    CandidateProfile,
+    Education,
+    Experience,
+    JobPreferences,
+    Project,
+    upgrade_profile,
+)
+from backend.profiles.skills import CATALOGUE, SKILL_CATEGORIES, Skills
 
 
 class ProfileTests(unittest.TestCase):
@@ -76,3 +85,98 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(first.experiences, [])
         with self.assertRaises(ValidationError):
             JobPreferences(seniorities=["intern"])
+
+
+class SkillTests(unittest.TestCase):
+    def old_profile(self, skills, **fields):
+        return {
+            "user_id": "example-user",
+            "full_name": "Example Candidate",
+            "schema_version": 1,
+            "skills": skills,
+            **fields,
+        }
+
+    def test_each_skill_is_in_one_category_and_every_field_has_a_label(self):
+        total = sum(len(category.skills) for category in SKILL_CATEGORIES)
+        self.assertEqual(len(CATALOGUE), total)
+        self.assertEqual([category.key for category in SKILL_CATEGORIES], list(Skills.model_fields))
+        self.assertTrue(all(category.label and category.skills for category in SKILL_CATEGORIES))
+
+    def test_only_a_listed_skill_in_its_own_category_is_accepted(self):
+        skills = Skills(programming_languages=["Python", "C++"], databases=["PostgreSQL"])
+        self.assertEqual(skills.model_dump(mode="json")["programming_languages"], ["Python", "C++"])
+        for wrong in (
+            {"programming_languages": ["Cobol 2"]},
+            {"databases": ["Python"]},
+            {"programming_languages": ["python"]},
+            {"programming_languages": ["Python", "Python"]},
+            {"cooking": ["Python"]},
+        ):
+            with self.subTest(wrong), self.assertRaises(ValidationError):
+                Skills.model_validate(wrong)
+
+    def test_a_profile_refuses_the_old_free_text_skills(self):
+        for skills in ([{"name": "Python"}], ["Python"]):
+            with self.subTest(skills), self.assertRaises(ValidationError):
+                CandidateProfile(user_id="u", full_name="Name", skills=skills)
+
+    def test_old_skills_move_to_their_categories(self):
+        profile = CandidateProfile.model_validate(
+            upgrade_profile(
+                self.old_profile(
+                    [
+                        {"name": "Python"},
+                        {"name": "scikit-learn", "description": None, "proficiency": None},
+                        {"name": "C/C++"},
+                        {"name": "CI/CD"},
+                        {"name": "postgresql"},
+                        {"name": "PYTHON"},
+                    ]
+                )
+            )
+        )
+        self.assertEqual(profile.schema_version, 2)
+        self.assertEqual(profile.skills.programming_languages, ["Python", "C", "C++"])
+        self.assertEqual(profile.skills.ml_and_ai, ["Scikit-learn"])
+        self.assertEqual(profile.skills.devops_and_tools, ["CI/CD"])
+        self.assertEqual(profile.skills.databases, ["PostgreSQL"])
+        self.assertIsNone(profile.additional_information)
+
+    def test_no_fact_is_lost_when_the_catalogue_cannot_hold_an_old_skill(self):
+        profile = CandidateProfile.model_validate(
+            upgrade_profile(
+                self.old_profile(
+                    [
+                        {"name": "Python", "proficiency": "Advanced", "description": "Daily use"},
+                        {"name": "Fortran/Cobol"},
+                        {"name": "Basket weaving", "description": "Regional finalist"},
+                    ],
+                    additional_information="Happy to relocate.",
+                )
+            )
+        )
+        self.assertEqual(profile.skills.programming_languages, ["Python"])
+        self.assertEqual(
+            profile.additional_information,
+            "Happy to relocate.\n\nSkill details: Python: Advanced, Daily use; Fortran/Cobol; "
+            "Basket weaving: Regional finalist",
+        )
+
+    def test_a_profile_in_todays_shape_passes_through_unchanged(self):
+        data = {"user_id": "u", "full_name": "Name", "skills": {"databases": ["Redis"]}}
+        self.assertIs(upgrade_profile(data), data)
+        self.assertEqual(upgrade_profile("not a profile"), "not a profile")
+
+    def test_a_snapshot_frozen_before_the_catalogue_can_still_be_read(self):
+        request = GenerationInput.model_validate(
+            {
+                "profile": self.old_profile([{"name": "Rust"}, {"name": "Basket weaving"}]),
+                "job": {"job_id": "job", "title": "Engineer", "description": "Build things"},
+                "model_id": "model",
+                "cv_latex": "\\documentclass{article}",
+                "prompt_version": 13,
+            }
+        )
+        self.assertEqual(request.profile.skills.programming_languages, ["Rust"])
+        self.assertIn("Basket weaving", request.profile.additional_information)

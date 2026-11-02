@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { ApiError, type CandidateProfile } from "../api/client";
 import { useOptions, useProfile, useSaveProfile } from "../api/queries";
+import { SkillPicker } from "../components/SkillPicker";
 import { Button, Empty, ErrorNote, Eyebrow, label } from "../components/ui";
 import { clean, type Draft, type Field, SECTIONS, setIn } from "./profileForm";
 
@@ -90,6 +91,24 @@ export function Profile() {
       </Group>
 
       {SECTIONS.map((section) => {
+        if (section.key === "skills") {
+          return (
+            <Group key={section.key} title={section.title}>
+              <SkillPicker
+                categories={options.data?.skill_categories ?? []}
+                skills={(draft.skills ?? {}) as Record<string, string[]>}
+                onChange={(key, skills) => edit(["skills", key], skills)}
+              />
+              {Object.entries(fields)
+                .filter(([key]) => key.startsWith("skills"))
+                .map(([key, message]) => (
+                  <p key={key} className="text-xs">
+                    {message}
+                  </p>
+                ))}
+            </Group>
+          );
+        }
         const entries = (draft[section.key] ?? []) as Draft[];
         return (
           <Group key={section.key} title={section.title}>

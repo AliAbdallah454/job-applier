@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, model_validator
 
+from backend.profiles.skills import Skills, catalogue_entries
 from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 
 Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -72,12 +73,6 @@ class Education(CareerEntry):
     achievements: list[Text] = Field(default_factory=list)
 
 
-class Skill(ProfileModel):
-    name: Text
-    description: Text | None = None
-    proficiency: Text | None = None
-
-
 class Language(ProfileModel):
     name: Text
     proficiency: Text | None = None
@@ -107,7 +102,7 @@ class CandidateProfile(ProfileModel):
     """One user's descriptive facts, distinct from generated CVs and letters."""
 
     user_id: Text
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     version: int = Field(default=1, ge=1)
     full_name: Text
     email: Text | None = None
@@ -118,7 +113,7 @@ class CandidateProfile(ProfileModel):
     experiences: list[Experience] = Field(default_factory=list)
     projects: list[Project] = Field(default_factory=list)
     education: list[Education] = Field(default_factory=list)
-    skills: list[Skill] = Field(default_factory=list)
+    skills: Skills = Field(default_factory=Skills)
     languages: list[Language] = Field(default_factory=list)
     certifications: list[Certification] = Field(default_factory=list)
     additional_information: Text | None = None
@@ -135,3 +130,31 @@ class CandidateProfile(ProfileModel):
             raise ValueError("Experience, project, education and certification IDs must be unique")
 
         return self
+
+
+def upgrade_profile(data):
+    """Turn a profile saved with free-text skills into today's shape; others pass through.
+
+    Stored profiles and frozen snapshots may still hold that list, while the API only accepts
+    the catalogue. What the catalogue cannot hold moves to additional_information, so no fact the
+    user gave is lost.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("skills"), list):
+        return data
+    skills, notes = {}, []
+    for old in data["skills"]:
+        details = ", ".join(filter(None, (old.get("proficiency"), old.get("description"))))
+        entries = catalogue_entries(old["name"])
+        for key, skill in entries:
+            group = skills.setdefault(key, [])
+            if skill not in group:
+                group.append(skill)
+        if details or not entries:
+            notes.append(f"{old['name']}: {details}" if details else old["name"])
+    extra = [data.get("additional_information"), notes and f"Skill details: {'; '.join(notes)}"]
+    return {
+        **data,
+        "schema_version": 2,
+        "skills": skills,
+        "additional_information": "\n\n".join(filter(None, extra)) or None,
+    }

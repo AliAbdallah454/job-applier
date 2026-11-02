@@ -17,6 +17,7 @@ export type Interest = Schemas["Interest"];
 export type AlertJob = Schemas["AlertJob"];
 export type JobAlert = Schemas["JobAlert"];
 export type Language = NonNullable<Schemas["GenerationRequest"]["language"]>;
+export type SkillCategory = Schemas["SkillCategory"];
 export type SavedSystemPrompt = Schemas["SavedSystemPrompt"];
 export type SystemPromptFields = Schemas["SystemPromptFields"];
 

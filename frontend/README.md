@@ -59,6 +59,10 @@ profile do not support.
 
 A profile is required first. CVs must be one self-contained UTF-8 `.tex` file up to 200 KB.
 
+Skills in your profile are picked from a fixed list, by category. The list is the set of enums in
+`backend/profiles/skills.py`: the page reads it from `/api/options`, its types come from the same
+enums, and saving anything else is refused. To add a skill, add it there and run `npm run types`.
+
 The generation page shows the model's list of edits and a diff computed from the two CV
 sources. Rewrites are checked for structure but not fact-checked, so read each change before
 sending a CV.
@@ -93,7 +97,7 @@ gave each edit its own entry. Old versions can be opened but not restored.
 |---|---|
 | `GET /api/options` | Filter values, current user, demo flag |
 | `GET /api/jobs`, `GET /api/jobs/{id}` | Filters: `tech`, `seniority`, `category`, `contract`, `q`, `cursor` |
-| `GET`/`PUT /api/profile` | `PUT` must carry the loaded `version`, or it returns 409 |
+| `GET`/`PUT /api/profile` | `PUT` must carry the loaded `version`, or it returns 409. `skills` holds the catalogue's enum values by category |
 | `GET`/`POST /api/cvs`, `DELETE /api/cvs/{id}` | CVs at `users/<id>/cvs/<cv_id>/<filename>.tex` |
 | `GET`/`POST /api/system-prompts`, `PUT`/`DELETE /api/system-prompts/{id}` | One file per user at `users/<id>/system-prompts.json`, written conditionally, so a change made in between gives a 409. At most one has `is_default` |
 | `GET`/`POST /api/generations` | History (`job_id`, `status`) with file names, company and job link; start a run, with the optional `system_prompt_id` (the API does not apply the default on its own) |

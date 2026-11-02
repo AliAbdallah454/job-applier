@@ -234,6 +234,64 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(self.messages(), [])
 
+    def test_options_offer_the_same_skills_the_profile_accepts(self):
+        categories = self.client.get("/api/options").json()["skill_categories"]
+        self.assertEqual(categories[0]["label"], "Programming languages")
+        self.assertIn("Python", categories[0]["skills"])
+        skills = {category["key"]: category["skills"] for category in categories}
+        saved = self.client.put("/api/profile", json={**PROFILE, "skills": skills})
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.json()["skills"], skills)
+
+    def test_the_web_app_schema_has_the_same_skills_as_the_backend(self):
+        ours = create_app().openapi()["components"]["schemas"]
+        theirs = json.loads((ROOT / "frontend/openapi.json").read_text())["components"]["schemas"]
+        self.assertEqual(ours["Skills"], theirs["Skills"])
+        for field in ours["Skills"]["properties"].values():
+            name = field["items"]["$ref"].rsplit("/", 1)[1]
+            self.assertEqual(ours[name]["enum"], theirs[name]["enum"])
+
+    def test_a_profile_cannot_save_skills_outside_the_catalogue(self):
+        for skills in (
+            {"programming_languages": ["Not a language"]},
+            {"databases": ["Python"]},
+            {"databases": ["Redis", "Redis"]},
+            {"cooking": ["Python"]},
+            [{"name": "Python"}],
+        ):
+            with self.subTest(skills):
+                response = self.client.put("/api/profile", json={**PROFILE, "skills": skills})
+                self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.client.get("/api/profile").status_code, 404)
+
+    def test_a_stored_profile_with_old_skills_is_upgraded_when_read_and_saved(self):
+        old = {
+            **PROFILE,
+            "schema_version": 1,
+            "version": 3,
+            "skills": [{"name": "Python"}, {"name": "Basket weaving"}],
+        }
+        self.db.Table("profiles").put_item(Item=old)
+        loaded = self.client.get("/api/profile").json()
+        self.assertEqual(loaded["schema_version"], 2)
+        self.assertEqual(loaded["skills"]["programming_languages"], ["Python"])
+        self.assertEqual(loaded["additional_information"], "Skill details: Basket weaving")
+
+        self.assertEqual(self.client.put("/api/profile", json=loaded).json()["version"], 4)
+        stored = self.db.Table("profiles").get_item(Key={"user_id": "ali"})["Item"]
+        self.assertEqual(stored["schema_version"], 2)
+        self.assertEqual(stored["skills"]["programming_languages"], ["Python"])
+
+    def test_tailoring_with_an_old_stored_profile_still_works(self):
+        self.db.Table("profiles").put_item(
+            Item={**PROFILE, "schema_version": 1, "skills": [{"name": "Python"}]}
+        )
+        cv_id = self.upload().json()["cv_id"]
+        body = {"job_id": "job-1", "cv_id": cv_id}
+        generation = self.client.post("/api/generations", json=body).json()
+        frozen = self.frozen(generation["generation_id"])["profile"]
+        self.assertEqual(frozen["skills"]["programming_languages"], ["Python"])
+
     def test_jobs_filter_and_invalid_values_return_400(self):
         self.add_job("job-2", "senior")
         body = self.client.get("/api/jobs").json()

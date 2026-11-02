@@ -532,6 +532,11 @@ export interface components {
             /** Subject */
             subject: string;
         };
+        /**
+         * BackendSkill
+         * @enum {string}
+         */
+        BackendSkill: "REST APIs" | "GraphQL" | "gRPC" | "WebSockets" | "HTTP" | "Microservices" | "Event-driven architecture" | "Node.js" | "Express" | "NestJS" | "FastAPI" | "Django" | "Flask" | "Pydantic" | "SQLAlchemy" | "Celery" | "Spring Boot" | "Hibernate" | ".NET" | "ASP.NET Core" | "Laravel" | "Ruby on Rails" | "Prisma" | "OAuth" | "RabbitMQ";
         /** Body_upload_cv_api_cvs_post */
         Body_upload_cv_api_cvs_post: {
             /** File */
@@ -569,12 +574,11 @@ export interface components {
             projects?: components["schemas"]["Project"][];
             /**
              * Schema Version
-             * @default 1
+             * @default 2
              * @constant
              */
-            schema_version: 1;
-            /** Skills */
-            skills?: components["schemas"]["Skill"][];
+            schema_version: 2;
+            skills?: components["schemas"]["Skills"];
             /** User Id */
             user_id: string;
             /**
@@ -608,6 +612,11 @@ export interface components {
             /** Before */
             before: string;
         };
+        /**
+         * CloudInfrastructureSkill
+         * @enum {string}
+         */
+        CloudInfrastructureSkill: "AWS" | "AWS EC2" | "AWS Lambda" | "Amazon S3" | "Amazon ECS" | "Amazon EKS" | "AWS Fargate" | "Amazon RDS" | "Amazon SQS" | "Amazon SNS" | "Amazon VPC" | "Amazon CloudWatch" | "Amazon API Gateway" | "AWS IAM" | "AWS CDK" | "AWS CloudFormation" | "AWS Step Functions" | "AWS Bedrock" | "Amazon SageMaker" | "Google Cloud" | "Microsoft Azure" | "Cloudflare" | "Vercel" | "DigitalOcean" | "Docker" | "Kubernetes" | "Helm" | "Terraform" | "Pulumi" | "Ansible" | "Linux" | "Nginx" | "Serverless" | "Networking";
         /** Cv */
         Cv: {
             /** Cv Id */
@@ -619,6 +628,21 @@ export interface components {
             /** Uploaded At */
             uploaded_at: string;
         };
+        /**
+         * DataEngineeringSkill
+         * @enum {string}
+         */
+        DataEngineeringSkill: "NumPy" | "Pandas" | "Polars" | "Spark" | "PySpark" | "Kafka" | "Flink" | "Airflow" | "Dagster" | "Prefect" | "dbt" | "Snowflake" | "BigQuery" | "Redshift" | "Databricks" | "Hadoop" | "Hive" | "Trino" | "ETL" | "Data modeling" | "Data warehousing" | "Power BI" | "Tableau" | "Looker";
+        /**
+         * DatabaseSkill
+         * @enum {string}
+         */
+        DatabaseSkill: "PostgreSQL" | "MySQL" | "MariaDB" | "SQLite" | "Microsoft SQL Server" | "Oracle Database" | "MongoDB" | "Redis" | "DynamoDB" | "Cassandra" | "Elasticsearch" | "OpenSearch" | "Neo4j" | "ClickHouse" | "RocksDB" | "Firestore" | "Supabase" | "InfluxDB" | "TimescaleDB" | "pgvector" | "Pinecone" | "Weaviate" | "Qdrant" | "Milvus" | "Chroma";
+        /**
+         * DevOpsToolSkill
+         * @enum {string}
+         */
+        DevOpsToolSkill: "Git" | "GitHub" | "GitHub Actions" | "GitLab CI" | "CI/CD" | "Jenkins" | "CircleCI" | "Argo CD" | "Observability" | "Prometheus" | "Grafana" | "Datadog" | "OpenTelemetry" | "ELK Stack" | "Sentry" | "OWASP" | "Postman" | "Jira" | "Agile" | "Scrum";
         /** DocumentEdit */
         DocumentEdit: {
             /**
@@ -717,6 +741,11 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * FrontendSkill
+         * @enum {string}
+         */
+        FrontendSkill: "React" | "Next.js" | "Vue.js" | "Nuxt" | "Angular" | "Svelte" | "HTML" | "CSS" | "Sass" | "Tailwind CSS" | "Bootstrap" | "Redux" | "TanStack Query" | "Vite" | "Webpack" | "jQuery" | "D3.js" | "Three.js" | "WebAssembly" | "Accessibility" | "React Native" | "Flutter" | "SwiftUI" | "Jetpack Compose" | "Electron";
         /** Generation */
         Generation: {
             /** Company */
@@ -964,6 +993,11 @@ export interface components {
             tracking_since?: string | null;
         };
         /**
+         * MlAiSkill
+         * @enum {string}
+         */
+        MlAiSkill: "PyTorch" | "TensorFlow" | "Keras" | "JAX" | "Scikit-learn" | "XGBoost" | "LightGBM" | "Hugging Face Transformers" | "LangChain" | "LangGraph" | "LlamaIndex" | "OpenCV" | "spaCy" | "NLTK" | "PEFT" | "LoRA" | "Optuna" | "MLflow" | "Metaflow" | "Weights & Biases" | "ONNX" | "vLLM" | "Ollama" | "CUDA" | "LLM integration" | "RAG" | "Prompt engineering" | "Fine-tuning" | "AI agents" | "Vector search" | "Generative AI" | "Deep learning" | "Computer vision" | "NLP" | "Reinforcement learning";
+        /**
          * ModelOption
          * @description A model or language the user can pick for tailoring.
          */
@@ -987,9 +1021,16 @@ export interface components {
             models: components["schemas"]["ModelOption"][];
             /** Seniorities */
             seniorities: string[];
+            /** Skill Categories */
+            skill_categories: components["schemas"]["SkillCategory"][];
             /** User Id */
             user_id: string;
         };
+        /**
+         * ProgrammingLanguage
+         * @enum {string}
+         */
+        ProgrammingLanguage: "Python" | "JavaScript" | "TypeScript" | "Java" | "C" | "C++" | "C#" | "Go" | "Rust" | "SQL" | "Bash" | "Kotlin" | "Swift" | "PHP" | "Ruby" | "Scala" | "R" | "MATLAB" | "Dart" | "PowerShell" | "Lua" | "Perl" | "Haskell" | "Elixir" | "Julia" | "Objective-C" | "Solidity" | "Assembly";
         /** Project */
         Project: {
             /** Contribution */
@@ -1035,14 +1076,41 @@ export interface components {
             /** Text */
             text: string;
         };
-        /** Skill */
-        Skill: {
-            /** Description */
-            description?: string | null;
-            /** Name */
-            name: string;
-            /** Proficiency */
-            proficiency?: string | null;
+        /**
+         * SkillCategory
+         * @description One group of the catalogue, as offered to the web app.
+         */
+        SkillCategory: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Skills */
+            skills: string[];
+        };
+        /**
+         * Skills
+         * @description The user's skills by category; the field order is the order the web app shows.
+         */
+        Skills: {
+            /** Backend */
+            backend?: components["schemas"]["BackendSkill"][];
+            /** Cloud & infrastructure */
+            cloud_and_infrastructure?: components["schemas"]["CloudInfrastructureSkill"][];
+            /** Data engineering */
+            data_engineering?: components["schemas"]["DataEngineeringSkill"][];
+            /** Databases */
+            databases?: components["schemas"]["DatabaseSkill"][];
+            /** DevOps & tools */
+            devops_and_tools?: components["schemas"]["DevOpsToolSkill"][];
+            /** Frontend & mobile */
+            frontend?: components["schemas"]["FrontendSkill"][];
+            /** ML & AI */
+            ml_and_ai?: components["schemas"]["MlAiSkill"][];
+            /** Programming languages */
+            programming_languages?: components["schemas"]["ProgrammingLanguage"][];
+            /** Testing */
+            testing?: components["schemas"]["TestingSkill"][];
         };
         /** SourceLine */
         SourceLine: {
@@ -1071,6 +1139,11 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * TestingSkill
+         * @enum {string}
+         */
+        TestingSkill: "pytest" | "unittest" | "JUnit" | "Jest" | "Vitest" | "Testing Library" | "Cypress" | "Playwright" | "Selenium" | "k6" | "Test-driven development";
         /** ValidationError */
         ValidationError: {
             /** Context */

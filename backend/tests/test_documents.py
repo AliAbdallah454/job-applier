@@ -714,6 +714,7 @@ class GenerationTests(unittest.TestCase):
         self.assertEqual(prompt["cv_latex"], CV)
         self.assertNotIn("email", prompt["candidate_facts"])
         self.assertNotIn("full_name", prompt["candidate_facts"])
+        self.assertEqual(prompt["candidate_facts"]["skills"]["databases"], ["PostgreSQL"])
         self.assertNotIn("previous_attempt", prompt)
         self.assertNotIn("candidate_comments", prompt)
         self.assertNotIn("candidate_standing_instructions", prompt)

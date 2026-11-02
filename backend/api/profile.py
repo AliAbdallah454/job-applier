@@ -3,14 +3,14 @@
 from fastapi import APIRouter, HTTPException
 
 from backend.api.deps import AppContext, CurrentUser
-from backend.profiles.models import CandidateProfile
+from backend.profiles.models import CandidateProfile, upgrade_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 
 
 def load_profile(context, user):
     item = context.profiles.get_item(Key={"user_id": user}, ConsistentRead=True).get("Item")
-    return None if item is None else CandidateProfile.model_validate(item)
+    return None if item is None else CandidateProfile.model_validate(upgrade_profile(item))
 
 
 @router.get("")

@@ -2,6 +2,21 @@
 
 Things deliberately left out for now. Move an item out of this file when it is built.
 
+## Deploy the skills catalogue (pending since 2026-11-02)
+
+The skills catalogue changes the profile format to `schema_version` 2, and the deployed document
+worker rejects that format. If the new API runs with the old worker, every new tailoring fails.
+Do these in order, then remove this section:
+
+1. Commit and push to `main`.
+2. Wait for CI to finish deploying the document worker.
+3. Restart the local API and reload the web app. Until then the skills picker stays empty.
+4. Click **Save profile** once. The stored profile keeps the old format until it is saved, and
+   `upgrade_profile` converts it on every read.
+
+The same order applies to any change to `GenerationInput`, `CandidateProfile` or `PROMPT_VERSION`
+(see the Notes in `CLAUDE.md`).
+
 ## Automatic daily job collection (not implemented)
 
 The stack used to create an EventBridge rule (`DailyCollection`, disabled by default) that ran

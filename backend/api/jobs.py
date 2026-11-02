@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from backend.api.catalogue import JobFilters
 from backend.api.deps import AppContext, CurrentUser
 from backend.documents.models import LANGUAGES, ModelOption
+from backend.profiles.skills import SKILL_CATEGORIES, SkillCategory
 from backend.utils.job_taxonomy import ContractType, JobCategory, Seniority
 
 router = APIRouter(prefix="/api", tags=["jobs"])
@@ -19,6 +20,7 @@ class Options(BaseModel):
     seniorities: list[str]
     models: list[ModelOption]
     languages: list[ModelOption]
+    skill_categories: list[SkillCategory]
     user_id: str
     demo: bool
 
@@ -53,6 +55,7 @@ def options(context: AppContext, user: CurrentUser) -> Options:
         seniorities=list(get_args(Seniority)),
         models=context.settings.document_models,
         languages=LANGUAGES,
+        skill_categories=SKILL_CATEGORIES,
         user_id=user,
         demo=context.settings.demo,
     )
