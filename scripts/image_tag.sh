@@ -9,6 +9,10 @@ cd "$(git rev-parse --show-toplevel)"
 case "$(basename "$dockerfile")" in
     Dockerfile.documents) code=(backend/documents backend/profiles backend/utils) ;;
     Dockerfile.seed | Dockerfile.scrape | Dockerfile.classify) code=(backend/jobs backend/utils) ;;
+    # The API imports every feature; its tests are not copied into the image.
+    Dockerfile.api) code=(backend/__init__.py backend/api backend/documents backend/jobs backend/mail
+        backend/profiles backend/utils) ;;
+    Dockerfile.web) code=(frontend containers/web) ;;
     *) echo "No code folders listed for $dockerfile in $0" >&2; exit 1 ;;
 esac
 

@@ -13,7 +13,8 @@ For a new contributor or LLM session, start with [AGENTS.md](../AGENTS.md) and [
 | [Documents guide](../backend/documents/README.md) | Tailoring your LaTeX CV and letter generation, retries and review | Current implementation |
 | [Mail guide](../backend/mail/README.md) | Mailbox setup, application tracking and LinkedIn job emails | Current implementation |
 | [Fetcher guide](fetchers.md) | Employer-board adapter behavior and limitations | Feature reference |
-| [Web app guide](../frontend/README.md) | Run the local API and React app; hosting plan | Current implementation; local only, not deployed |
+| [Web app guide](../frontend/README.md) | Run the local API and React app | Current implementation |
+| [Kubernetes deployment](kubernetes.md) | API and web app on a kubeadm cluster on EC2: `Cluster` stack, images, Helm chart | Written and tested on kind; not yet deployed to AWS |
 | [Development scripts](../scripts/README.md) | Profile fixtures and reset behavior | Current implementation |
 
 When changing behavior, update the relevant feature guide.

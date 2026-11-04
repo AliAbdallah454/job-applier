@@ -247,6 +247,23 @@ class AuthTests(unittest.TestCase):
         )
         self.assertEqual((auth.owner_id, auth.app_url), ("o", "https://app.example"))
 
+    def test_a_deployed_app_takes_its_own_name_and_hides_its_docs(self):
+        app = create_app(Context(self.settings(self.auth)), public_host="app.example.com")
+        public = TestClient(app, base_url="https://app.example.com")
+        self.assertEqual(public.get("/api/options").status_code, 401)
+        self.assertEqual(public.get("/api/health").json(), {"ok": True})
+        for path in ("/docs", "/redoc", "/openapi.json"):
+            self.assertEqual(public.get(path).status_code, 404)
+        self.assertEqual(
+            public.put("/api/profile", headers={"Origin": "https://evil.example"}).status_code, 403
+        )
+        foreign = TestClient(app, base_url="https://evil.example")
+        self.assertEqual(foreign.get("/api/health").status_code, 400)
+        local = TestClient(
+            create_app(Context(self.settings(self.auth))), base_url="http://localhost"
+        )
+        self.assertEqual(local.get("/openapi.json").status_code, 200)
+
 
 @mock_aws
 class TwoUsersTests(unittest.TestCase):

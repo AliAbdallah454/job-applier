@@ -79,9 +79,8 @@ root README).
 
 The account in `AUTH0_OWNER_ID` holds the config user's data and the one mailbox. Accounts created
 in Auth0 get their own data but no mail tracking, as that needs a mailbox per user. They have no
-spending limit, so create them only for people you trust until there are credits. `/docs` and
-`/openapi.json` stay public, so turn them off before the API is deployed, and also change
-`LOCAL_HOSTS` in `backend/api/app.py`, which only allows localhost.
+spending limit, so create them only for people you trust until there are credits. A deployed API
+(see [kubernetes.md](kubernetes.md)) closes `/docs` and `/openapi.json`.
 
 ## Mail
 

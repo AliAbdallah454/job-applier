@@ -2,8 +2,9 @@
 
 Browse classified jobs, keep your profile and LaTeX CVs, tailor a CV to a job and review
 the result. React, TypeScript, Vite and Tailwind talk to the FastAPI app in `backend/api/`.
-Both run on your machine. Nothing here is deployed, and the API has no login, so it only
-binds to localhost and refuses writes from other sites.
+Both run on your machine, where the API binds to localhost and refuses writes from other sites.
+They can also be deployed to a Kubernetes cluster you build on EC2, behind Auth0 login: see
+[docs/kubernetes.md](../docs/kubernetes.md).
 
 The app follows the system's light or dark setting until you use the toggle in the top bar.
 That choice is saved in the browser.
@@ -51,6 +52,11 @@ disabling sign-ups does not cover it. Until `AUTH0_OWNER_ID` is set every login 
 message gives the account's ID to put in `.env`. Without these values there is no login, and
 `--demo` never has one. Auth0's application needs the callback
 `http://localhost:8000/api/auth/callback` and the logout URL `http://localhost:5173`.
+
+Started with `--host` set to anything but localhost, as in its container, the API is deployed: it
+refuses to start without the `AUTH0_*` values or with an `AUTH0_APP_URL` on localhost, answers only
+to that URL's host name and closes `/docs` and `/openapi.json`. `/api/health` answers without
+login, for Kubernetes probes.
 
 ## Tailoring
 

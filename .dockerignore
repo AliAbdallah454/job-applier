@@ -10,3 +10,11 @@
 backend/tests/
 **/__pycache__/
 !containers/Dockerfile.documents
+!containers/Dockerfile.api
+!containers/Dockerfile.web
+!containers/web/
+!containers/web/**
+!frontend/
+!frontend/**
+frontend/node_modules/
+frontend/dist/

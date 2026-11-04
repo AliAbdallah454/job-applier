@@ -1,4 +1,4 @@
-"""FastAPI application: local-only guards, shared error handling and the feature routers."""
+"""FastAPI application: host and origin guards, shared error handling and the feature routers."""
 
 import logging
 from urllib.parse import urlsplit
@@ -17,19 +17,28 @@ LOG = logging.getLogger(__name__)
 LOCAL_HOSTS = ["localhost", "127.0.0.1"]
 
 
-def create_app(context=None):
-    app = FastAPI(title="job-applier", separate_input_output_schemas=False)
+def create_app(context=None, public_host=None):
+    """The app; with `public_host`, the name it is deployed under, its API docs are closed."""
+    hosts = LOCAL_HOSTS + ([public_host] if public_host else [])
+    docs = {"docs_url": None, "redoc_url": None, "openapi_url": None} if public_host else {}
+    app = FastAPI(title="job-applier", separate_input_output_schemas=False, **docs)
     app.state.context = context
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=LOCAL_HOSTS)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=hosts)
 
     @app.middleware("http")
     async def same_origin_writes(request: Request, call_next):
-        # There is no login yet, so a page on another site must not be able to spend Bedrock.
+        # Without login a page on another site must not be able to spend Bedrock, and with it
+        # this backs up the SameSite cookie.
         origin = request.headers.get("origin")
         unsafe = request.method not in {"GET", "HEAD", "OPTIONS"}
-        if unsafe and origin and urlsplit(origin).hostname not in LOCAL_HOSTS:
+        if unsafe and origin and urlsplit(origin).hostname not in hosts:
             return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
         return await call_next(request)
+
+    @app.get("/api/health", include_in_schema=False)
+    def health():
+        """For Kubernetes probes: answers without login and without touching AWS."""
+        return {"ok": True}
 
     @app.exception_handler(ValueError)
     async def invalid_value(_, exc):

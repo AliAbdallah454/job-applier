@@ -82,6 +82,7 @@ Resources:
                 Resource:
                   - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/jobpipeline/*
                   - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/application/*
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/cluster/*
 
 Outputs:
   DeployRoleArn:

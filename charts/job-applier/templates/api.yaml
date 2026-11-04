@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    app: api
+spec:
+  # One copy only: mail sync runs inside it, and two would read the same mailbox at once.
+  # Recreate stops the old pod before starting the new one, for the same reason.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      automountServiceAccountToken: false  # It never talks to Kubernetes.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: "{{ required "Set images.api.repository" .Values.images.api.repository }}:{{ required "Set images.api.tag" .Values.images.api.tag }}"
+          args:
+            - --host=0.0.0.0
+            - --port=8000
+            - --region={{ .Values.region }}
+            - --user-id={{ .Values.userId }}
+          env:
+            - name: AWS_DEFAULT_REGION
+              value: "{{ .Values.region }}"
+            # The API refuses to start unless these name the public host.
+            - name: AUTH0_APP_URL
+              value: "https://{{ required "Set host, the app's public name" .Values.host }}"
+            - name: AUTH0_CALLBACK_URL
+              value: "https://{{ .Values.host }}/api/auth/callback"
+          envFrom:
+            - secretRef:
+                name: {{ .Values.secretName }}
+          ports:
+            - name: http
+              containerPort: 8000
+          # The API only answers to its own names, so the probes say they are localhost.
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp  # TeX writes its work files here while compiling an edited CV.
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector:
+    app: api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

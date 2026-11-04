@@ -8,6 +8,15 @@
 | Push to `main` (docs/frontend-only pushes are skipped) | The above, then `cdk deploy JobPipeline Application`, then parallel builds of only the images whose contents changed. |
 | Manual (`workflow_dispatch`) | Same as a push; only deploys when run on `main`. |
 
+`.github/workflows/cluster.yml` runs after CI/CD or Frontend succeeds on a push to `main`, or by
+hand on `main`: `cdk deploy Cluster`, then the API and web images, built only when their
+content tag (`scripts/image_tag.sh`: the API covers every `backend/` folder but tests, the web
+app `frontend/` and `containers/web/`) is not in `cluster/api` or `cluster/web` yet. Its summary
+prints the `helm upgrade` command with both tags; running it is manual, because GitHub cannot
+reach the cluster (see [kubernetes.md](kubernetes.md)). The first run creates the servers, which
+cost money from then on. The role must allow pushing to `cluster/*`: redeploy it (step 2 below)
+after pulling this change.
+
 `.github/workflows/frontend.yml` runs separately on pull requests and pushes to `main` that
 touch `frontend/` or `backend/`: type check, Vitest, production build, and a check that
 `frontend/openapi.json` and `frontend/src/api/schema.d.ts` match the API. It has no AWS access.

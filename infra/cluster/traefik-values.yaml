@@ -1,0 +1,23 @@
+# Traefik, the ingress controller, listening on the worker's own ports 80 and 443 (hostPort), so
+# no AWS load balancer is needed. Installed by hand: see docs/kubernetes.md.
+ports:
+  web:
+    hostPort: 80
+    # Every plain HTTP request goes to HTTPS, including Let's Encrypt's checks, which follow
+    # the redirect and do not check the certificate there.
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    hostPort: 443
+service:
+  type: ClusterIP  # The host ports are the way in; there is no load balancer to give it an IP.
+# A host port can only be held by one pod, so the old pod must stop before the new one starts.
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0

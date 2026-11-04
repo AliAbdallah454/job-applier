@@ -1,0 +1,9 @@
+The app will be at https://{{ .Values.host }} once:
+  - the DNS record for {{ .Values.host }} points at the worker's Elastic IP
+  - the certificate is ready: kubectl -n {{ .Release.Namespace }} get certificate
+  - the API has started:      kubectl -n {{ .Release.Namespace }} logs deploy/api
+{{- if .Values.tls.staging }}
+
+This uses Let's Encrypt staging, which browsers do not trust. Once it works, upgrade with
+--set tls.staging=false and delete the job-applier-tls secret to get a real certificate.
+{{- end }}

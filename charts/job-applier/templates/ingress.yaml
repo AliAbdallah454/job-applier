@@ -1,0 +1,33 @@
+# One host for both, split by path, as the Vite proxy does on a laptop: the login cookie and
+# the same-origin check then work without CORS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: job-applier
+  annotations:
+    # cert-manager sees this, gets a certificate for the host and stores it in the TLS secret.
+    cert-manager.io/issuer: letsencrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - "{{ .Values.host }}"
+      secretName: job-applier-tls
+  rules:
+    - host: "{{ .Values.host }}"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

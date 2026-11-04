@@ -1,0 +1,29 @@
+# The public name of the app, such as app.example.com. Its DNS record must point at the worker's
+# Elastic IP before HTTPS can work. Required.
+host: ""
+
+# Where the API finds the stacks and their tables.
+region: us-east-1
+
+# The user the AUTH0_OWNER_ID account acts as, holding the existing data and the mailbox.
+userId: ali
+
+# The Secret holding the API's settings from .env (AUTH0_* and optionally MAIL_*). Created by
+# hand with kubectl, never by this chart, so that no value reaches Git. See docs/kubernetes.md.
+secretName: job-applier
+
+# Repository URIs from the Cluster stack outputs, and the tags pushed to them. Required.
+images:
+  api:
+    repository: ""
+    tag: ""
+  web:
+    repository: ""
+    tag: ""
+
+tls:
+  # Let's Encrypt writes here before a certificate expires. Required.
+  email: ""
+  # Staging certificates are not trusted by browsers but have generous limits: use them until
+  # the setup works, then switch to production.
+  staging: false
