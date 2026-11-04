@@ -125,7 +125,7 @@ jobs:
           {
             echo "### Install these images"
             echo '```sh'
-            echo "helm upgrade job-applier charts/job-applier -n job-applier --reuse-values \\"
+            echo "helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \\"
             echo "  --set images.api.tag=$(scripts/image_tag.sh containers/Dockerfile.api) \\"
             echo "  --set images.web.tag=$(scripts/image_tag.sh containers/Dockerfile.web)"
             echo '```'

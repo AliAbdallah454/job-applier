@@ -1,5 +1,5 @@
 # Traefik, the ingress controller, listening on the worker's own ports 80 and 443 (hostPort), so
-# no AWS load balancer is needed. Installed by hand: see docs/kubernetes.md.
+# no AWS load balancer is needed. Installed once per cluster: see docs/kubernetes.md.
 ports:
   web:
     hostPort: 80

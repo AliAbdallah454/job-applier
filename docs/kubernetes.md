@@ -15,8 +15,8 @@ Browser → https://app.yourdomain.com → DNS A record → worker's Elastic IP
 |---|---|
 | Servers, network, IAM roles, image repositories | `infra/cluster_stack.py` (`Cluster` stack) |
 | What each server installs on first boot | `infra/cluster/node-setup.sh` |
-| Ingress controller settings | `infra/cluster/traefik-values.yaml` |
-| The app | Helm chart in `charts/job-applier` |
+| Ingress controller settings | `deploy/cluster/traefik-values.yaml` |
+| The app | Helm chart in `deploy/helm/job-applier` |
 | Images | `containers/Dockerfile.api`, `containers/Dockerfile.web` |
 
 `.github/workflows/cluster.yml` deploys the `Cluster` stack and pushes the API and web images
@@ -123,7 +123,7 @@ Back on the control plane, `kubectl get nodes` shows both, `Ready` within a minu
 
 On the control plane, where Helm is installed. Copy the Traefik values over first: in the
 control-plane session, run `cat > traefik-values.yaml`, paste the contents of
-`infra/cluster/traefik-values.yaml`, then press Ctrl-D.
+`deploy/cluster/traefik-values.yaml`, then press Ctrl-D.
 
 ```sh
 helm repo add traefik https://traefik.github.io/charts
@@ -198,7 +198,7 @@ Start with Let's Encrypt's **staging** server. Its certificates are not trusted 
 but mistakes there don't use up the production limits.
 
 ```sh
-helm install job-applier charts/job-applier -n job-applier \
+helm install job-applier deploy/helm/job-applier -n job-applier \
   --set host=app.yourdomain.com \
   --set tls.email=you@example.com \
   --set tls.staging=true \
@@ -212,7 +212,7 @@ kubectl -n job-applier get certificate    # READY True after a minute or two.
 When the certificate is ready, switch to a real one:
 
 ```sh
-helm upgrade job-applier charts/job-applier -n job-applier --reuse-values --set tls.staging=false
+helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values --set tls.staging=false
 kubectl -n job-applier delete secret job-applier-tls   # So cert-manager asks again.
 ```
 
@@ -223,7 +223,7 @@ Open `https://app.yourdomain.com`. It sends you to the Auth0 login and back.
 Build and push with a new `TAG` (step 2), then:
 
 ```sh
-helm upgrade job-applier charts/job-applier -n job-applier --reuse-values \
+helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \
   --set images.api.tag=$TAG --set images.web.tag=$TAG
 ```
 
