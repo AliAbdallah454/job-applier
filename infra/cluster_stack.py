@@ -1,4 +1,5 @@
-"""Two EC2 servers for a self-managed Kubernetes cluster (kubeadm) running the API and web app.
+"""Three EC2 servers (a control plane and two workers) for a self-managed Kubernetes cluster
+(kubeadm) running the API and web app.
 
 The stack only creates the servers, their network and permissions, and the image repositories.
 Each server installs containerd, kubeadm and the ECR plugin from cluster/node-setup.sh on first
@@ -85,6 +86,9 @@ class ClusterStack(Stack):
                 http_endpoint=True,
                 http_tokens=ec2.HttpTokens.REQUIRED,  # IMDSv2 only.
                 http_put_response_hop_limit=hop_limit,
+                # Calico routes pod traffic between nodes without wrapping it, so packets carry
+                # pod addresses, which EC2 drops unless this check is off.
+                source_dest_check=False,
                 block_devices=[
                     ec2.BlockDevice(
                         device_name="/dev/sda1",
@@ -110,12 +114,14 @@ class ClusterStack(Stack):
         )
         self.grant_api(worker_role, repositories.values())
 
-        # Only the worker runs pods that need AWS. A hop limit of 2 lets them reach the
-        # metadata service through the node, which also means every pod on it acts as its role.
+        # Only the workers run pods that need AWS. A hop limit of 2 lets them reach the
+        # metadata service through the node, which also means every pod on them acts as its role.
         control_plane = server("ControlPlane", control_plane_type, control_role, 1)
         worker = server("Worker", worker_type, worker_role, 2)
+        second_worker = server("Worker2", worker_type, worker_role, 2)
 
-        # A fixed address for DNS; a server's own public IP changes when it stops.
+        # A fixed address for DNS; a server's own public IP changes when it stops. Only the first
+        # worker has one, so Traefik must run there: see docs/kubernetes.md.
         address = ec2.CfnEIP(self, "WorkerAddress", instance_id=worker.instance_id)
 
         for name, value in {
@@ -123,11 +129,12 @@ class ClusterStack(Stack):
             "ControlPlanePrivateIp": control_plane.instance_private_ip,
             "WorkerInstanceId": worker.instance_id,
             "WorkerPublicIp": address.attr_public_ip,
+            "Worker2InstanceId": second_worker.instance_id,
         }.items():
             CfnOutput(self, name, value=value)
 
     def grant_api(self, role, repositories):
-        """What the API does in AWS, and nothing more, as every pod on the worker gets it."""
+        """What the API does in AWS, and nothing more, as every pod on the workers gets it."""
 
         def arn(service, resource, account=None, region=None):
             return self.format_arn(

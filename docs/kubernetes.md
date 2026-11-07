@@ -1,7 +1,7 @@
 # Deploying the API and web app on Kubernetes
 
-The API and web app run on a small Kubernetes cluster you build yourself with kubeadm on two EC2
-servers. The document workers, tables, queue and bucket stay where they are, in the `Application`
+The API and web app run on a small Kubernetes cluster you build yourself with kubeadm on three EC2
+servers: a control plane and two workers. The document workers, tables, queue and bucket stay where they are, in the `Application`
 and `JobPipeline` stacks.
 
 ```
@@ -26,9 +26,9 @@ Steps 1 and 2 below do by hand what that workflow does.
 
 ## What it costs
 
-Roughly $45-55 a month while the servers run: a `t3.small` control plane, a `t3.medium` worker,
-two 30 GB disks and two public IPv4 addresses. Check current EC2 prices before you start.
-Stopping both servers stops the server charges, but not the disks or the Elastic IP. Bedrock
+Roughly $80-90 a month while the servers run: a `t3.small` control plane, two `t3.medium`
+workers, three 30 GB disks and three public IPv4 addresses. Check current EC2 prices before you start.
+Stopping the servers stops the server charges, but not the disks or the Elastic IP. Bedrock
 tailoring is charged per use, as before.
 
 ## What you need first
@@ -45,7 +45,7 @@ JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy Cluster
 ```
 
 Note the outputs: `ControlPlaneInstanceId`, `ControlPlanePrivateIp`, `WorkerInstanceId`,
-`WorkerPublicIp`, `ApiRepositoryUri` and `WebRepositoryUri`. To see them again:
+`WorkerPublicIp`, `Worker2InstanceId`, `ApiRepositoryUri` and `WebRepositoryUri`. To see them again:
 
 ```sh
 aws cloudformation describe-stacks --stack-name Cluster \
@@ -105,10 +105,12 @@ kubectl get nodes                        # Ready.
 kubeadm token create --print-join-command
 ```
 
-The control plane keeps its `NoSchedule` taint, so your pods run on the worker, which is the
-server with the app's IAM role and the Elastic IP.
+The control plane keeps its `NoSchedule` taint, so your pods run on the workers, which have the
+app's IAM role. Only the first worker has the Elastic IP.
 
-## 4. Join the worker
+## 4. Join the workers
+
+Do this on both workers, `<WorkerInstanceId>` and `<Worker2InstanceId>`:
 
 ```sh
 aws ssm start-session --target <WorkerInstanceId>
@@ -117,7 +119,20 @@ cloud-init status --wait
 kubeadm join ...                          # The full command printed in step 3.
 ```
 
-Back on the control plane, `kubectl get nodes` shows both, `Ready` within a minute.
+Back on the control plane, `kubectl get nodes` shows all three, `Ready` within a minute.
+
+Then mark the first worker, the one with the Elastic IP, as the one Traefik runs on. Its node name
+is its private DNS name:
+
+```sh
+aws ec2 describe-instances --instance-ids <WorkerInstanceId> \
+  --query "Reservations[0].Instances[0].PrivateDnsName" --output text   # e.g. ip-10-20-0-42.ec2.internal
+kubectl label node ip-10-20-0-42 job-applier/ingress=true               # Drop the .ec2.internal part.
+kubectl get nodes -L job-applier/ingress                                # Check it.
+```
+
+On a cluster that already has Traefik, add the label, copy the new `traefik-values.yaml` over and
+run `helm upgrade traefik traefik/traefik --version 42.3.0 -n traefik -f traefik-values.yaml`.
 
 ## 5. Install Traefik and cert-manager
 
@@ -134,7 +149,7 @@ helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version v
   -n cert-manager --create-namespace --set crds.enabled=true --wait
 ```
 
-Traefik listens on the worker's ports 80 and 443 directly, so no AWS load balancer is needed.
+Traefik listens on the first worker's ports 80 and 443 directly, so no AWS load balancer is needed.
 Sending HTTP to HTTPS is done by Traefik for every site on the cluster.
 
 ## 6. Use kubectl and Helm from your Mac
@@ -266,7 +281,7 @@ kept on destroy, so delete them in the ECR console if you no longer want them.
 - **Deploying from CI:** CI pushes the images but `helm upgrade` is manual, as GitHub cannot
   reach the cluster. A tool running inside the cluster, such as Argo CD or Flux, could apply
   changes from Git instead.
-- **Pod permissions:** every pod on the worker can act as its IAM role. A role per pod needs a
+- **Pod permissions:** every pod on the workers can act as their IAM role. A role per pod needs a
   pod identity webhook and an OIDC issuer.
 - **Spending limits:** a user can start any number of tailorings. Create accounts only for people
   you trust.

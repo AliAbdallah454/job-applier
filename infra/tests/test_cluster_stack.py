@@ -35,10 +35,10 @@ class ClusterStackTests(unittest.TestCase):
         self.assertEqual(open_ports, [80, 443])
         self.assertNotIn("22", json.dumps(group))
 
-    def test_servers_require_imdsv2_and_only_the_worker_lets_pods_reach_it(self):
+    def test_servers_require_imdsv2_and_only_the_workers_let_pods_reach_it(self):
         servers = self.template.find_resources("AWS::EC2::Instance")
         options = {name: item["Properties"]["MetadataOptions"] for name, item in servers.items()}
-        self.assertEqual(len(options), 2)
+        self.assertEqual(len(options), 3)
         for name, metadata in options.items():
             self.assertEqual(metadata["HttpTokens"], "required")
             self.assertEqual(
@@ -46,10 +46,11 @@ class ClusterStackTests(unittest.TestCase):
             )
 
     def test_servers_have_encrypted_disks_and_the_setup_script(self):
-        self.template.resource_count_is("AWS::EC2::Instance", 2)
+        self.template.resource_count_is("AWS::EC2::Instance", 3)
         self.template.all_resources_properties(
             "AWS::EC2::Instance",
             {
+                "SourceDestCheck": False,
                 "BlockDeviceMappings": [
                     Match.object_like(
                         {"Ebs": Match.object_like({"Encrypted": True, "VolumeSize": 30})}
@@ -65,6 +66,14 @@ class ClusterStackTests(unittest.TestCase):
         actions = json.dumps(statements(self.template, "ControlPlaneRole"))
         self.assertNotIn("dynamodb", actions)
         self.assertNotIn("s3:", actions)
+
+    def test_both_workers_use_the_worker_role(self):
+        profiles = self.template.find_resources("AWS::IAM::InstanceProfile")
+        roles = {
+            name: profile["Properties"]["Roles"][0]["Ref"] for name, profile in profiles.items()
+        }
+        worker_profiles = [name for name, role in roles.items() if role.startswith("WorkerRole")]
+        self.assertEqual(len(worker_profiles), 2)
 
     def test_the_worker_can_do_what_the_api_does_and_no_more(self):
         found = statements(self.template, "WorkerRole")

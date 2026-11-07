@@ -15,6 +15,10 @@ ports:
     hostPort: 443
 service:
   type: ClusterIP  # The host ports are the way in; there is no load balancer to give it an IP.
+# Only the first worker has the Elastic IP, so Traefik must run there. The label is added by hand
+# when that worker joins (docs/kubernetes.md, step 4); without it Traefik stays Pending.
+nodeSelector:
+  job-applier/ingress: "true"
 # A host port can only be held by one pod, so the old pod must stop before the new one starts.
 updateStrategy:
   type: RollingUpdate
