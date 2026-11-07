@@ -84,7 +84,9 @@ not part of any image tag.
 - A deploy re-applies the template, so it can undo manual changes such as suspended autoscaling.
 - The role allows pushing to `job-applier/*` only. After changing
   `infra/ci/github-actions-role.yaml`, deploy it again by hand (One-time setup, step 2): CI
-  never changes its own permissions.
+  never changes its own permissions. Pass the parameters it was first deployed with
+  (`aws cloudformation describe-stacks --stack-name job-applier-github-ci`): switching
+  `CreateOidcProvider` from `true` to `false` deletes the provider, and CI can no longer log in.
 - The worker list appears twice in the workflow (the tag step and the matrix); keep them in
   step when adding a worker.
 - The folder list is maintained by hand; add a folder there when a worker starts importing

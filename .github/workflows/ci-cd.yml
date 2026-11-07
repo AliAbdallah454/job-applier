@@ -253,13 +253,11 @@ jobs:
           REGION: ${{ vars.AWS_REGION }}
         run: |
           registry="$(echo "$ROLE" | cut -d: -f5).dkr.ecr.$REGION.amazonaws.com/job-applier"
-          {
-            echo "### Install the cluster images"
-            echo '```sh'
-            echo "helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \\"
-            echo "  --set images.api.repository=$registry/api \\"
-            echo "  --set images.api.tag=$(scripts/image_tag.sh containers/Dockerfile.api) \\"
-            echo "  --set images.web.repository=$registry/web \\"
-            echo "  --set images.web.tag=$(scripts/image_tag.sh containers/Dockerfile.web)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          command="helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \\
+            --set images.api.repository=$registry/api \\
+            --set images.api.tag=$(scripts/image_tag.sh containers/Dockerfile.api) \\
+            --set images.web.repository=$registry/web \\
+            --set images.web.tag=$(scripts/image_tag.sh containers/Dockerfile.web)"
+          # In the job's log, and on the run's Summary page.
+          echo "$command"
+          printf '### Install the cluster images\n```sh\n%s\n```\n' "$command" >> "$GITHUB_STEP_SUMMARY"
