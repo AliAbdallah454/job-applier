@@ -34,8 +34,15 @@ TRAEFIK_PORTS = {80: 30080, 443: 30443}
 class ClusterStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs):
         super().__init__(scope, construct_id, **kwargs)
-        control_plane_type = self.node.try_get_context("controlPlaneType") or "t3.small"
+        # Not t3.small: with 2 GB, the API server answered too slowly under load, and the
+        # scheduler and controller-manager kept losing their leases and restarting, so pods on a
+        # stopped worker were never moved. Changing the type stops and starts the server; it keeps
+        # its disk, address and cluster.
+        control_plane_type = self.node.try_get_context("controlPlaneType") or "t3.medium"
         worker_type = self.node.try_get_context("workerType") or "t3.medium"
+        # "off" deletes the load balancer, which costs money even while the servers are
+        # stopped, and keeps the Elastic IP, so the address is the same when it comes back.
+        website = (self.node.try_get_context("website") or "on") != "off"
 
         vpc = ec2.Vpc(
             self,
@@ -136,6 +143,20 @@ class ClusterStack(Stack):
         # was on the first worker, as a new id would mean a new address and a new DNS record.
         address = ec2.CfnEIP(self, "WorkerAddress")
 
+        if website:
+            self.add_balancer(vpc, balancer_group, address, workers)
+
+        for name, value in {
+            "ControlPlaneInstanceId": control_plane.instance_id,
+            "ControlPlanePrivateIp": control_plane.instance_private_ip,
+            "WorkerInstanceId": worker.instance_id,
+            "Worker2InstanceId": second_worker.instance_id,
+            "PublicIp": address.attr_public_ip,
+        }.items():
+            CfnOutput(self, name, value=value)
+
+    def add_balancer(self, vpc, balancer_group, address, workers):
+        """The website's way in: ports 80 and 443 on the Elastic IP, to Traefik on each worker."""
         # Plain TCP: HTTPS and its certificate stay with Traefik and cert-manager. Each worker
         # is a target on Traefik's node ports. Traefik's Service sends node port traffic only to
         # a Traefik pod on the same node, so a worker without one fails the health check and
@@ -172,15 +193,6 @@ class ClusterStack(Stack):
                 ),
                 deregistration_delay=Duration.seconds(30),
             )
-
-        for name, value in {
-            "ControlPlaneInstanceId": control_plane.instance_id,
-            "ControlPlanePrivateIp": control_plane.instance_private_ip,
-            "WorkerInstanceId": worker.instance_id,
-            "Worker2InstanceId": second_worker.instance_id,
-            "PublicIp": address.attr_public_ip,
-        }.items():
-            CfnOutput(self, name, value=value)
 
     def grant_api(self, role, repositories):
         """What the API does in AWS, and nothing more, as every pod on the workers gets it."""

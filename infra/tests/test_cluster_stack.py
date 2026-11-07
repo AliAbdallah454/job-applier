@@ -133,3 +133,13 @@ class ClusterStackTests(unittest.TestCase):
         writes = [s for s in found if "dynamodb:PutItem" in s["Action"]]
         self.assertTrue(all("JobPipeline" not in json.dumps(s["Resource"]) for s in writes))
         self.assertNotIn("sqs:ReceiveMessage", text)
+
+
+class WebsiteOffTests(unittest.TestCase):
+    def test_off_removes_the_load_balancer_but_keeps_the_address(self):
+        app = App(context={"website": "off"})
+        template = Template.from_stack(ClusterStack(app, "TestCluster"))
+        for kind in ("LoadBalancer", "Listener", "TargetGroup"):
+            template.resource_count_is(f"AWS::ElasticLoadBalancingV2::{kind}", 0)
+        template.resource_count_is("AWS::EC2::EIP", 1)
+        template.resource_count_is("AWS::EC2::Instance", 3)

@@ -32,11 +32,12 @@ Steps 1 and 2 below do by hand what that workflow does.
 
 ## What it costs
 
-Roughly $100-110 a month while the servers run: a `t3.small` control plane, two `t3.medium`
-workers, three 30 GB disks, four public IPv4 addresses and the Network Load Balancer (about
-$16-20 of that). Check current prices before you start. Stopping the servers stops the server
-charges, but not the disks, the load balancer or the Elastic IP. Bedrock
-tailoring is charged per use, as before.
+Roughly $115-125 a month while the servers run: a `t3.medium` control plane (a `t3.small`, with
+2 GB, was too small for etcd and the API server), two `t3.medium` workers, three 30 GB disks,
+four public IPv4 addresses and the Network Load Balancer (about $16-20 of that). Check current
+prices before you start. Stopping the servers stops the server charges, but not the disks, the
+load balancer or the Elastic IP (see "Pausing the cluster"). Bedrock tailoring is charged per
+use, as before.
 
 ## What you need first
 
@@ -260,6 +261,36 @@ ports 80 and 443 and the Elastic IP was on that worker. The site is down for a f
    ```
 4. Check that both workers are `healthy` in the target groups, and that the first worker got a
    new public IP, which it needs to reach AWS.
+
+## Pausing the cluster
+
+A load balancer cannot be stopped, only deleted: it costs about $16-20 a month even while the
+servers are stopped. The `website` switch removes it from the stack, so CloudFormation deletes it
+properly; never delete it by hand, as the stack would still believe it exists. The Elastic IP
+stays, so the address, the DNS name and the certificate are the same when it comes back. CI reads
+the switch from the repository variable `CLUSTER_WEBSITE` (`on` when unset).
+
+To pause:
+
+```sh
+gh variable set CLUSTER_WEBSITE --body off
+gh workflow run ci-cd.yml --ref main         # deletes the load balancer (deploy-cluster job)
+gh run watch                                  # wait for it to finish
+aws ec2 stop-instances --instance-ids <ControlPlaneInstanceId> <WorkerInstanceId> <Worker2InstanceId>
+```
+
+To resume:
+
+```sh
+aws ec2 start-instances --instance-ids <ControlPlaneInstanceId> <WorkerInstanceId> <Worker2InstanceId>
+gh variable set CLUSTER_WEBSITE --body on
+gh workflow run ci-cd.yml --ref main         # creates the load balancer again
+gh run watch
+```
+
+Then wait until both workers are `healthy` in the target groups. While the variable is `off`,
+pushes to `main` keep the load balancer away; a deploy from your own machine needs
+`-c website=off` too.
 
 ## When something is wrong
 
