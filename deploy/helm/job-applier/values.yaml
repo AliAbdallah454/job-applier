@@ -12,7 +12,7 @@ userId: ali
 # hand with kubectl, never by this chart, so that no value reaches Git. See docs/kubernetes.md.
 secretName: job-applier
 
-# Repository URIs from the Cluster stack outputs, and the tags pushed to them. Required.
+# Repository URIs from the Repositories stack outputs, and the tags pushed to them. Required.
 images:
   api:
     repository: ""

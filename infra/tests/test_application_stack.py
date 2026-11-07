@@ -1,5 +1,6 @@
 """Storage boundaries for the independently deployed Application stack."""
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -178,15 +179,10 @@ class ApplicationStackTests(unittest.TestCase):
         ]:
             self.assertIn(f"foundation-model/{model}", str(foundations))
 
-    def test_document_repository_is_separate_from_pipeline_images(self):
-        self.template.resource_count_is("AWS::ECR::Repository", 1)
-        self.template.has_resource_properties(
-            "AWS::ECR::Repository",
-            {
-                "RepositoryName": "testapplication/documents",
-                "ImageTagMutability": "IMMUTABLE",
-            },
-        )
+    def test_documents_use_the_shared_repository(self):
+        self.template.resource_count_is("AWS::ECR::Repository", 0)
+        images = json.dumps(self.template.find_resources("AWS::ECS::TaskDefinition"))
+        self.assertIn("/job-applier/documents:unpublished", images)
         self.template.resource_count_is("Custom::WorkerImage", 0)
         self.template.resource_count_is("AWS::CodeBuild::Project", 0)
 

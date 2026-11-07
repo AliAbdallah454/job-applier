@@ -7,7 +7,6 @@ from aws_cdk import aws_applicationautoscaling as autoscaling
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_lambda_event_sources as sources
@@ -17,6 +16,8 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import aws_sqs as sqs
 from aws_cdk import aws_ssm as ssm
 from constructs import Construct
+
+from infra.repositories_stack import find_repository
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -206,15 +207,7 @@ class JobPipelineStack(Stack):
         )
 
         def worker_image(name):
-            repository = ecr.Repository(
-                self,
-                name.title() + "Repository",
-                repository_name=f"{self.stack_name.lower()}/{name}",
-                image_tag_mutability=ecr.TagMutability.IMMUTABLE,
-                image_scan_on_push=True,
-                removal_policy=RemovalPolicy.RETAIN,
-            )
-            CfnOutput(self, name.title() + "RepositoryUri", value=repository.repository_uri)
+            repository = find_repository(self, name)  # In the Repositories stack.
             tag = self.node.try_get_context(f"{name}ImageTag") or self.node.try_get_context(
                 "imageTag"
             )

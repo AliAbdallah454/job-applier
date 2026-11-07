@@ -68,7 +68,7 @@ Resources:
                 Effect: Allow
                 Action: ecr:GetAuthorizationToken
                 Resource: "*"
-              - Sid: EcrPushWorkerImages
+              - Sid: EcrPushImages
                 Effect: Allow
                 Action:
                   - ecr:BatchCheckLayerAvailability
@@ -80,9 +80,8 @@ Resources:
                   - ecr:PutImage
                   - ecr:UploadLayerPart
                 Resource:
-                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/jobpipeline/*
-                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/application/*
-                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/cluster/*
+                  # The Repositories stack's, one per image.
+                  - !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/job-applier/*
 
 Outputs:
   DeployRoleArn:

@@ -1,10 +1,10 @@
 name: CI/CD
 
-# Pull requests: tests only. Pushes to main: tests, deploy the three CDK stacks (JobPipeline,
-# Application, Cluster) one after another, then build and push the images whose contents
-# changed: the ECS workers' and the Kubernetes API and web app's. Each image is tagged with a
-# hash of its inputs (scripts/image_tag.sh), so unchanged images keep their tag and their ECS
-# task definition does not change. See docs/ci-cd.md.
+# Pull requests: tests only. Pushes to main: tests, deploy the Repositories stack, build and
+# push the images whose contents changed (the ECS workers' and the Kubernetes API and web app's),
+# then deploy the other three CDK stacks (JobPipeline, Application, Cluster) one after another.
+# Each image is tagged with a hash of its inputs (scripts/image_tag.sh), so unchanged images keep
+# their tag and their ECS task definition does not change. See docs/ci-cd.md.
 on:
   pull_request:
   push:
@@ -42,10 +42,9 @@ jobs:
       - run: uv run --group infra python -m unittest discover -s infra/tests -v
       - run: npm run synth -- --quiet
 
-  deploy-jobpipeline:
-    # The stacks deploy one at a time, each after the one before succeeds. Each creates its ECR
-    # repositories on the first run and points its ECS task definitions at the images' content
-    # tags. CloudFormation skips resources that did not change.
+  deploy-repositories:
+    # The ECR repositories of every image, first, so that the images can be pushed before any
+    # stack points at them.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
@@ -68,8 +67,95 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+      - name: Show infrastructure changes
+        run: npx cdk diff Repositories || true
+      - name: Deploy Repositories
+        run: npx cdk deploy Repositories --require-approval never
+
+  push-images:
+    needs: deploy-repositories
+    runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each entry links one Dockerfile to one ECR repository (job-applier/<image>, from
+        # IMAGES in infra/repositories_stack.py).
+        include:
+          - repository: job-applier/seed
+            dockerfile: containers/Dockerfile.seed
+          - repository: job-applier/scraper
+            dockerfile: containers/Dockerfile.scrape
+          - repository: job-applier/classifier
+            dockerfile: containers/Dockerfile.classify
+          - repository: job-applier/documents
+            dockerfile: containers/Dockerfile.documents
+          - repository: job-applier/api
+            dockerfile: containers/Dockerfile.api
+          - repository: job-applier/web
+            dockerfile: containers/Dockerfile.web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: login
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: existing
+        # The tag is a content hash: if it is already in ECR, the image is unchanged.
+        run: |
+          tag=$(scripts/image_tag.sh "${{ matrix.dockerfile }}")
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if aws ecr describe-images --repository-name "${{ matrix.repository }}" \
+              --image-ids imageTag="$tag" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.existing.outputs.published != 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.existing.outputs.published != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ steps.existing.outputs.tag }}
+          cache-from: type=gha,scope=${{ matrix.repository }}
+          cache-to: type=gha,scope=${{ matrix.repository }},mode=max
+
+  deploy-jobpipeline:
+    # The stacks deploy one at a time, each after the one before succeeds, and only once every
+    # image is pushed. Each points its ECS task definitions at the images' content tags, which
+    # are now in ECR. CloudFormation skips resources that did not change.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: push-images
+    runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --group infra
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
       - name: Compute image tags
-        # Keep in step with the push-images matrix below.
+        # Keep in step with the push-images matrix above.
         run: |
           {
             echo "CDK_CONTEXT<<EOF"
@@ -107,7 +193,7 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
       - name: Compute image tags
-        # Keep in step with the push-images matrix below.
+        # Keep in step with the push-images matrix above.
         run: |
           {
             echo "CDK_CONTEXT<<EOF"
@@ -153,74 +239,27 @@ jobs:
       - name: Deploy Cluster
         run: npx cdk deploy Cluster --require-approval never -c website="$WEBSITE"
 
-  push-images:
-    needs: deploy-cluster
-    runs-on: ubuntu-latest
-    environment: ci_cd_deploy_env
-    permissions:
-      id-token: write
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        # Each entry links one Dockerfile to one ECR repository (<lowercase-stack>/<image>).
-        include:
-          - repository: jobpipeline/seed
-            dockerfile: containers/Dockerfile.seed
-          - repository: jobpipeline/scraper
-            dockerfile: containers/Dockerfile.scrape
-          - repository: jobpipeline/classifier
-            dockerfile: containers/Dockerfile.classify
-          - repository: application/documents
-            dockerfile: containers/Dockerfile.documents
-          - repository: cluster/api
-            dockerfile: containers/Dockerfile.api
-          - repository: cluster/web
-            dockerfile: containers/Dockerfile.web
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
-      - id: login
-        uses: aws-actions/amazon-ecr-login@v2
-      - id: existing
-        # The tag is a content hash: if it is already in ECR, the image is unchanged.
-        run: |
-          tag=$(scripts/image_tag.sh "${{ matrix.dockerfile }}")
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if aws ecr describe-images --repository-name "${{ matrix.repository }}" \
-              --image-ids imageTag="$tag" >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.existing.outputs.published != 'true'
-        uses: docker/setup-buildx-action@v3
-      - if: steps.existing.outputs.published != 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64
-          push: true
-          provenance: false
-          tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ steps.existing.outputs.tag }}
-          cache-from: type=gha,scope=${{ matrix.repository }}
-          cache-to: type=gha,scope=${{ matrix.repository }},mode=max
-
   helm-command:
     # The cluster's images are not deployed by CI: GitHub cannot reach the cluster, whose API
     # port is closed. This prints the command to run by hand (docs/kubernetes.md).
-    needs: push-images
+    needs: deploy-cluster
     runs-on: ubuntu-latest
+    # For the account and region in the environment's variables; no AWS access.
+    environment: ci_cd_deploy_env
     steps:
       - uses: actions/checkout@v4
-      - run: |
+      - env:
+          ROLE: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          registry="$(echo "$ROLE" | cut -d: -f5).dkr.ecr.$REGION.amazonaws.com/job-applier"
           {
             echo "### Install the cluster images"
             echo '```sh'
             echo "helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \\"
+            echo "  --set images.api.repository=$registry/api \\"
             echo "  --set images.api.tag=$(scripts/image_tag.sh containers/Dockerfile.api) \\"
+            echo "  --set images.web.repository=$registry/web \\"
             echo "  --set images.web.tag=$(scripts/image_tag.sh containers/Dockerfile.web)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

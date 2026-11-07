@@ -1,9 +1,10 @@
 """Three EC2 servers (a control plane and two workers) for a self-managed Kubernetes cluster
 (kubeadm) running the API and web app, behind a Network Load Balancer.
 
-The stack only creates the servers, their network and permissions, and the image repositories.
-Each server installs containerd, kubeadm and the ECR plugin from cluster/node-setup.sh on first
-boot; creating the cluster and installing the chart is done by hand, see docs/kubernetes.md.
+The stack only creates the servers, their network and permissions; the API and web images are in
+the Repositories stack. Each server installs containerd, kubeadm and the ECR plugin from
+cluster/node-setup.sh on first boot; creating the cluster and installing the chart is done by
+hand, see docs/kubernetes.md.
 
 It references the other stacks' resources by their generated names, not cross-stack exports, so
 that it never forces a deployment order on them.
@@ -11,13 +12,14 @@ that it never forces a deployment order on them.
 
 from pathlib import Path
 
-from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, Stack
 from aws_cdk import aws_ec2 as ec2
-from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
 from aws_cdk import aws_elasticloadbalancingv2_targets as targets
 from aws_cdk import aws_iam as iam
 from constructs import Construct
+
+from infra.repositories_stack import find_repository
 
 # Ubuntu 24.04 LTS, amd64, gp3, published by Canonical (owner 099720109477) on 2026-10-23.
 # Pinned because a new image replaces both servers, and the cluster with them. To move to a newer
@@ -71,20 +73,6 @@ class ClusterStack(Stack):
             balancer_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(port), "Website")
             nodes.add_ingress_rule(balancer_group, ec2.Port.tcp(node_port), "From the balancer")
 
-        repositories = {}
-        for name in ("api", "web"):
-            repository = ecr.Repository(
-                self,
-                name.title() + "Repository",
-                repository_name=f"{self.stack_name.lower()}/{name}",
-                image_tag_mutability=ecr.TagMutability.IMMUTABLE,
-                image_scan_on_push=True,
-                removal_policy=RemovalPolicy.RETAIN,
-                lifecycle_rules=[ecr.LifecycleRule(max_image_count=10)],
-            )
-            repositories[name] = repository
-            CfnOutput(self, name.title() + "RepositoryUri", value=repository.repository_uri)
-
         image = ec2.MachineImage.generic_linux(NODE_IMAGES)
         setup = ec2.UserData.custom(NODE_SETUP.read_text())
 
@@ -129,7 +117,7 @@ class ClusterStack(Stack):
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
             managed_policies=[managed],
         )
-        self.grant_api(worker_role, repositories.values())
+        self.grant_api(worker_role, [find_repository(self, name) for name in ("api", "web")])
 
         # Only the workers run pods that need AWS. A hop limit of 2 lets them reach the
         # metadata service through the node, which also means every pod on them acts as its role.

@@ -18,14 +18,13 @@ class StackTests(unittest.TestCase):
         cls.stack = JobPipelineStack(cls.app, "TestPipeline")
         cls.template = Template.from_stack(cls.stack)
 
-    def test_workers_have_separate_stack_named_repositories(self):
-        repositories = self.template.find_resources("AWS::ECR::Repository")
-        self.assertEqual(
-            {item["Properties"]["RepositoryName"] for item in repositories.values()},
-            {"testpipeline/seed", "testpipeline/scraper", "testpipeline/classifier"},
-        )
-        for resource_type in ["Custom::WorkerImage", "AWS::CodeBuild::Project"]:
+    def test_workers_use_the_shared_repositories(self):
+        kinds = ["AWS::ECR::Repository", "Custom::WorkerImage", "AWS::CodeBuild::Project"]
+        for resource_type in kinds:
             self.template.resource_count_is(resource_type, 0)
+        images = json.dumps(self.template.find_resources("AWS::ECS::TaskDefinition"))
+        for name in ("seed", "scraper", "classifier"):
+            self.assertIn(f"/job-applier/{name}:unpublished", images)
 
     def test_job_source_bucket_is_private_encrypted_and_retained(self):
         self.template.resource_count_is("AWS::S3::Bucket", 1)

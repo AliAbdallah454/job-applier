@@ -119,6 +119,13 @@ class ClusterStackTests(unittest.TestCase):
         worker_profiles = [name for name, role in roles.items() if role.startswith("WorkerRole")]
         self.assertEqual(len(worker_profiles), 2)
 
+    def test_the_stack_has_no_repositories_and_the_workers_pull_from_the_shared_ones(self):
+        self.template.resource_count_is("AWS::ECR::Repository", 0)
+        found = statements(self.template, "WorkerRole")
+        pulls = json.dumps([s for s in found if "ecr:BatchGetImage" in s["Action"]])
+        for name in ("api", "web"):
+            self.assertIn(f"repository/job-applier/{name}", pulls)
+
     def test_the_worker_can_do_what_the_api_does_and_no_more(self):
         found = statements(self.template, "WorkerRole")
         text = json.dumps(found)

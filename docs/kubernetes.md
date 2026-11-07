@@ -25,8 +25,8 @@ the other one.
 | The app | Helm chart in `deploy/helm/job-applier` |
 | Images | `containers/Dockerfile.api`, `containers/Dockerfile.web` |
 
-`.github/workflows/ci-cd.yml` deploys the `Cluster` stack after the other two and pushes the API
-and web images on a push to `main` (see [ci-cd.md](ci-cd.md)). Building the
+`.github/workflows/ci-cd.yml` pushes the API and web images to the `Repositories` stack and then
+deploys the `Cluster` stack after the other two on a push to `main` (see [ci-cd.md](ci-cd.md)). Building the
 cluster and `helm upgrade` stay manual: GitHub cannot reach the cluster, whose API port is closed.
 Steps 1 and 2 below do by hand what that workflow does.
 
@@ -53,7 +53,7 @@ JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy Cluster
 ```
 
 Note the outputs: `ControlPlaneInstanceId`, `ControlPlanePrivateIp`, `WorkerInstanceId`,
-`Worker2InstanceId`, `PublicIp` (the load balancer's address), `ApiRepositoryUri` and `WebRepositoryUri`. To see them again:
+`Worker2InstanceId` and `PublicIp` (the load balancer's address). To see them again:
 
 ```sh
 aws cloudformation describe-stacks --stack-name Cluster \
@@ -65,7 +65,8 @@ kubeadm, kubelet, kubectl, the ECR credential plugin and Helm, and nothing else.
 
 ## 2. Build and push the images
 
-The servers are `amd64`, so build for it even on an Apple Silicon Mac. ECR tags cannot be
+The repositories are in the `Repositories` stack (`npx cdk deploy Repositories`, once; outputs
+`ApiRepositoryUri` and `WebRepositoryUri`). The servers are `amd64`, so build for it even on an Apple Silicon Mac. ECR tags cannot be
 reused, so tag with the commit.
 
 ```sh
@@ -73,10 +74,10 @@ REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us
 TAG=$(git rev-parse --short HEAD)
 aws ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY"
 
-docker build --platform linux/amd64 -f containers/Dockerfile.api -t "$REGISTRY/cluster/api:$TAG" .
-docker build --platform linux/amd64 -f containers/Dockerfile.web -t "$REGISTRY/cluster/web:$TAG" .
-docker push "$REGISTRY/cluster/api:$TAG"
-docker push "$REGISTRY/cluster/web:$TAG"
+docker build --platform linux/amd64 -f containers/Dockerfile.api -t "$REGISTRY/job-applier/api:$TAG" .
+docker build --platform linux/amd64 -f containers/Dockerfile.web -t "$REGISTRY/job-applier/web:$TAG" .
+docker push "$REGISTRY/job-applier/api:$TAG"
+docker push "$REGISTRY/job-applier/web:$TAG"
 ```
 
 ## 3. Create the cluster on the control plane
@@ -218,8 +219,8 @@ helm install job-applier deploy/helm/job-applier -n job-applier \
   --set host=app.yourdomain.com \
   --set tls.email=you@example.com \
   --set tls.staging=true \
-  --set images.api.repository=$REGISTRY/cluster/api --set images.api.tag=$TAG \
-  --set images.web.repository=$REGISTRY/cluster/web --set images.web.tag=$TAG
+  --set images.api.repository=$REGISTRY/job-applier/api --set images.api.tag=$TAG \
+  --set images.web.repository=$REGISTRY/job-applier/web --set images.web.tag=$TAG
 
 kubectl -n job-applier get pods -w        # api and web Running and 1/1; Ctrl-C.
 kubectl -n job-applier get certificate    # READY True after a minute or two.
@@ -236,7 +237,8 @@ Open `https://app.yourdomain.com`. It sends you to the Auth0 login and back.
 
 ## Updating the app
 
-Build and push with a new `TAG` (step 2), then:
+CI prints this command with its tags in the run's summary. By hand, build and push with a new
+`TAG` (step 2), then:
 
 ```sh
 helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \
@@ -245,6 +247,15 @@ helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \
 
 The API stops before its replacement starts, so it is down for a few seconds. The deploy order
 in `CLAUDE.md` applies here too: let CI deploy the document worker before upgrading the API.
+
+## Moving to the Repositories stack
+
+The images were in `cluster/api` and `cluster/web`, created by this stack. They are now in
+`job-applier/api` and `job-applier/web`, so switch the running app once, with the `helm upgrade`
+command from the summary of the first CI run after the move. It sets the repositories as well as
+the tags. Nothing on the servers changes: the ECR plugin takes any repository of the account.
+The old repositories stay in ECR, no longer in any stack; delete them in the console when the
+app runs from the new ones.
 
 ## Moving to the load balancer
 
@@ -312,8 +323,8 @@ helm uninstall job-applier -n job-applier             # The app only.
 npx cdk destroy Cluster                                # The servers, load balancer, network and IP.
 ```
 
-Your data is in S3 and DynamoDB, which this stack does not hold. The two image repositories are
-kept on destroy, so delete them in the ECR console if you no longer want them.
+Your data is in S3 and DynamoDB, and the images in the `Repositories` stack, none of which this
+stack holds.
 
 ## Not done yet
 

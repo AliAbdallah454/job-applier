@@ -5,16 +5,16 @@
 | Event | What runs |
 |---|---|
 | Pull request | Lint, all test suites, `cdk synth`. No AWS access. |
-| Push to `main` (docs-only pushes are skipped) | The above, then one job per stack, each after the one before succeeds: `JobPipeline`, `Application`, `Cluster`. Then parallel builds of only the images whose contents changed, and a summary with the `helm upgrade` command for the cluster. |
+| Push to `main` (docs-only pushes are skipped) | The above, then the `Repositories` stack, then parallel builds of only the images whose contents changed, then one job per stack, each after the one before succeeds: `JobPipeline`, `Application`, `Cluster`. Last, a summary with the `helm upgrade` command for the cluster. |
 | Manual (`workflow_dispatch`) | Same as a push; only deploys when run on `main`. |
 
 The `Cluster` stack (see [kubernetes.md](kubernetes.md)) is deployed like the others, and its
 API and web images are in the same build matrix, built only when their content tag
 (`scripts/image_tag.sh`: the API covers every `backend/` folder but tests, the web app
-`frontend/` and `containers/web/`) is not in `cluster/api` or `cluster/web` yet. The
-`helm-command` job's summary prints the `helm upgrade` command with both tags; running it is
-manual, because GitHub cannot reach the cluster. The first run creates the servers, which cost
-money from then on. The role must allow pushing to `cluster/*`.
+`frontend/` and `containers/web/`) is not in `job-applier/api` or `job-applier/web` yet. The
+`helm-command` job's summary prints the `helm upgrade` command with both repositories and tags;
+running it is manual, because GitHub cannot reach the cluster. The first run creates the
+servers, which cost money from then on.
 
 `.github/workflows/frontend.yml` runs separately on pull requests and pushes to `main` that
 touch `frontend/` or `backend/`: type check, Vitest, production build, and a check that
@@ -39,18 +39,23 @@ not part of any image tag.
    documents image; a `backend/jobs` change rebuilds the three job images; infra-, test- and
    docs-only pushes rebuild nothing. `cdk diff` is printed for the log and `cdk deploy` only
    changes what differs.
-2. **Infrastructure deploys first** because the ECR repositories live in the stacks and must
-   exist before the first push.
+2. **Repositories, images, then the rest.** Every ECR repository is in the `Repositories`
+   stack (`infra/repositories_stack.py`), deployed first. The images are pushed next, so when
+   the other stacks deploy, every tag their task definitions name is already in ECR. They find
+   a repository by its name, `job-applier/<image>`, not through a stack export, and a failed
+   push stops the run before any stack changes.
 3. **Dockerfile ↔ repository link** is the `matrix.include` list in the workflow:
 
    | Repository | Dockerfile |
    |---|---|
-   | `jobpipeline/seed` | `containers/Dockerfile.seed` |
-   | `jobpipeline/scraper` | `containers/Dockerfile.scrape` |
-   | `jobpipeline/classifier` | `containers/Dockerfile.classify` |
-   | `application/documents` | `containers/Dockerfile.documents` |
+   | `job-applier/seed` | `containers/Dockerfile.seed` |
+   | `job-applier/scraper` | `containers/Dockerfile.scrape` |
+   | `job-applier/classifier` | `containers/Dockerfile.classify` |
+   | `job-applier/documents` | `containers/Dockerfile.documents` |
+   | `job-applier/api` | `containers/Dockerfile.api` |
+   | `job-applier/web` | `containers/Dockerfile.web` |
 
-   Add a worker by adding a matrix entry and a repository in the stack.
+   Add an image by adding a matrix entry and its name to `IMAGES` in `repositories_stack.py`.
 4. Tags are immutable, so re-running a commit never pushes twice. To find the commit behind a
    tag, compare the image's push time in ECR with the workflow runs.
 
@@ -77,13 +82,12 @@ not part of any image tag.
 - CI deploys with default CDK context. Any `-c` overrides you use locally (`maxScrapers`,
   `documentTimeoutSeconds`, ...) must live in `cdk.json` or CI resets them.
 - A deploy re-applies the template, so it can undo manual changes such as suspended autoscaling.
-- Task definitions reference a changed image's new tag before it finishes pushing. Services
-  start at zero tasks, so this is harmless unless the queue scales workers up in that window;
-  a failed push leaves that task definition pointing at a missing tag until the next run
-  (which rebuilds it, because the tag is still absent from ECR).
+- The role allows pushing to `job-applier/*` only. After changing
+  `infra/ci/github-actions-role.yaml`, deploy it again by hand (One-time setup, step 2): CI
+  never changes its own permissions.
 - The worker list appears twice in the workflow (the tag step and the matrix); keep them in
   step when adding a worker.
 - The folder list is maintained by hand; add a folder there when a worker starts importing
   from it. Documents and profiles must not import from `backend/jobs` (and vice versa); code
   both sides need goes in `backend/utils`.
-- The first push to `main` after setup is the first deploy; it creates all three stacks.
+- The first push to `main` after setup is the first deploy; it creates all four stacks.
