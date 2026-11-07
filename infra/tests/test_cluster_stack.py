@@ -24,16 +24,60 @@ class ClusterStackTests(unittest.TestCase):
     def setUpClass(cls):
         cls.template = Template.from_stack(ClusterStack(App(), "TestCluster"))
 
-    def test_only_the_website_is_open_to_the_internet(self):
+    def test_only_the_load_balancer_is_open_to_the_internet(self):
         groups = self.template.find_resources("AWS::EC2::SecurityGroup")
-        (group,) = groups.values()
-        open_ports = sorted(
-            rule["FromPort"]
-            for rule in group["Properties"].get("SecurityGroupIngress", [])
-            if rule.get("CidrIp") == "0.0.0.0/0"
+        open_ports = {
+            group["Properties"]["GroupDescription"]: sorted(
+                rule["FromPort"]
+                for rule in group["Properties"].get("SecurityGroupIngress", [])
+                if rule.get("CidrIp") == "0.0.0.0/0"
+            )
+            for group in groups.values()
+        }
+        self.assertEqual(open_ports, {"Website load balancer": [80, 443], "Kubernetes nodes": []})
+        self.assertNotIn("22", json.dumps(groups))
+
+    def test_the_nodes_take_only_traefiks_node_ports_from_the_load_balancer(self):
+        rules = self.template.find_resources("AWS::EC2::SecurityGroupIngress")
+        from_balancer = sorted(
+            rule["Properties"]["FromPort"]
+            for rule in rules.values()
+            if rule["Properties"]["SourceSecurityGroupId"]["Fn::GetAtt"][0].startswith("Balancer")
         )
-        self.assertEqual(open_ports, [80, 443])
-        self.assertNotIn("22", json.dumps(group))
+        self.assertEqual(from_balancer, [30080, 30443])
+
+    def test_the_load_balancer_has_the_fixed_address_and_both_workers(self):
+        (address,) = self.template.find_resources("AWS::EC2::EIP").values()
+        self.assertNotIn("InstanceId", address.get("Properties", {}))
+        self.template.has_resource_properties(
+            "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            {
+                "Type": "network",
+                "Scheme": "internet-facing",
+                "SubnetMappings": [
+                    Match.object_like(
+                        {"AllocationId": {"Fn::GetAtt": ["WorkerAddress", "AllocationId"]}}
+                    )
+                ],
+            },
+        )
+        listeners = self.template.find_resources("AWS::ElasticLoadBalancingV2::Listener")
+        self.assertEqual(
+            sorted(
+                (item["Properties"]["Port"], item["Properties"]["Protocol"])
+                for item in listeners.values()
+            ),
+            [(80, "TCP"), (443, "TCP")],
+        )
+        groups = self.template.find_resources("AWS::ElasticLoadBalancingV2::TargetGroup")
+        for group in groups.values():
+            properties = group["Properties"]
+            self.assertIn(properties["Port"], (30080, 30443))
+            self.assertEqual(properties["HealthCheckProtocol"], "TCP")
+            self.assertEqual(
+                sorted(target["Id"]["Ref"][: len("Worker2")] for target in properties["Targets"]),
+                ["Worker1", "Worker2"],
+            )
 
     def test_servers_require_imdsv2_and_only_the_workers_let_pods_reach_it(self):
         servers = self.template.find_resources("AWS::EC2::Instance")

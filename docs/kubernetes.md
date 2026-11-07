@@ -1,15 +1,21 @@
 # Deploying the API and web app on Kubernetes
 
 The API and web app run on a small Kubernetes cluster you build yourself with kubeadm on three EC2
-servers: a control plane and two workers. The document workers, tables, queue and bucket stay where they are, in the `Application`
-and `JobPipeline` stacks.
+servers: a control plane and two workers, behind an AWS Network Load Balancer. The document
+workers, tables, queue and bucket stay where they are, in the `Application` and `JobPipeline`
+stacks.
 
 ```
-Browser → https://app.yourdomain.com → DNS A record → worker's Elastic IP
-  → ports 80/443 on the worker → Traefik (HTTPS, routing)
-       ├─ /api/* → api pod (FastAPI + TeX, 1 copy) → S3, DynamoDB, SQS, Bedrock via the worker's IAM role
+Browser → https://app.yourdomain.com → DNS A record → the load balancer's Elastic IP
+  → Network Load Balancer (plain TCP, health checks) → node port 30080/30443 on a worker
+  → Traefik on that worker (HTTPS, routing; one copy per worker)
+       ├─ /api/* → api pod (FastAPI + TeX, 1 copy) → S3, DynamoDB, SQS, Bedrock via the workers' IAM role
        └─ /*     → web pod (nginx with the built React app)
 ```
+
+The api and web pods can be on either worker: Traefik reaches them over the pod network. If a
+worker stops, the balancer's health check notices within about 20 seconds and sends everything to
+the other one.
 
 | Piece | Where |
 |---|---|
@@ -19,16 +25,17 @@ Browser → https://app.yourdomain.com → DNS A record → worker's Elastic IP
 | The app | Helm chart in `deploy/helm/job-applier` |
 | Images | `containers/Dockerfile.api`, `containers/Dockerfile.web` |
 
-`.github/workflows/cluster.yml` deploys the `Cluster` stack and pushes the API and web images
-after CI/CD or Frontend succeeds on a push to `main` (see [ci-cd.md](ci-cd.md)). Building the
+`.github/workflows/ci-cd.yml` deploys the `Cluster` stack after the other two and pushes the API
+and web images on a push to `main` (see [ci-cd.md](ci-cd.md)). Building the
 cluster and `helm upgrade` stay manual: GitHub cannot reach the cluster, whose API port is closed.
 Steps 1 and 2 below do by hand what that workflow does.
 
 ## What it costs
 
-Roughly $80-90 a month while the servers run: a `t3.small` control plane, two `t3.medium`
-workers, three 30 GB disks and three public IPv4 addresses. Check current EC2 prices before you start.
-Stopping the servers stops the server charges, but not the disks or the Elastic IP. Bedrock
+Roughly $100-110 a month while the servers run: a `t3.small` control plane, two `t3.medium`
+workers, three 30 GB disks, four public IPv4 addresses and the Network Load Balancer (about
+$16-20 of that). Check current prices before you start. Stopping the servers stops the server
+charges, but not the disks, the load balancer or the Elastic IP. Bedrock
 tailoring is charged per use, as before.
 
 ## What you need first
@@ -45,7 +52,7 @@ JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 npx cdk deploy Cluster
 ```
 
 Note the outputs: `ControlPlaneInstanceId`, `ControlPlanePrivateIp`, `WorkerInstanceId`,
-`WorkerPublicIp`, `Worker2InstanceId`, `ApiRepositoryUri` and `WebRepositoryUri`. To see them again:
+`Worker2InstanceId`, `PublicIp` (the load balancer's address), `ApiRepositoryUri` and `WebRepositoryUri`. To see them again:
 
 ```sh
 aws cloudformation describe-stacks --stack-name Cluster \
@@ -106,7 +113,7 @@ kubeadm token create --print-join-command
 ```
 
 The control plane keeps its `NoSchedule` taint, so your pods run on the workers, which have the
-app's IAM role. Only the first worker has the Elastic IP.
+app's IAM role. The load balancer sends traffic to the workers only.
 
 ## 4. Join the workers
 
@@ -120,19 +127,6 @@ kubeadm join ...                          # The full command printed in step 3.
 ```
 
 Back on the control plane, `kubectl get nodes` shows all three, `Ready` within a minute.
-
-Then mark the first worker, the one with the Elastic IP, as the one Traefik runs on. Its node name
-is its private DNS name:
-
-```sh
-aws ec2 describe-instances --instance-ids <WorkerInstanceId> \
-  --query "Reservations[0].Instances[0].PrivateDnsName" --output text   # e.g. ip-10-20-0-42.ec2.internal
-kubectl label node ip-10-20-0-42 job-applier/ingress=true               # Drop the .ec2.internal part.
-kubectl get nodes -L job-applier/ingress                                # Check it.
-```
-
-On a cluster that already has Traefik, add the label, copy the new `traefik-values.yaml` over and
-run `helm upgrade traefik traefik/traefik --version 42.3.0 -n traefik -f traefik-values.yaml`.
 
 ## 5. Install Traefik and cert-manager
 
@@ -149,8 +143,14 @@ helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version v
   -n cert-manager --create-namespace --set crds.enabled=true --wait
 ```
 
-Traefik listens on the first worker's ports 80 and 443 directly, so no AWS load balancer is needed.
-Sending HTTP to HTTPS is done by Traefik for every site on the cluster.
+Traefik runs one copy on each worker, behind a `NodePort` Service on ports 30080 and 30443, which
+are the load balancer's targets. Its `externalTrafficPolicy: Local` makes each worker pass that
+traffic only to its own Traefik copy, so a worker without one fails the health check and gets no
+traffic. HTTPS ends at Traefik, with cert-manager's certificate; the balancer only passes TCP
+through. Sending HTTP to HTTPS is done by Traefik for every site on the cluster.
+
+`kubectl -n traefik get pods -o wide` shows one Traefik pod per worker. In the EC2 console, under
+**Target groups**, both workers should be `healthy` on both ports.
 
 ## 6. Use kubectl and Helm from your Mac
 
@@ -168,9 +168,9 @@ The API server's port 6443 is not open to the internet. Systems Manager forwards
    ```
 3. Then: `export KUBECONFIG=~/.kube/job-applier.yaml` and `kubectl get nodes`.
 
-## 7. Point the domain at the worker
+## 7. Point the domain at the load balancer
 
-Create an **A record** from your app's name (for example `app.yourdomain.com`) to `WorkerPublicIp`,
+Create an **A record** from your app's name (for example `app.yourdomain.com`) to `PublicIp`,
 in Route 53 or at your registrar. Check it with `dig +short app.yourdomain.com`.
 
 Without a domain, `sslip.io` names resolve to the IP written in them, and Let's Encrypt can issue
@@ -245,6 +245,22 @@ helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \
 The API stops before its replacement starts, so it is down for a few seconds. The deploy order
 in `CLAUDE.md` applies here too: let CI deploy the document worker before upgrading the API.
 
+## Moving to the load balancer
+
+Only for a cluster built before the load balancer, where Traefik listened on the worker's own
+ports 80 and 443 and the Elastic IP was on that worker. The site is down for a few minutes.
+
+1. Join the second worker (step 4).
+2. Push, so that CI deploys the `Cluster` stack. The Elastic IP moves to the load balancer, and
+   the site stops answering until step 3.
+3. Copy `deploy/cluster/traefik-values.yaml` to the control plane and run:
+   ```sh
+   helm upgrade traefik traefik/traefik --version 42.3.0 -n traefik -f traefik-values.yaml
+   kubectl -n traefik get pods -o wide -w    # One Traefik per worker, both 1/1.
+   ```
+4. Check that both workers are `healthy` in the target groups, and that the first worker got a
+   new public IP, which it needs to reach AWS.
+
 ## When something is wrong
 
 | Symptom | Look at |
@@ -253,15 +269,16 @@ in `CLAUDE.md` applies here too: let CI deploy the document worker before upgrad
 | `ErrImagePull` from ECR | The tag exists in ECR; on the worker, `journalctl -u kubelet \| grep -i credential` |
 | The API restarts | `kubectl -n job-applier logs deploy/api --previous` |
 | "Unable to locate credentials" in the API log | The worker's metadata hop limit is 2: `aws ec2 describe-instances --instance-ids <WorkerInstanceId> --query "Reservations[0].Instances[0].MetadataOptions"` |
-| The certificate stays not ready | `kubectl -n job-applier describe certificate,certificaterequest,order,challenge`; usually the DNS record does not point at the worker yet |
+| The certificate stays not ready | `kubectl -n job-applier describe certificate,certificaterequest,order,challenge`; usually the DNS record does not point at `PublicIp` yet |
 | A node is `NotReady` | On it: `systemctl status kubelet containerd`, `journalctl -u kubelet -e` |
 | The browser shows a 404 page from Traefik | The host you typed is not the chart's `host` |
+| The site does not answer at all | The target groups in the EC2 console: an `unhealthy` worker has no Traefik pod (`kubectl -n traefik get pods -o wide`) or its node port is not 30080/30443 (`kubectl -n traefik get svc traefik`) |
 
 ## Taking it down
 
 ```sh
 helm uninstall job-applier -n job-applier             # The app only.
-npx cdk destroy Cluster                                # Both servers, the network and the IP.
+npx cdk destroy Cluster                                # The servers, load balancer, network and IP.
 ```
 
 Your data is in S3 and DynamoDB, which this stack does not hold. The two image repositories are

@@ -9,5 +9,5 @@ from infra.stack import JobPipelineStack
 app = cdk.App()
 JobPipelineStack(app, "JobPipeline")
 ApplicationStack(app, "Application")
-ClusterStack(app, "Cluster")  # Deployed by cluster.yml: see docs/kubernetes.md.
+ClusterStack(app, "Cluster")  # Deployed by ci-cd.yml after the other two: see docs/kubernetes.md.
 app.synth()

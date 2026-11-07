@@ -35,6 +35,11 @@ topologySpreadConstraints:
     labelSelector:
       matchLabels:
         app.kubernetes.io/name: traefik
+    # Count only pods of the same version. Otherwise, during an update, the old pods still
+    # running make a worker look full, both new pods can land on the other one, and nothing
+    # moves them apart once the old pods are gone: the rule is only checked when placing a pod.
+    matchLabelKeys:
+      - pod-template-hash
 # `kubectl drain` stops at the last running copy instead of taking the site down.
 podDisruptionBudget:
   enabled: true

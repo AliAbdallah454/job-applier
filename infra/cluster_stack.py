@@ -1,5 +1,5 @@
 """Three EC2 servers (a control plane and two workers) for a self-managed Kubernetes cluster
-(kubeadm) running the API and web app.
+(kubeadm) running the API and web app, behind a Network Load Balancer.
 
 The stack only creates the servers, their network and permissions, and the image repositories.
 Each server installs containerd, kubeadm and the ECR plugin from cluster/node-setup.sh on first
@@ -11,9 +11,11 @@ that it never forces a deployment order on them.
 
 from pathlib import Path
 
-from aws_cdk import CfnOutput, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecr as ecr
+from aws_cdk import aws_elasticloadbalancingv2 as elbv2
+from aws_cdk import aws_elasticloadbalancingv2_targets as targets
 from aws_cdk import aws_iam as iam
 from constructs import Construct
 
@@ -24,6 +26,9 @@ NODE_IMAGES = {"us-east-1": "ami-0d6dd9e8265d48906"}
 NODE_SETUP = Path(__file__).resolve().parent / "cluster" / "node-setup.sh"
 # The model the API calls for mail classification; keep in step with backend/mail/classifier.py.
 MAIL_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+# The load balancer's ports and the node ports of Traefik's Service they lead to; keep in step
+# with deploy/cluster/traefik-values.yaml.
+TRAEFIK_PORTS = {80: 30080, 443: 30443}
 
 
 class ClusterStack(Stack):
@@ -45,14 +50,19 @@ class ClusterStack(Stack):
             ],
         )
 
-        # No port 22 and no port 6443 from the internet: shells and kubectl go through Systems
-        # Manager, so only the website is open.
+        # Only the load balancer is open to the internet, on 80 and 443. The nodes take the
+        # website's traffic from it alone; shells and kubectl go through Systems Manager, so
+        # there is no port 22 or 6443 either.
+        balancer_group = ec2.SecurityGroup(
+            self, "Balancer", vpc=vpc, description="Website load balancer", allow_all_outbound=True
+        )
         nodes = ec2.SecurityGroup(
             self, "Nodes", vpc=vpc, description="Kubernetes nodes", allow_all_outbound=True
         )
         nodes.add_ingress_rule(nodes, ec2.Port.all_traffic(), "Traffic between the nodes")
-        for port in (80, 443):
-            nodes.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(port), "Website")
+        for port, node_port in TRAEFIK_PORTS.items():
+            balancer_group.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(port), "Website")
+            nodes.add_ingress_rule(balancer_group, ec2.Port.tcp(node_port), "From the balancer")
 
         repositories = {}
         for name in ("api", "web"):
@@ -120,16 +130,55 @@ class ClusterStack(Stack):
         worker = server("Worker", worker_type, worker_role, 2)
         second_worker = server("Worker2", worker_type, worker_role, 2)
 
-        # A fixed address for DNS; a server's own public IP changes when it stops. Only the first
-        # worker has one, so Traefik must run there: see docs/kubernetes.md.
-        address = ec2.CfnEIP(self, "WorkerAddress", instance_id=worker.instance_id)
+        workers = [worker, second_worker]
+
+        # The website's fixed address, now on the load balancer. It keeps the id it had when it
+        # was on the first worker, as a new id would mean a new address and a new DNS record.
+        address = ec2.CfnEIP(self, "WorkerAddress")
+
+        # Plain TCP: HTTPS and its certificate stay with Traefik and cert-manager. Each worker
+        # is a target on Traefik's node ports. Traefik's Service sends node port traffic only to
+        # a Traefik pod on the same node, so a worker without one fails the health check and
+        # gets no traffic.
+        balancer = elbv2.NetworkLoadBalancer(
+            self,
+            "Website",
+            vpc=vpc,
+            internet_facing=True,
+            security_groups=[balancer_group],
+        )
+        # The construct cannot attach an Elastic IP, so name the subnet and address directly.
+        resource = balancer.node.default_child
+        resource.add_property_deletion_override("Subnets")
+        resource.add_property_override(
+            "SubnetMappings",
+            [
+                {
+                    "SubnetId": vpc.public_subnets[0].subnet_id,
+                    "AllocationId": address.attr_allocation_id,
+                }
+            ],
+        )
+        for port, node_port in TRAEFIK_PORTS.items():
+            balancer.add_listener(f"Port{port}", port=port).add_targets(
+                f"Traefik{port}",
+                port=node_port,
+                targets=[targets.InstanceTarget(w, node_port) for w in workers],
+                health_check=elbv2.HealthCheck(
+                    protocol=elbv2.Protocol.TCP,
+                    interval=Duration.seconds(10),
+                    healthy_threshold_count=2,
+                    unhealthy_threshold_count=2,
+                ),
+                deregistration_delay=Duration.seconds(30),
+            )
 
         for name, value in {
             "ControlPlaneInstanceId": control_plane.instance_id,
             "ControlPlanePrivateIp": control_plane.instance_private_ip,
             "WorkerInstanceId": worker.instance_id,
-            "WorkerPublicIp": address.attr_public_ip,
             "Worker2InstanceId": second_worker.instance_id,
+            "PublicIp": address.attr_public_ip,
         }.items():
             CfnOutput(self, name, value=value)
 

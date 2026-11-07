@@ -5,17 +5,16 @@
 | Event | What runs |
 |---|---|
 | Pull request | Lint, all test suites, `cdk synth`. No AWS access. |
-| Push to `main` (docs/frontend-only pushes are skipped) | The above, then `cdk deploy JobPipeline Application`, then parallel builds of only the images whose contents changed. |
+| Push to `main` (docs-only pushes are skipped) | The above, then one job per stack, each after the one before succeeds: `JobPipeline`, `Application`, `Cluster`. Then parallel builds of only the images whose contents changed, and a summary with the `helm upgrade` command for the cluster. |
 | Manual (`workflow_dispatch`) | Same as a push; only deploys when run on `main`. |
 
-`.github/workflows/cluster.yml` runs after CI/CD or Frontend succeeds on a push to `main`, or by
-hand on `main`: `cdk deploy Cluster`, then the API and web images, built only when their
-content tag (`scripts/image_tag.sh`: the API covers every `backend/` folder but tests, the web
-app `frontend/` and `containers/web/`) is not in `cluster/api` or `cluster/web` yet. Its summary
-prints the `helm upgrade` command with both tags; running it is manual, because GitHub cannot
-reach the cluster (see [kubernetes.md](kubernetes.md)). The first run creates the servers, which
-cost money from then on. The role must allow pushing to `cluster/*`: redeploy it (step 2 below)
-after pulling this change.
+The `Cluster` stack (see [kubernetes.md](kubernetes.md)) is deployed like the others, and its
+API and web images are in the same build matrix, built only when their content tag
+(`scripts/image_tag.sh`: the API covers every `backend/` folder but tests, the web app
+`frontend/` and `containers/web/`) is not in `cluster/api` or `cluster/web` yet. The
+`helm-command` job's summary prints the `helm upgrade` command with both tags; running it is
+manual, because GitHub cannot reach the cluster. The first run creates the servers, which cost
+money from then on. The role must allow pushing to `cluster/*`.
 
 `.github/workflows/frontend.yml` runs separately on pull requests and pushes to `main` that
 touch `frontend/` or `backend/`: type check, Vitest, production build, and a check that
@@ -87,4 +86,4 @@ not part of any image tag.
 - The folder list is maintained by hand; add a folder there when a worker starts importing
   from it. Documents and profiles must not import from `backend/jobs` (and vice versa); code
   both sides need goes in `backend/utils`.
-- The first push to `main` after setup is the first deploy; it creates both stacks.
+- The first push to `main` after setup is the first deploy; it creates all three stacks.
