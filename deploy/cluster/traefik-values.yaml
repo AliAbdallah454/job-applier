@@ -1,8 +1,9 @@
-# Traefik, the ingress controller, listening on the worker's own ports 80 and 443 (hostPort), so
-# no AWS load balancer is needed. Installed once per cluster: see docs/kubernetes.md.
+# Traefik, the ingress controller, behind the Network Load Balancer of the Cluster stack. The
+# balancer sends ports 80 and 443 to these node ports on each worker; keep them in step with
+# TRAEFIK_PORTS in infra/cluster_stack.py. Installed once per cluster: see docs/kubernetes.md.
 ports:
   web:
-    hostPort: 80
+    nodePort: 30080
     # Every plain HTTP request goes to HTTPS, including Let's Encrypt's checks, which follow
     # the redirect and do not check the certificate there.
     http:
@@ -12,16 +13,29 @@ ports:
           scheme: https
           permanent: true
   websecure:
-    hostPort: 443
+    nodePort: 30443
 service:
-  type: ClusterIP  # The host ports are the way in; there is no load balancer to give it an IP.
-# Only the first worker has the Elastic IP, so Traefik must run there. The label is added by hand
-# when that worker joins (docs/kubernetes.md, step 4); without it Traefik stays Pending.
-nodeSelector:
-  job-applier/ingress: "true"
-# A host port can only be held by one pod, so the old pod must stop before the new one starts.
-updateStrategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxUnavailable: 1
-    maxSurge: 0
+  spec:
+    # The chart reads the type here; a `service.type` key is ignored.
+    type: NodePort
+    # A node passes node port traffic only to a Traefik pod on itself, never on to another
+    # node. A worker without one then fails the balancer's health check and is skipped, and
+    # Traefik sees the visitor's own address.
+    externalTrafficPolicy: Local
+# One copy per worker, so the site stays up while a worker is down or being replaced.
+deployment:
+  replicas: 2
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    # Count only the workers. By default the tainted control plane counts too, with its zero
+    # Traefik pods, so no worker could ever hold two, not even for a moment during an update.
+    nodeTaintsPolicy: Honor
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: traefik
+# `kubectl drain` stops at the last running copy instead of taking the site down.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

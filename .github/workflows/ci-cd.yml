@@ -1,14 +1,16 @@
 name: CI/CD
 
-# Pull requests: tests only. Pushes to main: tests, deploy both CDK stacks, then build and
-# push the worker images whose contents changed. Each image is tagged with a hash of its
-# inputs (scripts/image_tag.sh), so unchanged images keep their tag and their ECS task
-# definition does not change. See docs/ci-cd.md.
+# Pull requests: tests only. Pushes to main: tests, deploy the three CDK stacks (JobPipeline,
+# Application, Cluster) one after another, then build and push the images whose contents
+# changed: the ECS workers' and the Kubernetes API and web app's. Each image is tagged with a
+# hash of its inputs (scripts/image_tag.sh), so unchanged images keep their tag and their ECS
+# task definition does not change. See docs/ci-cd.md.
 on:
   pull_request:
   push:
     branches: [main]
-    paths-ignore: ["**.md", "docs/**", "frontend/**"]
+    # frontend/ is not ignored: it is built into the cluster's web image.
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 # One deployment at a time: ECR tags are immutable and CloudFormation locks a stack anyway.
@@ -40,9 +42,10 @@ jobs:
       - run: uv run --group infra python -m unittest discover -s infra/tests -v
       - run: npm run synth -- --quiet
 
-  deploy-infra:
-    # Creates the ECR repositories (first run) and points each ECS task definition at its
-    # image's content tag. CloudFormation skips resources that did not change.
+  deploy-jobpipeline:
+    # The stacks deploy one at a time, each after the one before succeeds. Each creates its ECR
+    # repositories on the first run and points its ECS task definitions at the images' content
+    # tags. CloudFormation skips resources that did not change.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: test
     runs-on: ubuntu-latest
@@ -73,16 +76,81 @@ jobs:
             echo "-c seedImageTag=$(scripts/image_tag.sh containers/Dockerfile.seed)"
             echo "-c scraperImageTag=$(scripts/image_tag.sh containers/Dockerfile.scrape)"
             echo "-c classifierImageTag=$(scripts/image_tag.sh containers/Dockerfile.classify)"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+      - name: Show infrastructure changes
+        run: npx cdk diff JobPipeline $CDK_CONTEXT || true
+      - name: Deploy JobPipeline
+        run: npx cdk deploy JobPipeline --require-approval never $CDK_CONTEXT
+
+  deploy-application:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: deploy-jobpipeline
+    runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --group infra
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Compute image tags
+        # Keep in step with the push-images matrix below.
+        run: |
+          {
+            echo "CDK_CONTEXT<<EOF"
             echo "-c documentsImageTag=$(scripts/image_tag.sh containers/Dockerfile.documents)"
             echo "EOF"
           } >> "$GITHUB_ENV"
       - name: Show infrastructure changes
-        run: npx cdk diff JobPipeline Application $CDK_CONTEXT || true
-      - name: Deploy infrastructure
-        run: npx cdk deploy JobPipeline Application --require-approval never $CDK_CONTEXT
+        run: npx cdk diff Application $CDK_CONTEXT || true
+      - name: Deploy Application
+        run: npx cdk deploy Application --require-approval never $CDK_CONTEXT
+
+  deploy-cluster:
+    # The Kubernetes servers (docs/kubernetes.md). A change to the server image or node-setup.sh
+    # restarts or replaces them, so check the diff before merging such a change.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: deploy-application
+    runs-on: ubuntu-latest
+    environment: ci_cd_deploy_env
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: uv sync --locked --group infra
+      - run: npm ci
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Show infrastructure changes
+        run: npx cdk diff Cluster || true
+      - name: Deploy Cluster
+        run: npx cdk deploy Cluster --require-approval never
 
   push-images:
-    needs: deploy-infra
+    needs: deploy-cluster
     runs-on: ubuntu-latest
     environment: ci_cd_deploy_env
     permissions:
@@ -91,7 +159,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Each entry links one Dockerfile to one ECR repository (<lowercase-stack>/<worker>).
+        # Each entry links one Dockerfile to one ECR repository (<lowercase-stack>/<image>).
         include:
           - repository: jobpipeline/seed
             dockerfile: containers/Dockerfile.seed
@@ -101,6 +169,10 @@ jobs:
             dockerfile: containers/Dockerfile.classify
           - repository: application/documents
             dockerfile: containers/Dockerfile.documents
+          - repository: cluster/api
+            dockerfile: containers/Dockerfile.api
+          - repository: cluster/web
+            dockerfile: containers/Dockerfile.web
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
@@ -131,3 +203,20 @@ jobs:
           tags: ${{ steps.login.outputs.registry }}/${{ matrix.repository }}:${{ steps.existing.outputs.tag }}
           cache-from: type=gha,scope=${{ matrix.repository }}
           cache-to: type=gha,scope=${{ matrix.repository }},mode=max
+
+  helm-command:
+    # The cluster's images are not deployed by CI: GitHub cannot reach the cluster, whose API
+    # port is closed. This prints the command to run by hand (docs/kubernetes.md).
+    needs: push-images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          {
+            echo "### Install the cluster images"
+            echo '```sh'
+            echo "helm upgrade job-applier deploy/helm/job-applier -n job-applier --reuse-values \\"
+            echo "  --set images.api.tag=$(scripts/image_tag.sh containers/Dockerfile.api) \\"
+            echo "  --set images.web.tag=$(scripts/image_tag.sh containers/Dockerfile.web)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
