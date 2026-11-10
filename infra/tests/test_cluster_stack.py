@@ -6,7 +6,7 @@ import unittest
 from aws_cdk import App
 from aws_cdk.assertions import Match, Template
 
-from infra.cluster_stack import ClusterStack
+from infra.cluster_stack import CONTROL_PLANE_SETUP, WORKER_SETUP, ClusterStack
 
 
 def statements(template, role):
@@ -74,50 +74,74 @@ class ClusterStackTests(unittest.TestCase):
             properties = group["Properties"]
             self.assertIn(properties["Port"], (30080, 30443))
             self.assertEqual(properties["HealthCheckProtocol"], "TCP")
-            self.assertEqual(
-                sorted(target["Id"]["Ref"][: len("Worker2")] for target in properties["Targets"]),
-                ["Worker1", "Worker2"],
-            )
+            self.assertNotIn("Targets", properties)
+        # The worker group registers its servers in both target groups itself.
+        (workers,) = self.template.find_resources("AWS::AutoScaling::AutoScalingGroup").values()
+        self.assertEqual(
+            sorted(ref["Ref"] for ref in workers["Properties"]["TargetGroupARNs"]), sorted(groups)
+        )
+
+    def worker_template(self):
+        (template,) = self.template.find_resources("AWS::EC2::LaunchTemplate").values()
+        return template["Properties"]["LaunchTemplateData"]
 
     def test_servers_require_imdsv2_and_only_the_workers_let_pods_reach_it(self):
-        servers = self.template.find_resources("AWS::EC2::Instance")
-        options = {name: item["Properties"]["MetadataOptions"] for name, item in servers.items()}
-        self.assertEqual(len(options), 3)
-        for name, metadata in options.items():
+        (control_plane,) = self.template.find_resources("AWS::EC2::Instance").values()
+        for metadata, hop_limit in (
+            (control_plane["Properties"]["MetadataOptions"], 1),
+            (self.worker_template()["MetadataOptions"], 2),
+        ):
             self.assertEqual(metadata["HttpTokens"], "required")
-            self.assertEqual(
-                metadata["HttpPutResponseHopLimit"], 2 if name.startswith("Worker") else 1
-            )
+            self.assertEqual(metadata["HttpPutResponseHopLimit"], hop_limit)
 
-    def test_servers_have_encrypted_disks_and_the_setup_script(self):
-        self.template.resource_count_is("AWS::EC2::Instance", 3)
-        self.template.all_resources_properties(
+    def test_servers_have_encrypted_disks_and_their_setup_scripts(self):
+        disk = [
+            Match.object_like({"Ebs": Match.object_like({"Encrypted": True, "VolumeSize": 30})})
+        ]
+        self.template.resource_count_is("AWS::EC2::Instance", 1)
+        self.template.has_resource_properties(
             "AWS::EC2::Instance",
-            {
-                "SourceDestCheck": False,
-                "BlockDeviceMappings": [
-                    Match.object_like(
-                        {"Ebs": Match.object_like({"Encrypted": True, "VolumeSize": 30})}
-                    )
-                ],
-                "UserData": Match.any_value(),
-            },
+            {"SourceDestCheck": False, "BlockDeviceMappings": disk, "UserData": Match.any_value()},
         )
+        worker = self.worker_template()
+        (worker_disk,) = worker["BlockDeviceMappings"]
+        self.assertEqual(
+            worker_disk["Ebs"], {"Encrypted": True, "VolumeSize": 30, "VolumeType": "gp3"}
+        )
+        self.assertIn("kubeadm join", json.dumps(worker["UserData"]))
         self.template.resource_count_is("AWS::EC2::EIP", 1)
         self.template.resource_count_is("AWS::EC2::NatGateway", 0)
+
+    def test_no_deploy_sets_how_many_workers_run(self):
+        self.template.has_resource_properties(
+            "AWS::AutoScaling::AutoScalingGroup",
+            {"MinSize": "0", "MaxSize": "4", "DesiredCapacity": Match.absent()},
+        )
+
+    def test_a_worker_reads_only_the_join_command_and_changes_only_workers(self):
+        found = statements(self.template, "WorkerRole")
+        (read,) = [s for s in found if "ssm:" in json.dumps(s["Action"])]
+        self.assertEqual(read["Action"], "ssm:GetParameter")
+        self.assertIn(":parameter/job-applier/cluster/join-command", json.dumps(read["Resource"]))
+        (modify,) = [s for s in found if s["Action"] == "ec2:ModifyInstanceAttribute"]
+        self.assertEqual(
+            modify["Condition"], {"StringEquals": {"ec2:ResourceTag/job-applier:node": "worker"}}
+        )
+        (workers,) = self.template.find_resources("AWS::AutoScaling::AutoScalingGroup").values()
+        self.assertIn(
+            {"Key": "job-applier:node", "Value": "worker", "PropagateAtLaunch": True},
+            workers["Properties"]["Tags"],
+        )
 
     def test_the_control_plane_gets_no_app_permissions(self):
         actions = json.dumps(statements(self.template, "ControlPlaneRole"))
         self.assertNotIn("dynamodb", actions)
         self.assertNotIn("s3:", actions)
 
-    def test_both_workers_use_the_worker_role(self):
+    def test_the_workers_use_the_worker_role(self):
         profiles = self.template.find_resources("AWS::IAM::InstanceProfile")
-        roles = {
-            name: profile["Properties"]["Roles"][0]["Ref"] for name, profile in profiles.items()
-        }
-        worker_profiles = [name for name, role in roles.items() if role.startswith("WorkerRole")]
-        self.assertEqual(len(worker_profiles), 2)
+        profile = self.worker_template()["IamInstanceProfile"]["Arn"]["Fn::GetAtt"][0]
+        self.assertTrue(profiles[profile]["Properties"]["Roles"][0]["Ref"].startswith("WorkerRole"))
 
     def test_the_stack_has_no_repositories_and_the_workers_pull_from_the_shared_ones(self):
         self.template.resource_count_is("AWS::ECR::Repository", 0)
@@ -149,4 +173,14 @@ class WebsiteOffTests(unittest.TestCase):
         for kind in ("LoadBalancer", "Listener", "TargetGroup"):
             template.resource_count_is(f"AWS::ElasticLoadBalancingV2::{kind}", 0)
         template.resource_count_is("AWS::EC2::EIP", 1)
-        template.resource_count_is("AWS::EC2::Instance", 3)
+        template.resource_count_is("AWS::EC2::Instance", 1)
+        template.resource_count_is("AWS::AutoScaling::AutoScalingGroup", 1)
+
+
+class WorkersTests(unittest.TestCase):
+    def test_the_worker_installs_what_the_control_plane_does(self):
+        def setup_steps(path):
+            text = path.read_text()
+            return text[text.index("KUBERNETES_MINOR=") : text.index("systemctl enable kubelet")]
+
+        self.assertEqual(setup_steps(WORKER_SETUP), setup_steps(CONTROL_PLANE_SETUP))

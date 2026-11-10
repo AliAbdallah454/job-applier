@@ -8,8 +8,21 @@ not import these scripts or include their fixtures in runtime images.
 scripts/
 ├── clear_generations.py
 ├── clear_mail.py
+├── image_tag.sh
+├── publish_join_command.sh
 ├── seed_profiles.py
 └── tests/
+```
+
+## Publish the cluster's join command
+
+Saves a fresh `kubeadm join` command as the SecureString parameter
+`/job-applier/cluster/join-command`, where new Kubernetes workers read it to join by themselves
+(`docs/kubernetes.md`, step 4). It runs on the control plane through Systems Manager, so it needs
+an admin AWS login but no tunnel. The argument is the token's lifetime, `24h` by default:
+
+```sh
+scripts/publish_join_command.sh
 ```
 
 ## Clear mail tracking

@@ -206,8 +206,8 @@ jobs:
         run: npx cdk deploy Application --require-approval never $CDK_CONTEXT
 
   deploy-cluster:
-    # The Kubernetes servers (docs/kubernetes.md). A change to the server image or node-setup.sh
-    # restarts or replaces them, so check the diff before merging such a change.
+    # The Kubernetes servers (docs/kubernetes.md). A change to the server image or control-plane.sh
+    # restarts or replaces the control plane, so check the diff before merging such a change.
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: deploy-application
     runs-on: ubuntu-latest

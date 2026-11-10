@@ -1,10 +1,11 @@
-"""Three EC2 servers (a control plane and two workers) for a self-managed Kubernetes cluster
-(kubeadm) running the API and web app, behind a Network Load Balancer.
+"""EC2 servers for a self-managed Kubernetes cluster (kubeadm) running the API and web app, behind
+a Network Load Balancer: one control plane and an Auto Scaling group of workers.
 
 The stack only creates the servers, their network and permissions; the API and web images are in
-the Repositories stack. Each server installs containerd, kubeadm and the ECR plugin from
-cluster/node-setup.sh on first boot; creating the cluster and installing the chart is done by
-hand, see docs/kubernetes.md.
+the Repositories stack. Each server installs containerd, kubeadm and the ECR plugin on first boot,
+from cluster/control-plane.sh or cluster/worker.sh. Creating the cluster and installing the chart
+is done by hand; the workers then join by themselves, with the join command that
+scripts/publish_join_command.sh puts in Parameter Store. See docs/kubernetes.md.
 
 It references the other stacks' resources by their generated names, not cross-stack exports, so
 that it never forces a deployment order on them.
@@ -12,10 +13,10 @@ that it never forces a deployment order on them.
 
 from pathlib import Path
 
-from aws_cdk import CfnOutput, Duration, Stack
+from aws_cdk import CfnOutput, Duration, Stack, Tags
+from aws_cdk import aws_autoscaling as autoscaling
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_elasticloadbalancingv2 as elbv2
-from aws_cdk import aws_elasticloadbalancingv2_targets as targets
 from aws_cdk import aws_iam as iam
 from constructs import Construct
 
@@ -25,7 +26,16 @@ from infra.repositories_stack import find_repository
 # Pinned because a new image replaces both servers, and the cluster with them. To move to a newer
 # one, rebuild the cluster: see docs/kubernetes.md.
 NODE_IMAGES = {"us-east-1": "ami-0d6dd9e8265d48906"}
-NODE_SETUP = Path(__file__).resolve().parent / "cluster" / "node-setup.sh"
+CONTROL_PLANE_SETUP = Path(__file__).resolve().parent / "cluster" / "control-plane.sh"
+WORKER_SETUP = Path(__file__).resolve().parent / "cluster" / "worker.sh"
+# Where the workers find the kubeadm join command; keep in step with cluster/worker.sh and
+# scripts/publish_join_command.sh.
+JOIN_PARAMETER = "/job-applier/cluster/join-command"
+# The most workers the group can hold. How many run is set on the group by hand, never by a
+# deploy: see docs/kubernetes.md.
+MAX_WORKERS = 4
+# The tag on every worker, which lets a worker turn off its own source/dest check.
+WORKER_TAG = ("job-applier:node", "worker")
 # The model the API calls for mail classification; keep in step with backend/mail/classifier.py.
 MAIL_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 # The load balancer's ports and the node ports of Traefik's Service they lead to; keep in step
@@ -74,35 +84,14 @@ class ClusterStack(Stack):
             nodes.add_ingress_rule(balancer_group, ec2.Port.tcp(node_port), "From the balancer")
 
         image = ec2.MachineImage.generic_linux(NODE_IMAGES)
-        setup = ec2.UserData.custom(NODE_SETUP.read_text())
-
-        def server(name, instance_type, role, hop_limit):
-            return ec2.Instance(
-                self,
-                name,
-                vpc=vpc,
-                vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
-                associate_public_ip_address=True,  # No NAT gateway, so this is the way out.
-                instance_type=ec2.InstanceType(instance_type),
-                machine_image=image,
-                user_data=setup,
-                role=role,
-                security_group=nodes,
-                http_endpoint=True,
-                http_tokens=ec2.HttpTokens.REQUIRED,  # IMDSv2 only.
-                http_put_response_hop_limit=hop_limit,
-                # Calico routes pod traffic between nodes without wrapping it, so packets carry
-                # pod addresses, which EC2 drops unless this check is off.
-                source_dest_check=False,
-                block_devices=[
-                    ec2.BlockDevice(
-                        device_name="/dev/sda1",
-                        volume=ec2.BlockDeviceVolume.ebs(
-                            30, volume_type=ec2.EbsDeviceVolumeType.GP3, encrypted=True
-                        ),
-                    )
-                ],
+        disks = [
+            ec2.BlockDevice(
+                device_name="/dev/sda1",
+                volume=ec2.BlockDeviceVolume.ebs(
+                    30, volume_type=ec2.EbsDeviceVolumeType.GP3, encrypted=True
+                ),
             )
+        ]
 
         managed = iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")
         control_role = iam.Role(
@@ -118,37 +107,82 @@ class ClusterStack(Stack):
             managed_policies=[managed],
         )
         self.grant_api(worker_role, [find_repository(self, name) for name in ("api", "web")])
+        self.grant_join(worker_role)
+
+        control_plane = ec2.Instance(
+            self,
+            "ControlPlane",
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            associate_public_ip_address=True,  # No NAT gateway, so this is the way out.
+            instance_type=ec2.InstanceType(control_plane_type),
+            machine_image=image,
+            user_data=ec2.UserData.custom(CONTROL_PLANE_SETUP.read_text()),
+            role=control_role,
+            security_group=nodes,
+            http_endpoint=True,
+            http_tokens=ec2.HttpTokens.REQUIRED,  # IMDSv2 only.
+            http_put_response_hop_limit=1,
+            # Calico routes pod traffic between nodes without wrapping it, so packets carry
+            # pod addresses, which EC2 drops unless this check is off.
+            source_dest_check=False,
+            block_devices=disks,
+        )
 
         # Only the workers run pods that need AWS. A hop limit of 2 lets them reach the
         # metadata service through the node, which also means every pod on them acts as its role.
-        control_plane = server("ControlPlane", control_plane_type, control_role, 1)
-        worker = server("Worker", worker_type, worker_role, 2)
-        second_worker = server("Worker2", worker_type, worker_role, 2)
+        # A launch template cannot turn the source/dest check off: worker.sh does it at boot.
+        template = ec2.LaunchTemplate(
+            self,
+            "WorkerTemplate",
+            instance_type=ec2.InstanceType(worker_type),
+            machine_image=image,
+            user_data=ec2.UserData.custom(WORKER_SETUP.read_text()),
+            role=worker_role,
+            security_group=nodes,
+            associate_public_ip_address=True,
+            require_imdsv2=True,
+            http_put_response_hop_limit=2,
+            block_devices=disks,
+        )
+        # No desired size: how many workers run is set on the group itself, with
+        # `aws autoscaling set-desired-capacity` or the console, and a deploy never changes it
+        # (a new stack starts at 0). Never stop a worker: the group sees a stopped server as
+        # unhealthy and replaces it. A new launch template only reaches workers started after it.
+        group = autoscaling.AutoScalingGroup(
+            self,
+            "Workers",
+            vpc=vpc,
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            launch_template=template,
+            min_capacity=0,
+            max_capacity=MAX_WORKERS,
+        )
+        Tags.of(group).add(*WORKER_TAG, apply_to_launched_instances=True)
 
-        workers = [worker, second_worker]
-
-        # The website's fixed address, now on the load balancer. It keeps the id it had when it
-        # was on the first worker, as a new id would mean a new address and a new DNS record.
-        address = ec2.CfnEIP(self, "WorkerAddress")
+        # The website's fixed address, now on the load balancer. In CloudFormation it keeps the
+        # id it had when it was on the first worker: a new id would mean a new address, and so a
+        # new DNS record and certificate.
+        address = ec2.CfnEIP(self, "WebsiteAddress")
+        address.override_logical_id("WorkerAddress")
 
         if website:
-            self.add_balancer(vpc, balancer_group, address, workers)
+            self.add_balancer(vpc, balancer_group, address, group)
 
         for name, value in {
             "ControlPlaneInstanceId": control_plane.instance_id,
             "ControlPlanePrivateIp": control_plane.instance_private_ip,
-            "WorkerInstanceId": worker.instance_id,
-            "Worker2InstanceId": second_worker.instance_id,
+            "WorkerGroupName": group.auto_scaling_group_name,
             "PublicIp": address.attr_public_ip,
         }.items():
             CfnOutput(self, name, value=value)
 
-    def add_balancer(self, vpc, balancer_group, address, workers):
+    def add_balancer(self, vpc, balancer_group, address, group):
         """The website's way in: ports 80 and 443 on the Elastic IP, to Traefik on each worker."""
         # Plain TCP: HTTPS and its certificate stay with Traefik and cert-manager. Each worker
-        # is a target on Traefik's node ports. Traefik's Service sends node port traffic only to
-        # a Traefik pod on the same node, so a worker without one fails the health check and
-        # gets no traffic.
+        # is a target on Traefik's node ports, registered by the group as it starts and stops
+        # them. Traefik's Service sends node port traffic only to a Traefik pod on the same node,
+        # so a worker without one fails the health check and gets no traffic.
         balancer = elbv2.NetworkLoadBalancer(
             self,
             "Website",
@@ -172,7 +206,7 @@ class ClusterStack(Stack):
             balancer.add_listener(f"Port{port}", port=port).add_targets(
                 f"Traefik{port}",
                 port=node_port,
-                targets=[targets.InstanceTarget(w, node_port) for w in workers],
+                targets=[group],
                 health_check=elbv2.HealthCheck(
                     protocol=elbv2.Protocol.TCP,
                     interval=Duration.seconds(10),
@@ -181,6 +215,26 @@ class ClusterStack(Stack):
                 ),
                 deregistration_delay=Duration.seconds(30),
             )
+
+    def grant_join(self, role):
+        """What a worker needs at boot: the join command, and to turn off its source/dest check."""
+        role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[
+                    self.format_arn(
+                        service="ssm", resource="parameter", resource_name=JOIN_PARAMETER[1:]
+                    )
+                ],
+            )
+        )
+        role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ec2:ModifyInstanceAttribute"],
+                resources=[self.format_arn(service="ec2", resource="instance", resource_name="*")],
+                conditions={"StringEquals": {f"ec2:ResourceTag/{WORKER_TAG[0]}": WORKER_TAG[1]}},
+            )
+        )
 
     def grant_api(self, role, repositories):
         """What the API does in AWS, and nothing more, as every pod on the workers gets it."""
