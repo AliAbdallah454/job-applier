@@ -138,6 +138,13 @@ class ClusterStackTests(unittest.TestCase):
         self.assertNotIn("dynamodb", actions)
         self.assertNotIn("s3:", actions)
 
+    def test_the_control_plane_can_only_publish_the_join_command(self):
+        (statement,) = statements(self.template, "ControlPlaneRole")
+        self.assertEqual(statement["Action"], "ssm:PutParameter")
+        self.assertIn(
+            ":parameter/job-applier/cluster/join-command", json.dumps(statement["Resource"])
+        )
+
     def test_the_workers_use_the_worker_role(self):
         profiles = self.template.find_resources("AWS::IAM::InstanceProfile")
         profile = self.worker_template()["IamInstanceProfile"]["Arn"]["Fn::GetAtt"][0]

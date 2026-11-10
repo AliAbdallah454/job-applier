@@ -80,3 +80,49 @@ curl -fsSL https://get.helm.sh/helm-v4.3.1-linux-amd64.tar.gz | tar -xz -C /tmp
 install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm
 
 echo "node-setup finished" > /var/log/node-setup.done
+
+# 6. The AWS CLI, used by the timer below to publish to Parameter Store. Ubuntu's image does
+#    not have it.
+curl -fsSL -o /tmp/awscliv2.zip https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+
+# 7. Publish a fresh join command every 10 hours (tokens last 24), and two minutes after every
+#    boot, so the worker group can add or replace a server at any time with no one at a keyboard
+#    (worker.sh reads it; this server's role may write only this parameter). Until `kubeadm init`
+#    has run there is no cluster to join and the script exits quietly; right after it, publish by
+#    hand once: scripts/publish_join_command.sh from your machine, or here
+#    `systemctl start publish-join-command.service`.
+cat > /usr/local/bin/publish-join-command <<'SCRIPT'
+#!/bin/bash
+# Publishes the kubeadm join command to Parameter Store, where new workers read it at boot
+# (infra/cluster/worker.sh). Keep the name in step with JOIN_PARAMETER in infra/cluster_stack.py.
+set -euo pipefail
+[ -f /etc/kubernetes/admin.conf ] || exit 0  # No cluster yet.
+join=$(kubeadm token create --ttl 24h --print-join-command)
+metadata=http://169.254.169.254/latest
+token=$(curl -fsS -X PUT "$metadata/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+region=$(curl -fsS -H "X-aws-ec2-metadata-token: $token" "$metadata/meta-data/placement/region")
+aws ssm put-parameter --region "$region" --name /job-applier/cluster/join-command \
+  --type SecureString --overwrite --value "$join" >/dev/null
+SCRIPT
+chmod 0755 /usr/local/bin/publish-join-command
+
+cat > /etc/systemd/system/publish-join-command.service <<'UNIT'
+[Unit]
+Description=Publish the kubeadm join command to Parameter Store
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/publish-join-command
+UNIT
+cat > /etc/systemd/system/publish-join-command.timer <<'UNIT'
+[Unit]
+Description=A fresh kubeadm join command every 10 hours
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10h
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now publish-join-command.timer

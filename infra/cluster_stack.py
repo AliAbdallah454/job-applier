@@ -108,6 +108,7 @@ class ClusterStack(Stack):
         )
         self.grant_api(worker_role, [find_repository(self, name) for name in ("api", "web")])
         self.grant_join(worker_role)
+        self.grant_publish_join(control_role)
 
         control_plane = ec2.Instance(
             self,
@@ -216,17 +217,24 @@ class ClusterStack(Stack):
                 deregistration_delay=Duration.seconds(30),
             )
 
+    def join_parameter_arn(self):
+        """The Parameter Store entry holding the kubeadm join command."""
+        return self.format_arn(
+            service="ssm", resource="parameter", resource_name=JOIN_PARAMETER[1:]
+        )
+
+    def grant_publish_join(self, role):
+        """The control plane may write the join command the workers read, and nothing else: it
+        is where kubeadm mints join tokens (scripts/publish_join_command.sh, or a scheduled
+        publish on the server itself)."""
+        role.add_to_policy(
+            iam.PolicyStatement(actions=["ssm:PutParameter"], resources=[self.join_parameter_arn()])
+        )
+
     def grant_join(self, role):
         """What a worker needs at boot: the join command, and to turn off its source/dest check."""
         role.add_to_policy(
-            iam.PolicyStatement(
-                actions=["ssm:GetParameter"],
-                resources=[
-                    self.format_arn(
-                        service="ssm", resource="parameter", resource_name=JOIN_PARAMETER[1:]
-                    )
-                ],
-            )
+            iam.PolicyStatement(actions=["ssm:GetParameter"], resources=[self.join_parameter_arn()])
         )
         role.add_to_policy(
             iam.PolicyStatement(

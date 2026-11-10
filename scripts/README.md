@@ -25,6 +25,9 @@ an admin AWS login but no tunnel. The argument is the token's lifetime, `24h` by
 scripts/publish_join_command.sh
 ```
 
+The control plane also republishes one every 10 hours on its own (the systemd timer at the end
+of `infra/cluster/control-plane.sh`); this script is for publishing right now, without waiting.
+
 ## Clear mail tracking
 
 Removes applications, job emails and the sync position from the mail table, so tracking starts

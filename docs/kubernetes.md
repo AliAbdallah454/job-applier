@@ -137,12 +137,18 @@ aws autoscaling set-desired-capacity --auto-scaling-group-name <WorkerGroupName>
 
 It runs `kubeadm token create --print-join-command` on the control plane through Systems Manager
 and saves the result as the SecureString parameter `/job-applier/cluster/join-command`, which only
-the workers' role and your admin login can read. The token never shows in your terminal. Each
+the workers' role and your admin login can read; the control plane's role may write it (not
+read it). The token never shows in your terminal. Each
 worker picks it up within a minute; back on the control plane, `kubectl get nodes` shows all three,
 `Ready` soon after.
 
-A worker started after the token expires keeps trying until there is a valid one, so run the
-script again before you add workers or resume the cluster. `scripts/publish_join_command.sh 0`
+From then on the control plane keeps the token fresh itself: `control-plane.sh` ends with a
+systemd timer, `publish-join-command.timer`, that publishes a new 24-hour command every 10 hours
+and two minutes after every boot (before `kubeadm init` it does nothing). So a worker started
+after the current token expires keeps trying until the timer's next run unblocks it, and resuming
+the cluster needs no publish by hand. On a control plane built before the timer, paste the
+commands at the end of `control-plane.sh` once (as root; they install the AWS CLI and the timer),
+and `systemctl list-timers publish-join-command.timer` shows it armed. `scripts/publish_join_command.sh 0`
 publishes a token that never expires, so that any new worker can join with nothing to run, at a
 cost: anyone who can read it and reach the control plane's port 6443 (only the nodes can) can add
 a server to the cluster, and the pods on the workers can read it, as they act as the workers' role.
@@ -360,9 +366,9 @@ To resume:
 ```sh
 aws ec2 start-instances --instance-ids <ControlPlaneInstanceId>
 aws ec2 wait instance-status-ok --instance-ids <ControlPlaneInstanceId>
-scripts/publish_join_command.sh               # the last token has most likely expired
 aws autoscaling set-desired-capacity --auto-scaling-group-name <WorkerGroupName> \
-  --desired-capacity 2                         # two fresh workers, which join by themselves
+  --desired-capacity 2    # two fresh workers; the control plane's timer publishes their
+                          # join command two minutes after its boot, so nothing else to run
 gh variable set CLUSTER_WEBSITE --body on
 gh workflow run ci-cd.yml --ref main         # creates the load balancer again
 gh run watch
